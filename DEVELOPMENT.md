@@ -228,3 +228,25 @@ Recommended commit message:
 git commit -m "Fix NumPy trapezoid integration fallback"
 ```
 
+## Step 8. Add control vs seeding comparison workflow
+
+The runner can now execute paired control and seeding simulations when `experiment.mode = control_vs_seeding`.
+
+Changes:
+- Updated `analysis/comparison.py`
+- Added time alignment for control and seeding outputs
+- Added `comparison.csv` generation
+- Added comparison summary metrics
+- Updated `simulation/runner.py` with mode dispatch
+- Added `run_single_experiment()`
+- Added `run_control_vs_seeding()`
+- Updated result directory structure for paired runs
+- Updated dashboard result discovery for comparison directories
+- Added comparison plots and tables to Results dashboard
+
+Recommended commit message:
+
+```bash
+git commit -m "Add control versus seeding comparison workflow"
+```
+

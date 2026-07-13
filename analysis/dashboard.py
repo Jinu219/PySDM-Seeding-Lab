@@ -17,34 +17,42 @@ class ResultEntry:
     path: Path
     label: str
     is_run_directory: bool
+    result_type: str
 
 
 def discover_results(result_dir: Path) -> List[ResultEntry]:
     """Find structured run directories and legacy CSV outputs."""
     result_dir.mkdir(exist_ok=True)
 
-    run_dirs = sorted(
-        [p for p in result_dir.iterdir() if p.is_dir() and (p / "timeseries.csv").exists()],
-        reverse=True,
-    )
-    legacy_csvs = sorted(result_dir.glob("*.csv"), reverse=True)
-
     entries: List[ResultEntry] = []
-    for path in run_dirs:
-        entries.append(
-            ResultEntry(
-                path=path,
-                label=f"[run directory] {path.name}",
-                is_run_directory=True,
-            )
-        )
 
-    for path in legacy_csvs:
+    for path in sorted([p for p in result_dir.iterdir() if p.is_dir()], reverse=True):
+        if (path / "comparison.csv").exists():
+            entries.append(
+                ResultEntry(
+                    path=path,
+                    label=f"[comparison] {path.name}",
+                    is_run_directory=True,
+                    result_type="comparison",
+                )
+            )
+        elif (path / "timeseries.csv").exists():
+            entries.append(
+                ResultEntry(
+                    path=path,
+                    label=f"[single] {path.name}",
+                    is_run_directory=True,
+                    result_type="single",
+                )
+            )
+
+    for path in sorted(result_dir.glob("*.csv"), reverse=True):
         entries.append(
             ResultEntry(
                 path=path,
                 label=f"[legacy csv] {path.name}",
                 is_run_directory=False,
+                result_type="legacy_csv",
             )
         )
 
@@ -53,6 +61,40 @@ def discover_results(result_dir: Path) -> List[ResultEntry]:
 
 def load_result(entry: ResultEntry) -> Dict[str, Any]:
     """Load a result directory or legacy CSV into a common dictionary."""
+    if entry.result_type == "comparison":
+        comparison_path = entry.path / "comparison.csv"
+        summary_path = entry.path / "summary.json"
+        metadata_path = entry.path / "metadata.json"
+        config_path = entry.path / "config.yaml"
+        validation_path = entry.path / "validation_report.json"
+        control_path = entry.path / "control" / "timeseries.csv"
+        seeding_path = entry.path / "seeding" / "timeseries.csv"
+
+        comparison_df = pd.read_csv(comparison_path)
+        control_df = pd.read_csv(control_path) if control_path.exists() else pd.DataFrame()
+        seeding_df = pd.read_csv(seeding_path) if seeding_path.exists() else pd.DataFrame()
+
+        return {
+            "entry": entry,
+            "timeseries": comparison_df,
+            "comparison": comparison_df,
+            "control": control_df,
+            "seeding": seeding_df,
+            "summary": _read_json(summary_path),
+            "metadata": _read_json(metadata_path),
+            "config": _read_yaml(config_path),
+            "validation": _read_json(validation_path),
+            "files": {
+                "comparison": comparison_path,
+                "summary": summary_path,
+                "metadata": metadata_path,
+                "config": config_path,
+                "validation": validation_path,
+                "control_timeseries": control_path,
+                "seeding_timeseries": seeding_path,
+            },
+        }
+
     if entry.is_run_directory:
         timeseries_path = entry.path / "timeseries.csv"
         summary_path = entry.path / "summary.json"
@@ -61,18 +103,17 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         validation_path = entry.path / "validation_report.json"
 
         df = pd.read_csv(timeseries_path)
-        summary = _read_json(summary_path)
-        metadata = _read_json(metadata_path)
-        config = _read_yaml(config_path)
-        validation = _read_json(validation_path)
 
         return {
             "entry": entry,
             "timeseries": df,
-            "summary": summary,
-            "metadata": metadata,
-            "config": config,
-            "validation": validation,
+            "comparison": pd.DataFrame(),
+            "control": pd.DataFrame(),
+            "seeding": pd.DataFrame(),
+            "summary": _read_json(summary_path),
+            "metadata": _read_json(metadata_path),
+            "config": _read_yaml(config_path),
+            "validation": _read_json(validation_path),
             "files": {
                 "timeseries": timeseries_path,
                 "summary": summary_path,
@@ -86,6 +127,9 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
     return {
         "entry": entry,
         "timeseries": df,
+        "comparison": pd.DataFrame(),
+        "control": pd.DataFrame(),
+        "seeding": pd.DataFrame(),
         "summary": {},
         "metadata": {"source": "legacy_csv", "filename": entry.path.name},
         "config": {},
@@ -111,19 +155,18 @@ def _read_yaml(path: Path) -> Any:
 
 
 def flatten_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
-    """Flatten adapter summary, metrics, and validation for metric cards."""
+    """Flatten nested summary dictionaries for metric cards."""
     flat: Dict[str, Any] = {}
 
-    for group_name in ["adapter_summary", "metrics", "validation"]:
-        group = summary.get(group_name, {})
-        if isinstance(group, dict):
-            for key, value in group.items():
-                flat[f"{group_name}.{key}"] = value
+    def walk(prefix: str, obj: Any) -> None:
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                next_prefix = f"{prefix}.{key}" if prefix else str(key)
+                walk(next_prefix, value)
+        else:
+            flat[prefix] = obj
 
-    for key, value in summary.items():
-        if not isinstance(value, dict):
-            flat[key] = value
-
+    walk("", summary)
     return flat
 
 
@@ -185,6 +228,17 @@ def recommended_column_groups(df: pd.DataFrame) -> Dict[str, List[str]]:
         for group_name, columns in groups.items()
         if any(col in df.columns for col in columns)
     }
+
+
+def comparison_base_variables(comparison_df: pd.DataFrame) -> List[str]:
+    """Return base variable names available in a comparison dataframe."""
+    bases = []
+    for col in comparison_df.columns:
+        if col.endswith("_control"):
+            base = col[: -len("_control")]
+            if f"{base}_seeding" in comparison_df.columns and f"{base}_diff" in comparison_df.columns:
+                bases.append(base)
+    return sorted(bases)
 
 
 def _seeding_intervals(df: pd.DataFrame) -> List[tuple[float, float]]:
@@ -250,3 +304,43 @@ def plot_selected_variable(df: pd.DataFrame, column: str):
         ylabel=column,
         show_seeding_window=True,
     )
+
+
+def plot_control_vs_seeding(comparison_df: pd.DataFrame, base_variable: str):
+    """Plot control and seeding curves for a base variable."""
+    return plot_time_series(
+        comparison_df,
+        [f"{base_variable}_control", f"{base_variable}_seeding"],
+        title=f"Control vs Seeding: {base_variable}",
+        ylabel=base_variable,
+        show_seeding_window=True,
+    )
+
+
+def plot_difference(comparison_df: pd.DataFrame, base_variable: str):
+    """Plot seeding-control difference for a base variable."""
+    fig, ax = plt.subplots()
+
+    diff_col = f"{base_variable}_diff"
+    rel_col = f"{base_variable}_relative_change_percent"
+
+    if diff_col in comparison_df.columns:
+        ax.plot(comparison_df["time_s"], comparison_df[diff_col], label="difference")
+
+    for start, end in _seeding_intervals_from_comparison(comparison_df):
+        ax.axvspan(start, end, alpha=0.15)
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel(f"Δ {base_variable}")
+    ax.set_title(f"Seeding - Control: {base_variable}")
+    ax.legend()
+
+    return fig
+
+
+def _seeding_intervals_from_comparison(comparison_df: pd.DataFrame) -> List[tuple[float, float]]:
+    for candidate in ["seeding_active_seeding", "seeding_active"]:
+        if candidate in comparison_df.columns:
+            temp = pd.DataFrame({"time_s": comparison_df["time_s"], "seeding_active": comparison_df[candidate]})
+            return _seeding_intervals(temp)
+    return []

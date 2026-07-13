@@ -372,3 +372,45 @@ Reusable dashboard utilities are implemented in:
 analysis/dashboard.py
 ```
 
+## Control vs Seeding Workflow
+
+When `experiment.mode` is set to `control_vs_seeding`, the runner now performs paired simulations:
+
+```text
+1. control run  : seeding.enabled = false
+2. seeding run  : seeding.enabled = true
+3. comparison   : seeding - control
+```
+
+The output structure is:
+
+```text
+results/
+└── <run_id>_control_vs_seeding/
+    ├── config.yaml
+    ├── metadata.json
+    ├── summary.json
+    ├── comparison.csv
+    ├── validation_report.json
+    ├── control/
+    │   ├── config.yaml
+    │   ├── timeseries.csv
+    │   ├── summary.json
+    │   ├── metadata.json
+    │   └── validation_report.json
+    └── seeding/
+        ├── config.yaml
+        ├── timeseries.csv
+        ├── summary.json
+        ├── metadata.json
+        └── validation_report.json
+```
+
+The dashboard detects comparison results automatically and shows:
+
+- control vs seeding curves
+- seeding minus control difference
+- relative change percent
+- comparison summary metrics
+- control and seeding tables side by side
+
