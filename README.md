@@ -429,3 +429,18 @@ Dashboard controls:
   - diagnostic plot matrix
   - custom variable plot matrix
 
+## Placeholder Result Warning
+
+`placeholder_warm_cloud` is only a workflow-test adapter. Its curves are synthetic and should not be interpreted as cloud-physics results.
+
+Use it to test:
+
+- app execution
+- result saving
+- control vs seeding comparison
+- dashboard rendering
+
+Use `pysdm_parcel` for real PySDM-based output.
+
+The Results Dashboard now warns when a selected result comes from the placeholder adapter and excludes workflow columns such as `seeding_active` from comparison-variable plots.
+

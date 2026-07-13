@@ -231,14 +231,36 @@ def recommended_column_groups(df: pd.DataFrame) -> Dict[str, List[str]]:
 
 
 def comparison_base_variables(comparison_df: pd.DataFrame) -> List[str]:
-    """Return base variable names available in a comparison dataframe."""
+    """Return physically meaningful base variable names available in a comparison dataframe."""
+    excluded = {
+        "seeding_active",
+    }
+
+    preferred_order = [
+        "rain_water_mixing_ratio",
+        "cloud_water_mixing_ratio",
+        "effective_radius_um",
+        "droplet_number_concentration_cm3",
+        "droplet_number_concentration",
+        "rain_drop_number_concentration",
+        "superdroplet_count",
+        "mean_radius_m",
+        "supersaturation",
+    ]
+
     bases = []
     for col in comparison_df.columns:
         if col.endswith("_control"):
             base = col[: -len("_control")]
+            if base in excluded:
+                continue
             if f"{base}_seeding" in comparison_df.columns and f"{base}_diff" in comparison_df.columns:
                 bases.append(base)
-    return sorted(bases)
+
+    ordered = [base for base in preferred_order if base in bases]
+    ordered += sorted([base for base in bases if base not in ordered])
+
+    return ordered
 
 
 def _seeding_intervals(df: pd.DataFrame) -> List[tuple[float, float]]:
@@ -312,7 +334,7 @@ def plot_control_vs_seeding(comparison_df: pd.DataFrame, base_variable: str):
     return plot_time_series(
         comparison_df,
         [f"{base_variable}_control", f"{base_variable}_seeding"],
-        title=f"Control vs Seeding: {base_variable}",
+        title=f"{base_variable}",
         ylabel=base_variable,
         show_seeding_window=True,
     )
@@ -333,7 +355,7 @@ def plot_difference(comparison_df: pd.DataFrame, base_variable: str):
 
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(f"Δ {base_variable}")
-    ax.set_title(f"Seeding - Control: {base_variable}")
+    ax.set_title(f"Δ {base_variable}")
     ax.legend()
 
     return fig
