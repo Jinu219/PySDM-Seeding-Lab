@@ -426,3 +426,36 @@ def plot_sweep_ranking(sweep_df: pd.DataFrame, metric: str = "ranking_value", to
     ax.set_title(f"Top {min(top_n, len(plot_df))} sweep cases")
 
     return fig
+
+
+def plot_sweep_ranking(sweep_df: pd.DataFrame, metric: str = "ranking_value", top_n: int = 10):
+    """Plot top-N sweep cases by ranking metric."""
+    fig, ax = plt.subplots(figsize=(6.0, 3.2))
+
+    if sweep_df.empty or metric not in sweep_df.columns:
+        ax.set_title("No sweep ranking data")
+        return fig
+
+    plot_df = sweep_df.copy()
+    plot_df = plot_df.dropna(subset=[metric])
+    plot_df = plot_df.sort_values(metric, ascending=False).head(top_n)
+
+    if plot_df.empty:
+        ax.set_title("No non-empty sweep ranking data")
+        return fig
+
+    if "case_name" in plot_df.columns:
+        labels = plot_df["case_name"].astype(str)
+    elif "case_index" in plot_df.columns:
+        labels = plot_df["case_index"].astype(str)
+    else:
+        labels = plot_df.index.astype(str)
+
+    ax.barh(labels.iloc[::-1], plot_df[metric].to_numpy()[::-1])
+    ax.set_xlabel(metric)
+    ax.set_ylabel("Sweep case")
+    ax.set_title(f"Top {min(top_n, len(plot_df))} sweep cases")
+    fig.tight_layout()
+
+    return fig
+

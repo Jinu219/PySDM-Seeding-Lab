@@ -335,3 +335,24 @@ Recommended commit message:
 git commit -m "Add parameter sweep experiment workflow"
 ```
 
+## Fix. Add missing sweep ranking plot export
+
+Fixed a Streamlit import error on the Results page.
+
+Problem:
+- `pages/06_results.py` imported `plot_sweep_ranking`
+- Some local copies of `analysis/dashboard.py` did not contain that function
+- Streamlit failed with:
+  `ImportError: cannot import name 'plot_sweep_ranking' from 'analysis.dashboard'`
+
+Changes:
+- Added a top-level `plot_sweep_ranking()` function to `analysis/dashboard.py`
+- The function draws a compact horizontal ranking chart for sweep results
+- Added defensive handling for empty sweep tables or missing ranking columns
+
+Recommended commit message:
+
+```bash
+git commit -m "Fix missing sweep ranking dashboard function"
+```
+
