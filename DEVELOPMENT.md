@@ -77,3 +77,26 @@ Recommended commit message:
 git commit -m "Strengthen configuration validation workflow"
 ```
 
+## Step 4. Organize runner and adapter structure
+
+The simulation execution layer was reorganized to make it easier to connect real PySDM code in Step 5.
+
+Changes:
+- Added `simulation/types.py`
+- Added `SimulationRunSpec`
+- Added `AdapterResult`
+- Updated `simulation/builder.py` to build standardized run specs
+- Updated `simulation/pysdm_adapter.py` with an adapter registry
+- Added `placeholder_warm_cloud` adapter
+- Reserved `pysdm_parcel` adapter for the first real PySDM simulation
+- Updated `simulation/runner.py` to use run specs and adapter results
+- Added `simulation.adapter` to the configuration schema
+- Updated app and run page to display adapter information
+- Updated validation to check adapter names
+
+Recommended commit message:
+
+```bash
+git commit -m "Organize simulation runner and adapter interface"
+```
+

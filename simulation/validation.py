@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
 from simulation.schema import (
+    ADAPTER_NAMES,
     AEROSOL_DISTRIBUTION_TYPES,
     DELIVERY_METHODS,
     EXPERIMENT_MODES,
@@ -39,6 +40,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
 
     schema_version = cfg.get("schema_version")
     experiment = cfg.get("experiment", {})
+    simulation = cfg.get("simulation", {})
     env = cfg.get("environment", {})
     aero = cfg.get("background_aerosol", {})
     seed = cfg.get("seeding", {})
@@ -86,6 +88,30 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 "experiment.random_seed",
                 "random_seed is not an integer.",
                 "Use an integer seed if stochastic reproducibility is needed.",
+            )
+        )
+
+
+    # -------------------------------------------------------------------------
+    # Simulation adapter checks
+    # -------------------------------------------------------------------------
+    if simulation.get("adapter") not in ADAPTER_NAMES:
+        issues.append(
+            _issue(
+                "error",
+                "simulation.adapter",
+                f"simulation.adapter must be one of {ADAPTER_NAMES}.",
+                "Choose a supported simulation adapter.",
+            )
+        )
+
+    if simulation.get("adapter") == "pysdm_parcel":
+        issues.append(
+            _issue(
+                "info",
+                "simulation.adapter",
+                "pysdm_parcel adapter is selected.",
+                "This adapter is reserved for Step 5 when the first real PySDM simulation is connected.",
             )
         )
 

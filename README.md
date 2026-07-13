@@ -243,3 +243,38 @@ severity | field | message | suggestion
 
 The validation logic is implemented in `simulation/validation.py`.
 
+## Runner and Adapter Architecture
+
+The simulation execution layer is separated into three parts:
+
+```text
+configs/default.yaml
+    ↓
+simulation.builder.build_run_spec()
+    ↓
+simulation.pysdm_adapter.run_adapter()
+    ↓
+simulation.runner.run_experiment()
+    ↓
+results/*.csv
+```
+
+### Key Files
+
+- `simulation/types.py`: shared dataclasses for run specifications and adapter results
+- `simulation/builder.py`: converts normalized configuration into adapter-facing settings
+- `simulation/pysdm_adapter.py`: adapter registry and simulation adapter interface
+- `simulation/runner.py`: orchestration layer used by the Streamlit Run page
+
+### Adapter Registry
+
+Available adapters are defined in `simulation/pysdm_adapter.py`.
+
+```text
+placeholder_warm_cloud
+pysdm_parcel
+```
+
+`placeholder_warm_cloud` is the current synthetic test adapter.  
+`pysdm_parcel` is reserved for the first real PySDM simulation connection in the next development step.
+

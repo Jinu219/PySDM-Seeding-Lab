@@ -12,6 +12,11 @@ EXPERIMENT_MODES = [
     "parameter_sweep",
 ]
 
+ADAPTER_NAMES = [
+    "placeholder_warm_cloud",
+    "pysdm_parcel",
+]
+
 SEEDING_MATERIAL_TYPES = [
     "hygroscopic",
     "custom",
@@ -36,6 +41,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "mode": "control_vs_seeding",
         "description": "Basic warm-cloud hygroscopic seeding configuration.",
         "random_seed": 42,
+    },
+    "simulation": {
+        "adapter": "placeholder_warm_cloud",
+        "case_name": "base",
+        "notes": "Placeholder adapter is used until the first real PySDM simulation is connected.",
     },
     "environment": {
         "temperature": 300.0,

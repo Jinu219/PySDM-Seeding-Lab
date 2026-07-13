@@ -20,6 +20,7 @@ st.caption("현재 working configuration을 검증하고 simulation runner를 �
 cfg = load_config(CONFIG_PATH)
 
 experiment = cfg.get("experiment", {})
+simulation = cfg.get("simulation", {})
 output = cfg.get("output", {})
 
 st.subheader("Run Options")
@@ -32,6 +33,7 @@ with col2:
     st.metric("Mode", experiment.get("mode", "single"))
 
 with col3:
+    st.metric("Adapter", simulation.get("adapter", "placeholder_warm_cloud"))
     st.metric("Output Dir", output.get("base_dir", "results"))
 
 st.subheader("Configuration Validation")

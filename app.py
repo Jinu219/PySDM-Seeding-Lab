@@ -3,7 +3,7 @@ from pathlib import Path
 import streamlit as st
 
 from simulation.config import load_config, save_config
-from simulation.schema import EXPERIMENT_MODES, schema_summary
+from simulation.schema import ADAPTER_NAMES, EXPERIMENT_MODES, schema_summary
 from simulation.ui_helpers import scenario_loader
 from simulation.validation import validation_summary
 
@@ -49,6 +49,7 @@ with col_note:
 cfg = load_config("configs/default.yaml")
 
 experiment = cfg.get("experiment", {})
+simulation = cfg.get("simulation", {})
 environment = cfg.get("environment", {})
 aerosol = cfg.get("background_aerosol", {})
 seeding = cfg.get("seeding", {})
@@ -62,6 +63,7 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric("Experiment", experiment.get("name", "unnamed"))
     st.metric("Mode", experiment.get("mode", "single"))
+    st.metric("Adapter", simulation.get("adapter", "placeholder_warm_cloud"))
 
 with col2:
     st.metric("Temperature", f"{environment.get('temperature', 'NA')} K")
@@ -103,9 +105,22 @@ mode = st.selectbox(
 experiment["mode"] = mode
 cfg["experiment"] = experiment
 
-if st.button("Save Experiment Mode", use_container_width=True):
+st.subheader("Simulation Adapter")
+
+adapter = st.selectbox(
+    "Adapter",
+    ADAPTER_NAMES,
+    index=ADAPTER_NAMES.index(simulation.get("adapter", "placeholder_warm_cloud"))
+    if simulation.get("adapter", "placeholder_warm_cloud") in ADAPTER_NAMES
+    else 0,
+)
+
+simulation["adapter"] = adapter
+cfg["simulation"] = simulation
+
+if st.button("Save Experiment Mode and Adapter", use_container_width=True):
     save_config(cfg, "configs/default.yaml")
-    st.success("Experiment mode saved.")
+    st.success("Experiment mode and adapter saved.")
 
 with st.expander("Configuration schema summary"):
     st.dataframe(schema_summary(), use_container_width=True)

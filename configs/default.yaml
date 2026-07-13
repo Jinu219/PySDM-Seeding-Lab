@@ -4,6 +4,10 @@ experiment:
   mode: control_vs_seeding
   description: Basic warm-cloud hygroscopic seeding configuration.
   random_seed: 42
+simulation:
+  adapter: placeholder_warm_cloud
+  case_name: base
+  notes: Placeholder adapter is used until the first real PySDM simulation is connected.
 environment:
   temperature: 300.0
   pressure: 100000.0
