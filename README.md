@@ -691,9 +691,9 @@ python scripts/check_project_integrity.py
 streamlit run app.py
 ```
 
-## Exper2-style Diagnostics
+## Growth-pathway Diagnostics
 
-The platform now adds Exper2 Follow-up style diagnostic columns to saved timeseries when `diagnostics.exper2_mode` is enabled.
+The platform now adds growth-pathway Follow-up style diagnostic columns to saved timeseries when `diagnostics.exper2_mode` is enabled.
 
 Diagnostic groups:
 
@@ -720,7 +720,7 @@ Size response
 - effective_radius_all_um
 ```
 
-The Results Dashboard includes an `Exper2 Diagnostics` tab for `[comparison]` and `[sweep]` results.  
+The Results Dashboard includes an `Growth Pathway Diagnostics` tab for `[comparison]` and `[sweep]` results.  
 For sweep results, start with:
 
 ```text
@@ -734,5 +734,59 @@ The Parameter Sweep page also supports:
 microphysics.collision = OFF / ON
 ```
 
-This is needed to reproduce the Exper2 finding that rain-water response is strongly tied to collision/coalescence.
+This is needed to reproduce the growth-pathway finding that rain-water response is strongly tied to collision/coalescence.
+
+## Ensemble Statistics
+
+The platform now supports ensemble execution for `single` and `control_vs_seeding` runs, including each parameter-sweep case.
+
+Enable it in:
+
+```text
+05. Parameter Sweep → Ensemble Statistics
+```
+
+Key settings:
+
+```text
+ensemble.enabled
+ensemble.n_members
+ensemble.seed_start
+ensemble.seed_step
+```
+
+When enabled, each case is repeated with different random seeds and summarized into:
+
+```text
+ensemble_statistics.csv
+member_summary.csv
+```
+
+The ensemble statistics table includes:
+
+```text
+<variable>_mean
+<variable>_std
+<variable>_median
+<variable>_q25
+<variable>_q75
+<variable>_n_finite
+<variable>_finite_fraction
+```
+
+The Results Dashboard now supports:
+
+```text
+[ensemble] result type
+Ensemble Statistics tab
+Mean ± std plot
+Median + IQR plot
+PNG download buttons for plots
+```
+
+For sweep ranking with ensemble cases, use a metric such as:
+
+```text
+ensemble.metrics.rain_water_mixing_ratio_diff_final_mean
+```
 

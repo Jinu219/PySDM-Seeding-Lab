@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,9 +9,10 @@ from typing import Any, Dict, List
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
-from analysis.exper2_diagnostics import EXPER2_VARIABLE_GROUPS, EXPER2_PREFERRED_ORDER
+from analysis.ensemble_statistics import ensemble_variable_bases
+from analysis.growth_pathway_diagnostics import GROWTH_PATHWAY_VARIABLE_GROUPS, GROWTH_PATHWAY_PREFERRED_ORDER
 
-DASHBOARD_BUILD_ID = "exper2-diagnostics-20260713"
+DASHBOARD_BUILD_ID = "growth-pathway-ensemble-20260713"
 
 
 @dataclass(frozen=True)
@@ -30,7 +32,16 @@ def discover_results(result_dir: Path) -> List[ResultEntry]:
     entries: List[ResultEntry] = []
 
     for path in sorted([p for p in result_dir.iterdir() if p.is_dir()], reverse=True):
-        if (path / "sweep_summary.csv").exists():
+        if (path / "ensemble_statistics.csv").exists():
+            entries.append(
+                ResultEntry(
+                    path=path,
+                    label=f"[ensemble] {path.name}",
+                    is_run_directory=True,
+                    result_type="ensemble",
+                )
+            )
+        elif (path / "sweep_summary.csv").exists():
             entries.append(
                 ResultEntry(
                     path=path,
@@ -73,6 +84,42 @@ def discover_results(result_dir: Path) -> List[ResultEntry]:
 
 def load_result(entry: ResultEntry) -> Dict[str, Any]:
     """Load a result directory or legacy CSV into a common dictionary."""
+    if entry.result_type == "ensemble":
+        stats_path = entry.path / "ensemble_statistics.csv"
+        member_summary_path = entry.path / "member_summary.csv"
+        summary_path = entry.path / "summary.json"
+        metadata_path = entry.path / "metadata.json"
+        config_path = entry.path / "config.yaml"
+        validation_path = entry.path / "validation_report.json"
+
+        stats_df = pd.read_csv(stats_path)
+        member_summary_df = pd.read_csv(member_summary_path) if member_summary_path.exists() else pd.DataFrame()
+
+        return {
+            "entry": entry,
+            "timeseries": stats_df,
+            "ensemble": stats_df,
+            "member_summary": member_summary_df,
+            "ensemble": pd.DataFrame(),
+            "member_summary": pd.DataFrame(),
+            "sweep": pd.DataFrame(),
+            "comparison": pd.DataFrame(),
+            "control": pd.DataFrame(),
+            "seeding": pd.DataFrame(),
+            "summary": _read_json(summary_path),
+            "metadata": _read_json(metadata_path),
+            "config": _read_yaml(config_path),
+            "validation": _read_json(validation_path),
+            "files": {
+                "ensemble_statistics": stats_path,
+                "member_summary": member_summary_path,
+                "summary": summary_path,
+                "metadata": metadata_path,
+                "config": config_path,
+                "validation": validation_path,
+            },
+        }
+
     if entry.result_type == "parameter_sweep":
         sweep_path = entry.path / "sweep_summary.csv"
         summary_path = entry.path / "summary.json"
@@ -149,6 +196,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         return {
             "entry": entry,
             "timeseries": df,
+            "ensemble": pd.DataFrame(),
+            "member_summary": pd.DataFrame(),
             "sweep": pd.DataFrame(),
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
@@ -295,7 +344,7 @@ def comparison_base_variables(comparison_df: pd.DataFrame) -> List[str]:
     """Return physically meaningful base variable names available in a comparison dataframe."""
     excluded = {"seeding_active"}
 
-    preferred_order = EXPER2_PREFERRED_ORDER + [
+    preferred_order = GROWTH_PATHWAY_PREFERRED_ORDER + [
         "rain_water_mixing_ratio",
         "cloud_water_mixing_ratio",
         "supersaturation",
@@ -625,7 +674,7 @@ def sweep_base_variables(
         if variables:
             break
 
-    preferred = EXPER2_PREFERRED_ORDER + [
+    preferred = GROWTH_PATHWAY_PREFERRED_ORDER + [
         "rain_water_mixing_ratio",
         "cloud_water_mixing_ratio",
         "supersaturation",
@@ -1056,16 +1105,95 @@ def sweep_seeding_intervals(sweep_dir: Path, sweep_df: pd.DataFrame) -> List[tup
 
 
 
-def exper2_variable_groups(columns: List[str]) -> Dict[str, List[str]]:
+def growth_pathway_variable_groups(columns: List[str]) -> Dict[str, List[str]]:
     """Return Exper2 diagnostic groups limited to available variable names."""
     available = set(columns)
     return {
         group: [col for col in vars_ if col in available]
-        for group, vars_ in EXPER2_VARIABLE_GROUPS.items()
+        for group, vars_ in GROWTH_PATHWAY_VARIABLE_GROUPS.items()
         if any(col in available for col in vars_)
     }
 
 
-def exper2_all_variables() -> List[str]:
+def growth_pathway_all_variables() -> List[str]:
     """Return preferred Exper2 variable order."""
-    return list(EXPER2_PREFERRED_ORDER)
+    return list(GROWTH_PATHWAY_PREFERRED_ORDER)
+
+
+
+def figure_to_png_bytes(fig) -> bytes:
+    """Serialize a matplotlib figure to PNG bytes for Streamlit download buttons."""
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=220, bbox_inches="tight")
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def ensemble_available_bases(stats_df: pd.DataFrame) -> List[str]:
+    """Return variables available for ensemble uncertainty plotting."""
+    return ensemble_variable_bases(stats_df)
+
+
+def plot_ensemble_uncertainty(
+    stats_df: pd.DataFrame,
+    *,
+    base_variable: str,
+    mode: str = "mean_std",
+    figsize: tuple[float, float] = (9.5, 5.2),
+):
+    """Plot ensemble mean±std or median+IQR for one variable."""
+    fig, ax = plt.subplots(figsize=figsize)
+
+    if stats_df.empty or "time_s" not in stats_df.columns:
+        ax.set_title(f"No ensemble statistics: {base_variable}")
+        return fig
+
+    x = stats_df["time_s"].to_numpy(dtype=float)
+
+    if mode == "median_iqr":
+        center_col = f"{base_variable}_median"
+        low_col = f"{base_variable}_q25"
+        high_col = f"{base_variable}_q75"
+        label = "median"
+        band_label = "IQR"
+    else:
+        center_col = f"{base_variable}_mean"
+        low_col = f"{base_variable}_mean"
+        high_col = f"{base_variable}_mean"
+        std_col = f"{base_variable}_std"
+        label = "mean"
+        band_label = "±1 std"
+
+    if center_col not in stats_df.columns:
+        ax.set_title(f"Missing ensemble statistic: {center_col}")
+        return fig
+
+    center = stats_df[center_col].to_numpy(dtype=float)
+
+    if mode == "median_iqr":
+        if low_col in stats_df.columns and high_col in stats_df.columns:
+            low = stats_df[low_col].to_numpy(dtype=float)
+            high = stats_df[high_col].to_numpy(dtype=float)
+        else:
+            low = center
+            high = center
+    else:
+        if std_col in stats_df.columns:
+            std = stats_df[std_col].fillna(0).to_numpy(dtype=float)
+            low = center - std
+            high = center + std
+        else:
+            low = center
+            high = center
+
+    ax.plot(x, center, label=label, linewidth=2.0)
+    ax.fill_between(x, low, high, alpha=0.22, label=band_label)
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel(base_variable)
+    ax.set_title(f"{base_variable} · {label}", fontsize=12)
+    ax.grid(alpha=0.22)
+    ax.legend(fontsize=8, loc="best", frameon=False)
+    fig.tight_layout()
+
+    return fig

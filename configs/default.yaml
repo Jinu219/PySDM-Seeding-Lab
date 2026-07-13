@@ -1,7 +1,7 @@
 schema_version: 1
 experiment:
   name: default_seeding_test
-  mode: parameter_sweep
+  mode: control_vs_seeding
   description: Basic warm-cloud hygroscopic seeding configuration.
   random_seed: 42
 simulation:
@@ -33,12 +33,12 @@ seeding:
   geometric_sigma: 1.2
   kappa: 0.8
   particle_density: 1770.0
-  number_concentration: 10.0
   number_superdroplets: 100
   injection_start: 900
   injection_end: 1200
   injection_altitude: 500.0
   delivery_method: idealized_uniform
+  number_concentration: 10.0
 dynamics:
   updraft_strength: 1.0
   downdraft_strength: 0.0
@@ -53,26 +53,6 @@ microphysics:
   condensation: true
   collision: false
   sedimentation: false
-sweep:
-  run_mode: control_vs_seeding
-  max_runs: 100
-  ranking_metric: comparison.efficiency.seeding_efficiency_score
-  parameters:
-  - name: seeding.dry_radius
-    values:
-    - 5.0e-07
-    - 1.0e-06
-    - 1.5e-06
-    - 2.0e-06
-    - 2.4999999999999998e-06
-    - 3.0e-06
-    - 3.5e-06
-    - 4.0e-06
-  - name: seeding.kappa
-    values:
-    - 0.8
-    - 1.0
-    - 1.2
 output:
   base_dir: results
   save_config: true

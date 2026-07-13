@@ -161,6 +161,11 @@ def build_sweep_row(
         row[f"param.{key}"] = value
 
     preferred_metrics = [
+        "ensemble.metrics.rain_water_mixing_ratio_diff_final_mean",
+        "ensemble.metrics.rain_water_mixing_ratio_diff_max_mean",
+        "ensemble.metrics.rain_water_mixing_ratio_diff_integral_mean",
+        "ensemble.n_success",
+        "ensemble.n_failed",
         "comparison.efficiency.seeding_efficiency_score",
         "comparison.efficiency.accumulated_rain_enhancement",
         "comparison.efficiency.accumulated_rain_enhancement_percent",

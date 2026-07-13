@@ -511,21 +511,44 @@ Recommended commit message:
 git commit -m "Add scenario-aware settings workflow"
 ```
 
-## Step 11. Add Exper2-style diagnostics
+## Step 11. Add Growth-pathway diagnostics
 
 Changes:
 - Added `analysis/exper2_diagnostics.py`
 - Added `diagnostics` section to schema
-- Runner enriches adapter output with Exper2-style diagnostic columns
+- Runner enriches adapter output with Growth-pathway diagnostic columns
 - Single-run result folders now save `diagnostic_health.json`
-- Comparison outputs include Exper2 columns and differences
-- Dashboard includes an `Exper2 Diagnostics` tab
+- Comparison outputs include Growth Pathway columns and differences
+- Dashboard includes an `Growth Pathway Diagnostics` tab
 - Parameter Sweep page supports collision ON/OFF sweep
-- Dashboard variable ordering now prioritizes Exper2 pathway diagnostics
+- Dashboard variable ordering now prioritizes Growth Pathway pathway diagnostics
 
 Recommended commit message:
 
 ```bash
-git commit -m "Add Exper2-style diagnostic workflow"
+git commit -m "Add Growth-pathway diagnostic workflow"
+```
+
+## Step 12. Add ensemble statistics and plot downloads
+
+Changes:
+- Renamed user-facing `Exper2-style` naming to `Growth Pathway Diagnostics`
+- Added `analysis/growth_pathway_diagnostics.py`
+- Kept `analysis/exper2_diagnostics.py` as a backward-compatible wrapper
+- Added `analysis/ensemble_statistics.py`
+- Added `ensemble` section to schema
+- Runner can now execute ensembles for single and control-vs-seeding runs
+- Parameter sweep cases can run as ensembles
+- Added `ensemble_statistics.csv`
+- Added `member_summary.csv`
+- Added `[ensemble]` result type to dashboard
+- Added mean ± std and median + IQR plots
+- Added PNG download buttons for plots
+- Added ensemble metrics to sweep summary rows
+
+Recommended commit message:
+
+```bash
+git commit -m "Add ensemble statistics and plot downloads"
 ```
 

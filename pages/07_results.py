@@ -25,6 +25,15 @@ def render_plot_grid(plot_items, *, n_cols: int = 2) -> None:
             with cols[idx]:
                 st.caption(title)
                 st.pyplot(fig, use_container_width=True)
+                safe_title = "".join(ch if ch.isalnum() or ch in ["_", "-"] else "_" for ch in str(title))[:80]
+                st.download_button(
+                    "Download PNG",
+                    data=dash.figure_to_png_bytes(fig),
+                    file_name=f"{safe_title}.png",
+                    mime="image/png",
+                    use_container_width=True,
+                    key=f"download_{safe_title}_{idx}_{id(fig)}",
+                )
 
 
 REQUIRED_DASHBOARD_FUNCTIONS = [
@@ -47,7 +56,11 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "sweep_param_columns",
     "plot_sweep_heatmap",
     "build_overlay_legend_table",
-    "exper2_variable_groups",
+    "plot_ensemble_uncertainty",
+    "ensemble_available_bases",
+    "figure_to_png_bytes",
+    "growth_pathway_all_variables",
+    "growth_pathway_variable_groups",
 ]
 
 missing = [name for name in REQUIRED_DASHBOARD_FUNCTIONS if not hasattr(dash, name)]
@@ -58,7 +71,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "exper2-diagnostics-20260713"
+RESULTS_UI_BUILD_ID = "growth-pathway-ensemble-20260713"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -83,6 +96,8 @@ selected_entry = st.selectbox(
 
 loaded = dash.load_result(selected_entry)
 df = loaded["timeseries"]
+ensemble_df = loaded.get("ensemble", pd.DataFrame())
+member_summary_df = loaded.get("member_summary", pd.DataFrame())
 sweep_df = loaded.get("sweep", pd.DataFrame())
 comparison_df = loaded.get("comparison", pd.DataFrame())
 control_df = loaded.get("control", pd.DataFrame())
@@ -93,6 +108,7 @@ config = loaded["config"]
 validation = loaded["validation"]
 files = loaded["files"]
 
+is_ensemble = selected_entry.result_type == "ensemble"
 is_sweep = selected_entry.result_type == "parameter_sweep"
 is_comparison = selected_entry.result_type == "comparison"
 
@@ -123,7 +139,9 @@ overview_cols[3].metric(
     selected_entry.result_type,
 )
 
-if is_sweep:
+if is_ensemble:
+    st.write(f"Ensemble run directory: `{selected_entry.path}`")
+elif is_sweep:
     st.write(f"Sweep run directory: `{selected_entry.path}`")
 elif is_comparison:
     st.write(f"Comparison run directory: `{selected_entry.path}`")
@@ -145,15 +163,24 @@ if is_placeholder:
 
 st.divider()
 
-if is_sweep:
-    tab_dashboard, tab_exper2, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Exper2 Diagnostics", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
+if is_ensemble:
+    tab_dashboard, tab_growth, tab_ensemble, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Ensemble Statistics", "Tables", "Files & Metadata", "Config / Validation"]
     )
+    tab_exper2 = tab_growth
+    tab_comparison = None
+    tab_timeseries = None
+    tab_ranking = None
+elif is_sweep:
+    tab_dashboard, tab_growth, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
+    )
+    tab_exper2 = tab_growth
     tab_comparison = None
     tab_tables = tab_ranking
 elif is_comparison:
     tab_dashboard, tab_exper2, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Exper2 Diagnostics", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
+        ["Dashboard", "Growth Pathway Diagnostics", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
     )
 else:
     tab_dashboard, tab_tables, tab_files, tab_config = st.tabs(
@@ -169,7 +196,14 @@ with tab_dashboard:
 
     flat_summary = dash.flatten_summary(summary)
 
-    if is_sweep:
+    if is_ensemble:
+        preferred_metrics = [
+            "ensemble.n_success",
+            "ensemble.n_failed",
+            "ensemble.metrics.rain_water_mixing_ratio_diff_final_mean",
+            "ensemble.metrics.rain_water_mixing_ratio_diff_integral_mean",
+        ]
+    elif is_sweep:
         preferred_metrics = [
             "n_cases",
             "best_case.ranking_value",
@@ -221,7 +255,32 @@ with tab_dashboard:
         st.info("Matrix plot legends are shown as separate tables so the plot area stays large.")
         show_case_tables = st.toggle("Show case legend tables", value=True)
 
-    if is_sweep:
+    if is_ensemble:
+        st.subheader("Ensemble Uncertainty Matrix")
+        st.caption("Ensemble statistics are shown as mean ± std by default. Use the Ensemble Statistics tab for detailed median/IQR plots.")
+
+        bases = dash.ensemble_available_bases(ensemble_df)
+        default_bases = [base for base in [
+            "rain_water_mixing_ratio_diff",
+            "cloud_water_mixing_ratio_diff",
+            "all_activated_water_mixing_ratio_diff",
+            "water_vapour_mixing_ratio_diff",
+            "supersaturation_percent_diff",
+            "effective_radius_all_um_diff",
+        ] if base in bases]
+        selected_bases = st.multiselect(
+            "Variables",
+            bases,
+            default=default_bases[: min(4, len(default_bases))] if default_bases else bases[: min(4, len(bases))],
+            key="ensemble_dashboard_vars",
+        )
+        ensemble_items = [
+            (base, dash.plot_ensemble_uncertainty(ensemble_df, base_variable=base, mode="mean_std"))
+            for base in selected_bases[:max_plots]
+        ]
+        render_plot_grid(ensemble_items, n_cols=matrix_cols)
+
+    elif is_sweep:
         st.subheader("Sweep Case Time-Series Matrix")
         st.caption(
             "각 sweep case의 시간 변화 곡선을 한 그래프에 겹쳐서 보여줍니다. "
@@ -414,11 +473,54 @@ with tab_dashboard:
             st.info("No numeric variables available for custom plotting.")
 
 
+
+if is_ensemble:
+    with tab_ensemble:
+        st.subheader("Ensemble Statistics")
+        st.caption("Mean ± std and median + IQR uncertainty views for repeated random seeds.")
+
+        bases = dash.ensemble_available_bases(ensemble_df)
+        if not bases:
+            st.info("No ensemble variables found.")
+        else:
+            selected_base = st.selectbox("Variable", bases, key="ensemble_stats_base")
+            mode = st.radio(
+                "Uncertainty view",
+                ["mean_std", "median_iqr"],
+                horizontal=True,
+                index=0,
+                format_func=lambda value: "Mean ± std" if value == "mean_std" else "Median + IQR",
+            )
+
+            fig = dash.plot_ensemble_uncertainty(
+                ensemble_df,
+                base_variable=selected_base,
+                mode=mode,
+                figsize=(11.5, 5.8),
+            )
+            st.pyplot(fig, use_container_width=True)
+            st.download_button(
+                "Download this plot as PNG",
+                data=dash.figure_to_png_bytes(fig),
+                file_name=f"ensemble_{selected_base}_{mode}.png",
+                mime="image/png",
+                use_container_width=True,
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Member Summary")
+                st.dataframe(member_summary_df, use_container_width=True)
+            with col2:
+                st.subheader("Ensemble Summary JSON")
+                st.json(summary.get("ensemble", {}))
+
+
 if (is_sweep or is_comparison) and tab_exper2 is not None:
     with tab_exper2:
-        st.subheader("Exper2-style Diagnostic View")
+        st.subheader("Seeding Growth Pathway Diagnostic View")
         st.caption(
-            "Exper2 Follow-up 구조에 맞춰 thermodynamic → water mass → number concentration → size response를 봅니다. "
+            "성장 경로 분석 구조에 맞춰 thermodynamic → water mass → number concentration → size response를 봅니다. "
             "기본 비교는 diff = seeding - control입니다."
         )
 
@@ -433,12 +535,12 @@ if (is_sweep or is_comparison) and tab_exper2 is not None:
             )
 
             available_vars = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source=curve_source)
-            groups = dash.exper2_variable_groups(available_vars)
+            groups = dash.growth_pathway_variable_groups(available_vars)
 
             if not groups:
-                st.info("No Exper2 diagnostic variables are available in this sweep result.")
+                st.info("No growth-pathway diagnostic variables are available in this sweep result.")
             else:
-                selected_group = st.selectbox("Exper2 diagnostic group", list(groups.keys()))
+                selected_group = st.selectbox("Growth pathway diagnostic group", list(groups.keys()))
                 selected_vars = groups[selected_group]
 
                 max_cases_exper2 = st.slider(
@@ -493,16 +595,16 @@ if (is_sweep or is_comparison) and tab_exper2 is not None:
                 with st.expander("Case legend table", expanded=False):
                     st.dataframe(dash.style_curve_legend_table(legend_df), use_container_width=True)
 
-                st.subheader("Exper2 Sensitivity Check")
+                st.subheader("Growth Pathway Sensitivity Check")
                 st.dataframe(pd.DataFrame(spread_rows), use_container_width=True)
 
         elif is_comparison:
-            groups = dash.exper2_variable_groups(dash.comparison_base_variables(comparison_df))
+            groups = dash.growth_pathway_variable_groups(dash.comparison_base_variables(comparison_df))
 
             if not groups:
-                st.info("No Exper2 diagnostic variables are available in this comparison result.")
+                st.info("No growth-pathway diagnostic variables are available in this comparison result.")
             else:
-                selected_group = st.selectbox("Exper2 diagnostic group", list(groups.keys()))
+                selected_group = st.selectbox("Growth pathway diagnostic group", list(groups.keys()))
                 selected_vars = groups[selected_group]
                 mode = st.radio(
                     "Curve mode",
@@ -639,7 +741,27 @@ if is_comparison and tab_comparison is not None:
         st.json(summary.get("comparison", summary))
 
 with tab_tables:
-    if is_sweep:
+    if is_ensemble:
+        st.subheader("Ensemble Statistics Table")
+        st.dataframe(ensemble_df, use_container_width=True)
+        st.download_button(
+            "Download ensemble statistics CSV",
+            data=ensemble_df.to_csv(index=False).encode("utf-8"),
+            file_name="ensemble_statistics.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        st.subheader("Member Summary")
+        st.dataframe(member_summary_df, use_container_width=True)
+        st.download_button(
+            "Download member summary CSV",
+            data=member_summary_df.to_csv(index=False).encode("utf-8"),
+            file_name="member_summary.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    elif is_sweep:
         st.subheader("Parameter Response Heatmap")
         st.caption("2개 sweep parameter를 축으로 두고, 선택한 metric의 반응을 봅니다. Ranking보다 먼저 parameter-response 구조를 확인하세요.")
 

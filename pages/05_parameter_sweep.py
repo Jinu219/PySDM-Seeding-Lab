@@ -79,6 +79,39 @@ sweep["ranking_metric"] = st.text_input(
     ),
 )
 
+st.subheader("Ensemble Statistics")
+ensemble = cfg.setdefault("ensemble", {})
+ensemble["enabled"] = st.toggle(
+    "Enable ensemble for each sweep case",
+    value=bool(ensemble.get("enabled", False)),
+)
+col_e1, col_e2, col_e3 = st.columns(3)
+with col_e1:
+    ensemble["n_members"] = st.number_input(
+        "Number of ensemble members",
+        min_value=1,
+        max_value=100,
+        value=int(ensemble.get("n_members", 5)),
+        step=1,
+    )
+with col_e2:
+    ensemble["seed_start"] = st.number_input(
+        "Seed start",
+        min_value=0,
+        value=int(ensemble.get("seed_start", 1000)),
+        step=1,
+    )
+with col_e3:
+    ensemble["seed_step"] = st.number_input(
+        "Seed step",
+        min_value=1,
+        value=int(ensemble.get("seed_step", 1)),
+        step=1,
+    )
+
+if ensemble.get("enabled", False):
+    st.info("Each sweep case will be repeated across ensemble seeds. For sweep ranking, consider using `ensemble.metrics.rain_water_mixing_ratio_diff_final_mean`.")
+
 st.divider()
 st.subheader("Common Sweep Parameters")
 
@@ -205,6 +238,7 @@ except Exception as exc:
 if st.button("Save Sweep Settings", use_container_width=True):
     cfg["experiment"] = experiment
     cfg["sweep"] = sweep
+    cfg["ensemble"] = ensemble
 
     if selected_scenario.get("is_working_config", False):
         save_config(cfg, "configs/default.yaml")

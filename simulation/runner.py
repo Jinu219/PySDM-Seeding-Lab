@@ -10,8 +10,14 @@ import pandas as pd
 import yaml
 
 from analysis.comparison import build_difference_dataframe, summarize_comparison
-from analysis.exper2_diagnostics import add_exper2_diagnostics, diagnostic_health_rows
+from analysis.growth_pathway_diagnostics import add_growth_pathway_diagnostics, diagnostic_health_rows
 from analysis.metrics import summarize_timeseries
+from analysis.ensemble_statistics import (
+    build_ensemble_statistics,
+    ensemble_summary_metrics,
+    member_seed_list,
+    member_summary_rows,
+)
 from simulation.builder import build_run_spec
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.pysdm_adapter import run_adapter
@@ -36,18 +42,19 @@ def _safe_name(value: str) -> str:
 
 
 
-def _apply_exper2_diagnostics_to_result(result: AdapterResult, config: Dict[str, Any]) -> AdapterResult:
+def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: Dict[str, Any]) -> AdapterResult:
     """Return an AdapterResult with Exper2-style diagnostic columns added."""
     diagnostics_cfg = config.get("diagnostics", {})
-    if not diagnostics_cfg.get("exper2_mode", True):
+    enabled = diagnostics_cfg.get("growth_pathway_mode", diagnostics_cfg.get("exper2_mode", True))
+    if not enabled:
         return result
 
-    enriched = add_exper2_diagnostics(result.require_timeseries(), config)
+    enriched = add_growth_pathway_diagnostics(result.require_timeseries(), config)
 
     summary = {
         **result.summary,
-        "exper2_diagnostics_enabled": True,
-        "exper2_diagnostic_columns": [
+        "growth_pathway_diagnostics_enabled": True,
+        "growth_pathway_diagnostic_columns": [
             column
             for column in enriched.columns
             if column not in result.timeseries.columns
@@ -56,7 +63,7 @@ def _apply_exper2_diagnostics_to_result(result: AdapterResult, config: Dict[str,
 
     metadata = {
         **result.metadata,
-        "exper2_diagnostics_enabled": True,
+        "growth_pathway_diagnostics_enabled": True,
     }
 
     return AdapterResult(timeseries=enriched, metadata=metadata, summary=summary)
@@ -77,11 +84,14 @@ def run_experiment(
     cfg = normalize_config(config)
     mode = cfg.get("experiment", {}).get("mode", "single")
 
-    if mode == "control_vs_seeding":
-        return run_control_vs_seeding(cfg, output_dir, progress_callback=progress_callback)
-
     if mode == "parameter_sweep":
         return run_parameter_sweep(cfg, output_dir, progress_callback=progress_callback)
+
+    if cfg.get("ensemble", {}).get("enabled", False):
+        return run_ensemble_experiment(cfg, output_dir, progress_callback=progress_callback)
+
+    if mode == "control_vs_seeding":
+        return run_control_vs_seeding(cfg, output_dir, progress_callback=progress_callback)
 
     return run_single_experiment(cfg, output_dir, progress_callback=progress_callback)
 
@@ -117,7 +127,7 @@ def run_single_experiment(
 
     emit_progress(progress_callback, "runner", 3, total_stages, f"Running adapter: {spec.adapter_name}")
     result = run_adapter(spec, progress_callback=progress_callback)
-    result = _apply_exper2_diagnostics_to_result(result, spec.config)
+    result = _apply_growth_pathway_diagnostics_to_result(result, spec.config)
 
     emit_progress(progress_callback, "runner", 4, total_stages, "Writing result files")
     timeseries = result.require_timeseries()
@@ -182,14 +192,14 @@ def run_control_vs_seeding(
     control_dir = run_dir / "control"
     control_spec = build_run_spec(control_cfg)
     control_result = run_adapter(control_spec, progress_callback=progress_callback)
-    control_result = _apply_exper2_diagnostics_to_result(control_result, control_spec.config)
+    control_result = _apply_growth_pathway_diagnostics_to_result(control_result, control_spec.config)
     _write_single_result_files(control_dir, control_spec, control_result)
 
     emit_progress(progress_callback, "comparison", 3, total_stages, "Running seeding simulation")
     seeding_dir = run_dir / "seeding"
     seeding_spec = build_run_spec(seeding_cfg)
     seeding_result = run_adapter(seeding_spec, progress_callback=progress_callback)
-    seeding_result = _apply_exper2_diagnostics_to_result(seeding_result, seeding_spec.config)
+    seeding_result = _apply_growth_pathway_diagnostics_to_result(seeding_result, seeding_spec.config)
     _write_single_result_files(seeding_dir, seeding_spec, seeding_result)
 
     emit_progress(progress_callback, "comparison", 4, total_stages, "Building comparison dataframe")
@@ -243,6 +253,167 @@ def run_control_vs_seeding(
     return run_dir
 
 
+
+
+def _with_ensemble_disabled(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a config copy with ensemble recursion disabled."""
+    cfg = copy.deepcopy(config)
+    cfg.setdefault("ensemble", {})["enabled"] = False
+    return cfg
+
+
+def _read_primary_member_dataframe(member_dir: Path, mode: str) -> pd.DataFrame:
+    """Read the dataframe that should be aggregated for one ensemble member."""
+    if mode == "control_vs_seeding":
+        path = member_dir / "comparison.csv"
+    else:
+        path = member_dir / "timeseries.csv"
+
+    if not path.exists():
+        raise FileNotFoundError(f"Missing ensemble aggregation source: {path}")
+
+    return pd.read_csv(path)
+
+
+def run_ensemble_experiment(
+    config: Dict[str, Any],
+    output_dir: Path,
+    progress_callback: ProgressCallback = None,
+) -> Path:
+    """
+    Run an ensemble for either single or control_vs_seeding mode.
+
+    Result structure:
+
+    results/
+    └── <run_id>_ensemble/
+        ├── config.yaml
+        ├── metadata.json
+        ├── summary.json
+        ├── ensemble_statistics.csv
+        ├── member_summary.csv
+        ├── validation_report.json
+        └── members/
+            ├── member_001/
+            └── ...
+    """
+    cfg = normalize_config(config)
+    mode = cfg.get("experiment", {}).get("mode", "single")
+    if mode == "parameter_sweep":
+        raise ValueError("Ensemble wrapper should not directly wrap parameter_sweep. Sweep cases can use ensemble.")
+
+    seeds = member_seed_list(cfg)
+    n_members = len(seeds)
+
+    experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_id = f"{timestamp}_{experiment_name}_{mode}_ensemble"
+
+    run_dir = output_dir / run_id
+    members_dir = run_dir / "members"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    members_dir.mkdir(parents=True, exist_ok=True)
+
+    emit_progress(progress_callback, "ensemble", 1, n_members + 2, f"Running ensemble with {n_members} members")
+
+    member_records = []
+    member_dfs = []
+
+    for idx, seed in enumerate(seeds, start=1):
+        emit_progress(progress_callback, "ensemble", idx + 1, n_members + 2, f"Running ensemble member {idx}/{n_members}")
+
+        member_cfg = _with_ensemble_disabled(cfg)
+        member_cfg.setdefault("experiment", {})["random_seed"] = int(seed)
+        member_cfg.setdefault("simulation", {})["case_name"] = f"member_{idx:03d}"
+
+        member_parent = members_dir / f"member_{idx:03d}"
+        member_parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if mode == "control_vs_seeding":
+                member_result_dir = run_control_vs_seeding(member_cfg, member_parent, progress_callback=progress_callback)
+            else:
+                member_result_dir = run_single_experiment(member_cfg, member_parent, progress_callback=progress_callback)
+
+            member_df = _read_primary_member_dataframe(member_result_dir, mode)
+            member_dfs.append(member_df)
+
+            member_records.append(
+                {
+                    "member_index": idx,
+                    "random_seed": int(seed),
+                    "success": True,
+                    "result_dir": str(member_result_dir.relative_to(run_dir)),
+                    "error": "",
+                }
+            )
+        except Exception as exc:
+            member_records.append(
+                {
+                    "member_index": idx,
+                    "random_seed": int(seed),
+                    "success": False,
+                    "result_dir": "",
+                    "error": repr(exc),
+                }
+            )
+
+    emit_progress(progress_callback, "ensemble", n_members + 2, n_members + 2, "Writing ensemble statistics")
+
+    member_summary_df = member_summary_rows(member_records)
+    stats_df = build_ensemble_statistics(member_dfs)
+
+    _write_yaml(run_dir / "config.yaml", cfg)
+    member_summary_df.to_csv(run_dir / "member_summary.csv", index=False)
+    stats_df.to_csv(run_dir / "ensemble_statistics.csv", index=False)
+    _write_json(run_dir / "validation_report.json", validation_report_rows(cfg))
+
+    n_success = int(member_summary_df["success"].sum()) if "success" in member_summary_df.columns else 0
+    n_failed = int(len(member_summary_df) - n_success)
+
+    metadata_payload = {
+        "run_id": run_id,
+        "created_at": timestamp,
+        "experiment_name": experiment_name,
+        "experiment_mode": mode,
+        "adapter_name": cfg.get("simulation", {}).get("adapter"),
+        "case_name": "ensemble",
+        "result_type": "ensemble",
+        "n_members_requested": n_members,
+        "n_success": n_success,
+        "n_failed": n_failed,
+        "result_files": {
+            "config": "config.yaml",
+            "ensemble_statistics": "ensemble_statistics.csv",
+            "member_summary": "member_summary.csv",
+            "summary": "summary.json",
+            "metadata": "metadata.json",
+            "validation_report": "validation_report.json",
+            "members": "members/",
+        },
+    }
+
+    summary_payload = {
+        "run_id": run_id,
+        "experiment_name": experiment_name,
+        "experiment_mode": mode,
+        "adapter_name": cfg.get("simulation", {}).get("adapter"),
+        "case_name": "ensemble",
+        "result_type": "ensemble",
+        "ensemble": {
+            "n_members_requested": n_members,
+            "n_success": n_success,
+            "n_failed": n_failed,
+            "member_seeds": seeds,
+            "metrics": ensemble_summary_metrics(stats_df),
+        },
+        "validation": validation_summary(cfg),
+    }
+
+    _write_json(run_dir / "metadata.json", metadata_payload)
+    _write_json(run_dir / "summary.json", summary_payload)
+
+    return run_dir
 
 def run_parameter_sweep(
     config: Dict[str, Any],
