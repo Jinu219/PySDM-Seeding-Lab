@@ -68,3 +68,40 @@ def scenario_loader() -> Dict[str, str]:
         "Marine clean cloud": "configs/marine.yaml",
         "Urban polluted cloud": "configs/urban.yaml",
     }
+
+
+def inject_responsive_css() -> None:
+    """Apply a wider responsive layout and small UI quality-of-life tweaks."""
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            max-width: 110rem;
+            padding-top: 1.2rem;
+            padding-bottom: 2rem;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+        @media (max-width: 110rem;
+                padding-right: 1rem;
+            }
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.8rem;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0.25rem;
+            flex-wrap: wrap;
+        }
+        .stTabs [data-baseweb="tab"] {
+            white-space: nowrap;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def build_badge(label: str, value: str) -> None:
+    """Render a compact build/version badge."""
+    st.caption(f"{label}: `{value}`")

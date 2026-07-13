@@ -587,3 +587,73 @@ This checks that `analysis/dashboard.py` and `pages/06_results.py` are compatibl
 
 The Results page now imports `analysis.dashboard` as a module instead of importing many individual functions directly. This prevents repeated `ImportError` crashes when dashboard functions are added over time.
 
+## Responsive Results Layout
+
+The Results dashboard now has:
+
+- wider responsive page layout
+- less clipping in plots
+- compact case labels
+- unique legend labels for sweep cases
+- optional legend toggle for plot matrices
+- build badges to verify whether the latest code is actually loaded
+
+If the UI still looks old after replacing files:
+
+```bash
+Ctrl + C
+python scripts/check_project_integrity.py
+streamlit run app.py
+```
+
+This is important because Streamlit can keep the previous imported module in memory until the process is restarted.
+
+## Sweep Plot Legend Handling
+
+Sweep matrix plots now hide legends inside figures by default.  
+Case labels are displayed in separate tables so the plotting area remains large and values are easier to read.
+
+Use:
+
+```text
+Dashboard → Case legend table
+Sweep Time Series → Case legend / Curve value summary / Overlay data
+```
+
+This avoids the old problem where long legends compressed the plot and made axis values hard to read.
+
+## Experiment Scenarios and Page Order
+
+The Streamlit page order is now:
+
+```text
+00. Experiment Scenarios
+01. Atmospheric Environment
+02. Background Aerosol Settings
+03. Seeding Particle Settings
+04. Dynamic Parameters
+05. Parameter Sweep
+06. Run Simulation
+07. Results Dashboard
+```
+
+Use the scenario workflow when you want stable, repeatable experiment setups:
+
+```text
+1. Set parameters in pages 01–05
+2. Save the setup in 00. Experiment Scenarios with a short memo
+3. Select that scenario in 06. Run Simulation
+4. Inspect outputs in 07. Results Dashboard
+```
+
+If older pages still appear after extracting this update, run:
+
+```bash
+python scripts/cleanup_old_pages.py
+python scripts/check_project_integrity.py
+streamlit run app.py
+```
+
+Sweep plots now show seeding-active periods with shaded time windows.  
+Curve colors are mapped to case labels in a separate styled legend table.
+

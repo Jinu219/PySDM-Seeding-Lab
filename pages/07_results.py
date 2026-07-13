@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 import analysis.dashboard as dash
+from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 def render_plot_grid(plot_items, *, n_cols: int = 2) -> None:
@@ -45,17 +46,24 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "compute_overlay_spread",
     "sweep_param_columns",
     "plot_sweep_heatmap",
+    "build_overlay_legend_table",
 ]
 
 missing = [name for name in REQUIRED_DASHBOARD_FUNCTIONS if not hasattr(dash, name)]
 if missing:
     st.error("Dashboard module is incomplete. Replace `analysis/dashboard.py` with the latest version.")
     st.code("\n".join(missing))
+    st.info("If you already replaced the file, fully stop Streamlit and run it again. Old modules can remain in memory until restart.")
     st.stop()
 
 
-st.title("06. Results Dashboard")
+RESULTS_UI_BUILD_ID = "scenario-seeding-window-color-legend-20260713"
+
+inject_responsive_css()
+st.title("07. Results Dashboard")
 st.caption("Simulation output, case-wise time-series comparison, summary metrics, and diagnostics.")
+build_badge("Results page build", RESULTS_UI_BUILD_ID)
+build_badge("Dashboard module build", getattr(dash, "DASHBOARD_BUILD_ID", "unknown"))
 
 result_dir = Path("results")
 entries = dash.discover_results(result_dir)
@@ -63,6 +71,8 @@ entries = dash.discover_results(result_dir)
 if not entries:
     st.info("No result files found. Run an experiment first.")
     st.stop()
+
+st.info("If the build badge below does not change after update, stop Streamlit completely (`Ctrl+C`) and run `streamlit run app.py` again.")
 
 selected_entry = st.selectbox(
     "Select result",
@@ -201,8 +211,13 @@ with tab_dashboard:
 
     st.divider()
 
-    matrix_cols = st.slider("Plot grid columns", min_value=1, max_value=3, value=2)
-    max_plots = st.slider("Maximum plots in dashboard", min_value=2, max_value=8, value=5)
+    display_left, display_right = st.columns([2, 1])
+    with display_left:
+        matrix_cols = st.slider("Plot grid columns", min_value=1, max_value=3, value=2)
+        max_plots = st.slider("Maximum plots in dashboard", min_value=2, max_value=8, value=5)
+    with display_right:
+        st.info("Matrix plot legends are shown as separate tables so the plot area stays large.")
+        show_case_tables = st.toggle("Show case legend tables", value=True)
 
     if is_sweep:
         st.subheader("Sweep Case Time-Series Matrix")
@@ -254,6 +269,10 @@ with tab_dashboard:
             value=min(9, len(sweep_df)) if len(sweep_df) >= 2 else 2,
         )
 
+        shaded_intervals = dash.sweep_seeding_intervals(selected_entry.path, sweep_df)
+        if shaded_intervals:
+            st.caption("Shaded time window indicates seeding-active period.")
+
         plot_items = []
         spread_rows = []
         for var in selected_vars[:max_plots]:
@@ -266,10 +285,24 @@ with tab_dashboard:
                 max_cases=max_cases,
             )
             label = f"{curve_source}:{comparison_mode}" if curve_source == "comparison" else curve_source
-            plot_items.append((var, dash.plot_sweep_overlay(overlay_df, variable=var, curve_label=label)))
+            plot_items.append((var, dash.plot_sweep_overlay(overlay_df, variable=var, curve_label=label, show_legend=False, shaded_intervals=shaded_intervals)))
             spread_rows.append({"variable": var, **dash.compute_overlay_spread(overlay_df)})
 
         render_plot_grid(plot_items, n_cols=matrix_cols)
+
+        if show_case_tables and selected_vars:
+            first_var = selected_vars[0]
+            first_overlay_df = dash.build_sweep_overlay_dataframe(
+                selected_entry.path,
+                sweep_df,
+                variable=first_var,
+                curve_source=curve_source,
+                comparison_mode=comparison_mode,
+                max_cases=max_cases,
+            )
+            with st.expander("Case legend table", expanded=False):
+                st.caption("Legend is separated from plots to avoid shrinking the plotting area.")
+                st.dataframe(dash.style_curve_legend_table(dash.build_overlay_legend_table(first_overlay_df)), use_container_width=True)
 
         if spread_rows:
             st.subheader("Parameter Sensitivity Check")
@@ -383,7 +416,8 @@ if is_sweep:
         st.subheader("Sweep Time-Series Comparison")
         st.caption(
             "여기서 sweep의 핵심 결과를 봅니다. "
-            "dry radius, κ 등 case 조건이 다른 곡선들을 같은 변수 기준으로 겹쳐서 비교합니다."
+            "dry radius, κ 등 case 조건이 다른 곡선들을 같은 변수 기준으로 겹쳐서 비교합니다. "
+            "상세 탭에서는 legend를 항상 표시해 case를 구분하기 쉽게 했습니다."
         )
 
         curve_source = st.radio(
@@ -423,11 +457,30 @@ if is_sweep:
                 max_cases=max_cases,
             )
 
+            detailed_shaded_intervals = dash.sweep_seeding_intervals(selected_entry.path, sweep_df)
+            if detailed_shaded_intervals:
+                st.caption("Shaded time window indicates seeding-active period.")
+
             curve_label = f"{curve_source}:{comparison_mode}" if curve_source == "comparison" else curve_source
             st.pyplot(
-                dash.plot_sweep_overlay(overlay_df, variable=selected_var, curve_label=curve_label),
+                dash.plot_sweep_overlay(
+                    overlay_df,
+                    variable=selected_var,
+                    curve_label=curve_label,
+                    figsize=(11.5, 5.6),
+                    show_legend=False,
+                    shaded_intervals=detailed_shaded_intervals,
+                ),
                 use_container_width=True,
             )
+
+            legend_tab, summary_tab, data_tab = st.tabs(["Case legend", "Curve value summary", "Overlay data"])
+            with legend_tab:
+                st.dataframe(dash.style_curve_legend_table(dash.build_overlay_legend_table(overlay_df)), use_container_width=True)
+            with summary_tab:
+                st.dataframe(dash.build_curve_value_summary(overlay_df), use_container_width=True)
+            with data_tab:
+                st.dataframe(overlay_df, use_container_width=True)
 
             spread = dash.compute_overlay_spread(overlay_df)
             st.subheader("Parameter Sensitivity Check")
@@ -443,9 +496,6 @@ if is_sweep:
                     "For a real sensitivity experiment, this is a red flag: either the selected parameter is not affecting the model output, "
                     "the adapter is not receiving the changed config values, or the selected diagnostic is not sensitive enough."
                 )
-
-            st.subheader("Overlay Data")
-            st.dataframe(overlay_df, use_container_width=True)
         else:
             st.info("No available variables found in sweep cases.")
 

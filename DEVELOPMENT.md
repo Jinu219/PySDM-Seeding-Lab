@@ -438,3 +438,59 @@ Recommended commit message:
 git commit -m "Stabilize dashboard imports and integrity checks"
 ```
 
+## Fix. Responsive layout and legend cleanup
+
+Changes:
+- Added shared responsive CSS injector in `simulation/ui_helpers.py`
+- Applied responsive width styling to main app, Run page, and Results page
+- Added build badges so stale code can be identified quickly
+- Reworked sweep overlay dataframe assembly to avoid `_x` / `_y` duplicate legend artifacts
+- Shortened case labels and ensured they are unique
+- Moved legends outside plots and reduced clipping
+- Added legend toggle for matrix plots
+- Updated integrity check to print dashboard build id
+
+Recommended commit message:
+
+```bash
+git commit -m "Improve responsive layout and sweep legend handling"
+```
+
+## Fix. Move sweep legends out of plots
+
+Changes:
+- Sweep overlay plots hide legends by default
+- Added separate case legend tables
+- Added curve value summary table
+- Increased detailed sweep plot size
+- Widened responsive layout further
+- Added dashboard helper functions:
+  - `build_overlay_legend_table`
+  - `build_curve_value_summary`
+
+Recommended commit message:
+
+```bash
+git commit -m "Move sweep legends out of plots"
+```
+
+## Feature. Experiment scenarios and improved sweep visualization
+
+Changes:
+- Added `simulation/experiment_manager.py`
+- Added `00_experiment_scenarios.py`
+- Reordered Streamlit pages:
+  - parameter sweep before run/results
+  - run and results moved to 06/07
+- Added scenario selection to Run page
+- Added cleanup script for old page filenames
+- Added colored curve IDs and styled legend tables
+- Added seeding-active shaded windows to sweep plots
+- Added sweep seeding interval extraction
+
+Recommended commit message:
+
+```bash
+git commit -m "Add experiment scenarios and improve sweep visualization"
+```
+

@@ -68,11 +68,6 @@ sweep:
     - 0.8
     - 1.0
     - 1.2
-  - name: seeding.injection_start
-    values:
-    - 600
-    - 900
-    - 1200
 output:
   base_dir: results
   save_config: true

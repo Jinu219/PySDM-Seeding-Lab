@@ -4,7 +4,7 @@ import streamlit as st
 
 from simulation.config import load_config, save_config
 from simulation.schema import ADAPTER_NAMES, EXPERIMENT_MODES, schema_summary
-from simulation.ui_helpers import scenario_loader
+from simulation.ui_helpers import inject_responsive_css, scenario_loader
 from simulation.validation import validation_summary
 
 
@@ -13,6 +13,8 @@ st.set_page_config(
     page_icon="☁️",
     layout="wide",
 )
+
+inject_responsive_css()
 
 st.title("☁️ PySDM Seeding Lab")
 st.caption("Visual experiment designer for PySDM-based cloud seeding simulations")

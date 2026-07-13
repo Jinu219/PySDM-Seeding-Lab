@@ -29,12 +29,13 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "compute_overlay_spread",
     "sweep_param_columns",
     "plot_sweep_heatmap",
+    "build_overlay_legend_table",
 ]
 
 
 def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
-    py_compile.compile(str(PROJECT_ROOT / "pages" / "06_results.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 
@@ -46,6 +47,7 @@ def main() -> None:
 
     print("Project integrity check passed.")
     print("Dashboard exports are complete.")
+    print(f"Dashboard build: {getattr(dashboard, 'DASHBOARD_BUILD_ID', 'unknown')}")
 
 
 if __name__ == "__main__":

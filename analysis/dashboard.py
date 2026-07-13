@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 
+DASHBOARD_BUILD_ID = "scenario-seeding-window-color-legend-20260713"
+
 
 @dataclass(frozen=True)
 class ResultEntry:
@@ -339,6 +341,21 @@ def _seeding_intervals_from_comparison(comparison_df: pd.DataFrame) -> List[tupl
     return []
 
 
+
+
+def _curve_palette(n: int) -> List[str]:
+    """Return deterministic colors for sweep curves."""
+    base_colors = list(plt.get_cmap("tab20").colors)
+    colors = []
+    for idx in range(max(n, 1)):
+        rgb = base_colors[idx % len(base_colors)]
+        colors.append("#{:02x}{:02x}{:02x}".format(
+            int(rgb[0] * 255),
+            int(rgb[1] * 255),
+            int(rgb[2] * 255),
+        ))
+    return colors
+
 def plot_time_series(
     df: pd.DataFrame,
     columns: List[str],
@@ -346,25 +363,43 @@ def plot_time_series(
     title: str,
     ylabel: str | None = None,
     show_seeding_window: bool = True,
-    figsize: tuple[float, float] = (5.2, 2.8),
+    figsize: tuple[float, float] = (7.2, 4.0),
+    legend_mode: str = "outside",
 ):
-    """Create a compact time-series figure with optional seeding-window shading."""
+    """Create a time-series figure with optional seeding-window shading."""
     fig, ax = plt.subplots(figsize=figsize)
 
+    plotted = 0
     for column in columns:
         if column in df.columns:
-            ax.plot(df["time_s"], df[column], label=column)
+            ax.plot(df["time_s"], df[column], label=column, linewidth=1.8)
+            plotted += 1
 
     if show_seeding_window:
         for start, end in _seeding_intervals(df):
-            ax.axvspan(start, end, alpha=0.15)
+            ax.axvspan(start, end, alpha=0.12)
 
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(ylabel or ", ".join(columns))
-    ax.set_title(title)
+    ax.set_title(title, fontsize=12)
+    ax.grid(alpha=0.2)
 
-    if len(columns) > 1:
-        ax.legend(fontsize="x-small")
+    if plotted > 1 and legend_mode != "none":
+        handles, labels = ax.get_legend_handles_labels()
+        if legend_mode == "outside":
+            ncols = 2 if len(labels) >= 6 else 1
+            ax.legend(
+                handles,
+                labels,
+                fontsize=8,
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.22),
+                ncol=ncols,
+                frameon=False,
+            )
+            fig.subplots_adjust(bottom=0.28)
+        else:
+            ax.legend(fontsize=8, loc="best", frameon=False)
 
     fig.tight_layout()
     return fig
@@ -378,6 +413,8 @@ def plot_selected_variable(df: pd.DataFrame, column: str):
         title=column,
         ylabel=column,
         show_seeding_window=True,
+        figsize=(8.4, 4.4),
+        legend_mode="none",
     )
 
 
@@ -389,25 +426,29 @@ def plot_control_vs_seeding(comparison_df: pd.DataFrame, base_variable: str):
         title=base_variable,
         ylabel=base_variable,
         show_seeding_window=True,
+        figsize=(8.0, 4.4),
+        legend_mode="outside",
     )
 
 
 def plot_difference(comparison_df: pd.DataFrame, base_variable: str):
     """Plot seeding-control difference for a base variable."""
-    fig, ax = plt.subplots(figsize=(5.2, 2.8))
+    fig, ax = plt.subplots(figsize=(8.0, 4.2))
 
     diff_col = f"{base_variable}_diff"
 
     if diff_col in comparison_df.columns:
-        ax.plot(comparison_df["time_s"], comparison_df[diff_col], label="difference")
+        ax.plot(comparison_df["time_s"], comparison_df[diff_col], label="seeding - control", linewidth=1.8)
 
     for start, end in _seeding_intervals_from_comparison(comparison_df):
-        ax.axvspan(start, end, alpha=0.15)
+        ax.axvspan(start, end, alpha=0.12)
 
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(f"Δ {base_variable}")
-    ax.set_title(f"Δ {base_variable}")
-    ax.legend(fontsize="x-small")
+    ax.set_title(f"Δ {base_variable}", fontsize=12)
+    ax.grid(alpha=0.2)
+    ax.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.18), frameon=False)
+    fig.subplots_adjust(bottom=0.24)
     fig.tight_layout()
 
     return fig
@@ -480,6 +521,22 @@ def _format_sweep_case_label(row: pd.Series) -> str:
     return "case"
 
 
+
+
+def _make_unique_labels(labels: List[str]) -> List[str]:
+    """Ensure legend labels remain unique and stable."""
+    counts: Dict[str, int] = {}
+    unique: List[str] = []
+
+    for label in labels:
+        count = counts.get(label, 0) + 1
+        counts[label] = count
+        if count == 1:
+            unique.append(label)
+        else:
+            unique.append(f"{label} ({count})")
+
+    return unique
 def _resolve_sweep_case_dir(sweep_dir: Path, row: pd.Series) -> Path:
     """Resolve one case result directory from a sweep summary row."""
     if "result_dir" not in row or pd.isna(row["result_dir"]):
@@ -588,7 +645,8 @@ def build_sweep_overlay_dataframe(
 
     work_df = work_df.head(max_cases)
 
-    wide_df: pd.DataFrame | None = None
+    series_list = []
+    labels = []
 
     for _, row in work_df.iterrows():
         case_dir = _resolve_sweep_case_dir(sweep_dir, row)
@@ -609,16 +667,21 @@ def build_sweep_overlay_dataframe(
             continue
 
         label = _format_sweep_case_label(row)
-        curve = case_df[["time_s", value_col]].rename(columns={value_col: label})
+        labels.append(label)
+        series = case_df[["time_s", value_col]].drop_duplicates(subset=["time_s"]).set_index("time_s")[value_col]
+        series_list.append(series)
 
-        if wide_df is None:
-            wide_df = curve
-        else:
-            wide_df = pd.merge(wide_df, curve, on="time_s", how="outer")
-
-    if wide_df is None:
+    if not series_list:
         return pd.DataFrame()
 
+    unique_labels = _make_unique_labels(labels)
+    renamed = []
+    for series, label in zip(series_list, unique_labels):
+        s = series.copy()
+        s.name = label
+        renamed.append(s)
+
+    wide_df = pd.concat(renamed, axis=1).reset_index()
     return wide_df.sort_values("time_s").reset_index(drop=True)
 
 
@@ -627,13 +690,140 @@ def plot_sweep_overlay(
     *,
     variable: str,
     curve_label: str,
+    figsize: tuple[float, float] = (9.2, 4.8),
+    show_legend: bool = False,
+    legend_mode: str = "none",
+    shaded_intervals: List[tuple[float, float]] | None = None,
+    label_endpoints: bool = True,
 ):
-    """Plot a variable over time for multiple sweep cases."""
-    fig, ax = plt.subplots(figsize=(6.0, 3.2))
+    """
+    Plot a variable over time for multiple sweep cases.
+
+    Legends are kept out of matrix plots by default. Curve IDs are drawn near
+    the right side of the curve and mapped to case settings in a separate table.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
 
     if overlay_df.empty or "time_s" not in overlay_df.columns:
         ax.set_title(f"No sweep time-series data: {variable}")
         return fig
+
+    value_cols = [col for col in overlay_df.columns if col != "time_s"]
+    colors = _curve_palette(len(value_cols))
+
+    if shaded_intervals:
+        for start, end in shaded_intervals:
+            ax.axvspan(start, end, alpha=0.12, label="seeding window" if start == shaded_intervals[0][0] else None)
+
+    for idx, col in enumerate(value_cols):
+        color = colors[idx]
+        curve_id = idx + 1
+        ax.plot(
+            overlay_df["time_s"],
+            overlay_df[col],
+            label=f"{curve_id:02d}",
+            linewidth=1.9,
+            color=color,
+        )
+
+        if label_endpoints:
+            series = overlay_df[col].dropna()
+            if len(series) > 0:
+                last_idx = series.index[-1]
+                x = overlay_df.loc[last_idx, "time_s"]
+                y = overlay_df.loc[last_idx, col]
+                ax.annotate(
+                    f"{curve_id}",
+                    xy=(x, y),
+                    xytext=(4, 0),
+                    textcoords="offset points",
+                    fontsize=7.5,
+                    color=color,
+                    va="center",
+                )
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel(variable)
+    ax.set_title(f"{variable} · {curve_label}", fontsize=12)
+    ax.grid(alpha=0.22)
+
+    if show_legend and value_cols and legend_mode != "none":
+        if legend_mode == "inside":
+            ax.legend(fontsize=7.5, loc="best", frameon=True)
+        elif legend_mode == "outside":
+            ncols = 4 if len(value_cols) >= 12 else 3 if len(value_cols) >= 8 else 2
+            ax.legend(
+                fontsize=7.5,
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.22),
+                ncol=ncols,
+                frameon=False,
+                handlelength=1.5,
+                columnspacing=0.9,
+            )
+            fig.subplots_adjust(bottom=0.30)
+
+    fig.tight_layout()
+    return fig
+
+    labels = []
+    for col in overlay_df.columns:
+        if col == "time_s":
+            continue
+        ax.plot(overlay_df["time_s"], overlay_df[col], label=col, linewidth=1.9)
+        labels.append(col)
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel(variable)
+    ax.set_title(f"{variable} · {curve_label}", fontsize=12)
+    ax.grid(alpha=0.22)
+
+    if show_legend and labels and legend_mode != "none":
+        if legend_mode == "inside":
+            ax.legend(fontsize=7.5, loc="best", frameon=True)
+        elif legend_mode == "outside":
+            ncols = 3 if len(labels) >= 12 else 2 if len(labels) >= 6 else 1
+            ax.legend(
+                fontsize=7.5,
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.22),
+                ncol=ncols,
+                frameon=False,
+                handlelength=1.5,
+                columnspacing=0.9,
+            )
+            fig.subplots_adjust(bottom=0.30)
+
+    fig.tight_layout()
+    return fig
+
+    labels = []
+    for col in overlay_df.columns:
+        if col == "time_s":
+            continue
+        ax.plot(overlay_df["time_s"], overlay_df[col], label=col, linewidth=1.8)
+        labels.append(col)
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel(variable)
+    ax.set_title(f"{variable} · {curve_label}", fontsize=12)
+    ax.grid(alpha=0.2)
+
+    if show_legend and labels:
+        ncols = 2 if len(labels) >= 8 else 1
+        ax.legend(
+            fontsize=7.5,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.24),
+            ncol=ncols,
+            frameon=False,
+            handlelength=1.5,
+            columnspacing=0.9,
+        )
+        fig.subplots_adjust(bottom=0.32)
+
+    fig.tight_layout()
+    return fig
 
     for col in overlay_df.columns:
         if col == "time_s":
@@ -747,3 +937,94 @@ def plot_sweep_heatmap(
     fig.tight_layout()
 
     return fig
+
+
+
+def build_overlay_legend_table(overlay_df: pd.DataFrame) -> pd.DataFrame:
+    """Build a separate legend table for an overlay dataframe."""
+    if overlay_df.empty:
+        return pd.DataFrame(columns=["curve_id", "color", "case_label"])
+
+    labels = [col for col in overlay_df.columns if col != "time_s"]
+    colors = _curve_palette(len(labels))
+    rows = []
+
+    for idx, (label, color) in enumerate(zip(labels, colors), start=1):
+        row: Dict[str, Any] = {
+            "curve_id": idx,
+            "color": color,
+            "case_label": label,
+        }
+
+        parts = [part.strip() for part in str(label).split("·")]
+        for part in parts:
+            if part.startswith("c") and part[1:].isdigit():
+                row["case"] = part
+            elif part.startswith("r="):
+                row["dry_radius"] = part.replace("r=", "")
+            elif part.startswith("κ="):
+                row["kappa"] = part.replace("κ=", "")
+            elif part.startswith("N="):
+                row["seeding_number"] = part.replace("N=", "")
+            elif part.startswith("w="):
+                row["updraft"] = part.replace("w=", "")
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def build_curve_value_summary(overlay_df: pd.DataFrame) -> pd.DataFrame:
+    """Summarize final, max, and min values for each curve."""
+    if overlay_df.empty or "time_s" not in overlay_df.columns:
+        return pd.DataFrame(columns=["case_label", "final", "max", "min"])
+
+    rows = []
+    for col in overlay_df.columns:
+        if col == "time_s":
+            continue
+        series = overlay_df[col]
+        rows.append(
+            {
+                "case_label": col,
+                "final": float(series.iloc[-1]) if len(series) and pd.notna(series.iloc[-1]) else None,
+                "max": float(series.max(skipna=True)) if len(series) and pd.notna(series.max(skipna=True)) else None,
+                "min": float(series.min(skipna=True)) if len(series) and pd.notna(series.min(skipna=True)) else None,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+
+def style_curve_legend_table(legend_df: pd.DataFrame):
+    """Style legend table so the color column works as a visual swatch."""
+    if legend_df.empty or "color" not in legend_df.columns:
+        return legend_df
+
+    def style_color_cell(value: Any) -> str:
+        if isinstance(value, str) and value.startswith("#"):
+            return f"background-color: {value}; color: {value};"
+        return ""
+
+    return legend_df.style.map(style_color_cell, subset=["color"])
+
+
+
+def sweep_seeding_intervals(sweep_dir: Path, sweep_df: pd.DataFrame) -> List[tuple[float, float]]:
+    """Extract seeding-active intervals from the first readable sweep comparison case."""
+    if sweep_df.empty:
+        return []
+
+    for _, row in sweep_df.iterrows():
+        try:
+            case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+            comparison_df = _read_sweep_case_dataframe(case_dir, "comparison")
+            if not comparison_df.empty:
+                intervals = _seeding_intervals_from_comparison(comparison_df)
+                if intervals:
+                    return intervals
+        except Exception:
+            continue
+
+    return []
