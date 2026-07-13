@@ -20,6 +20,24 @@ from analysis.dashboard import (
 )
 
 
+def render_plot_grid(plot_items, *, n_cols: int = 2) -> None:
+    """Render matplotlib figures in a compact Streamlit grid."""
+    if not plot_items:
+        st.info("No plots to display.")
+        return
+
+    n_cols = max(1, int(n_cols))
+    rows = [plot_items[i : i + n_cols] for i in range(0, len(plot_items), n_cols)]
+
+    for row in rows:
+        cols = st.columns(n_cols)
+        for idx, item in enumerate(row):
+            title, fig = item
+            with cols[idx]:
+                st.caption(title)
+                st.pyplot(fig, use_container_width=True)
+
+
 st.title("06. Results Dashboard")
 st.caption("Simulation output, summary metrics, metadata, and time-series diagnostics.")
 
@@ -141,48 +159,58 @@ with tab_dashboard:
 
     st.divider()
 
+    matrix_cols = st.slider("Plot grid columns", min_value=1, max_value=3, value=2)
+    max_plots = st.slider("Maximum plots in dashboard", min_value=2, max_value=8, value=5)
+
     if is_comparison:
-        st.subheader("Comparison Preview")
+        st.subheader("Comparison Plot Matrix")
 
         bases = comparison_base_variables(comparison_df)
-        default_candidates = [
+        default_order = [
             "rain_water_mixing_ratio",
             "effective_radius_um",
             "droplet_number_concentration_cm3",
             "superdroplet_count",
+            "cloud_water_mixing_ratio",
+            "supersaturation",
         ]
-        default_base = next((item for item in default_candidates if item in bases), bases[0] if bases else None)
+        selected_bases = [base for base in default_order if base in bases]
+        selected_bases += [base for base in bases if base not in selected_bases]
+        selected_bases = selected_bases[:max_plots]
 
-        if default_base is None:
-            st.info("No comparable variables found.")
-        else:
-            selected_base = st.selectbox("Comparison variable", bases, index=bases.index(default_base))
-            fig1 = plot_control_vs_seeding(comparison_df, selected_base)
-            st.pyplot(fig1)
-            fig2 = plot_difference(comparison_df, selected_base)
-            st.pyplot(fig2)
+        plot_items = []
+        for base in selected_bases:
+            plot_items.append((f"Control vs Seeding · {base}", plot_control_vs_seeding(comparison_df, base)))
+
+        render_plot_grid(plot_items, n_cols=matrix_cols)
+
+        st.subheader("Difference Plot Matrix")
+        diff_items = []
+        for base in selected_bases:
+            diff_items.append((f"Seeding - Control · {base}", plot_difference(comparison_df, base)))
+
+        render_plot_grid(diff_items, n_cols=matrix_cols)
 
     else:
-        st.subheader("Recommended Diagnostic Plots")
+        st.subheader("Diagnostic Plot Matrix")
 
         if "time_s" not in df.columns:
             st.warning("This result does not contain `time_s`, so time-series plots cannot be displayed.")
         else:
             groups = recommended_column_groups(df)
+            plot_items = []
 
-            if not groups:
-                st.info("No recommended numeric diagnostic columns were found.")
-            else:
-                for group_name, columns in groups.items():
-                    st.markdown(f"#### {group_name}")
-                    fig = plot_time_series(
-                        df,
-                        columns,
-                        title=group_name,
-                        ylabel=group_name,
-                        show_seeding_window=True,
-                    )
-                    st.pyplot(fig)
+            for group_name, columns in groups.items():
+                fig = plot_time_series(
+                    df,
+                    columns,
+                    title=group_name,
+                    ylabel=group_name,
+                    show_seeding_window=True,
+                )
+                plot_items.append((group_name, fig))
+
+            render_plot_grid(plot_items[:max_plots], n_cols=matrix_cols)
 
         st.divider()
 
@@ -190,9 +218,16 @@ with tab_dashboard:
 
         numeric_cols = available_numeric_columns(df)
         if "time_s" in df.columns and numeric_cols:
-            selected_column = st.selectbox("Variable", numeric_cols)
-            fig = plot_selected_variable(df, selected_column)
-            st.pyplot(fig)
+            selected_columns = st.multiselect(
+                "Variables",
+                numeric_cols,
+                default=numeric_cols[: min(4, len(numeric_cols))],
+            )
+            custom_items = [
+                (column, plot_selected_variable(df, column))
+                for column in selected_columns[:max_plots]
+            ]
+            render_plot_grid(custom_items, n_cols=matrix_cols)
         else:
             st.info("No numeric variables available for custom plotting.")
 
@@ -208,9 +243,9 @@ if is_comparison and tab_comparison is not None:
 
             col1, col2 = st.columns(2)
             with col1:
-                st.pyplot(plot_control_vs_seeding(comparison_df, selected_base))
+                st.pyplot(plot_control_vs_seeding(comparison_df, selected_base), use_container_width=True)
             with col2:
-                st.pyplot(plot_difference(comparison_df, selected_base))
+                st.pyplot(plot_difference(comparison_df, selected_base), use_container_width=True)
 
             rel_col = f"{selected_base}_relative_change_percent"
             if rel_col in comparison_df.columns:

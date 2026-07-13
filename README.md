@@ -414,3 +414,18 @@ The dashboard detects comparison results automatically and shows:
 - comparison summary metrics
 - control and seeding tables side by side
 
+## Compact Plot Grid
+
+The Results Dashboard uses a compact plot matrix instead of stacking every figure vertically.
+
+Dashboard controls:
+
+- `Plot grid columns`: choose 1–3 columns
+- `Maximum plots in dashboard`: limit the number of plots shown
+- Comparison results show both:
+  - control vs seeding plot matrix
+  - seeding minus control difference plot matrix
+- Single-run results show:
+  - diagnostic plot matrix
+  - custom variable plot matrix
+

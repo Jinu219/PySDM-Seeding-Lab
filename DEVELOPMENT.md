@@ -250,3 +250,22 @@ Recommended commit message:
 git commit -m "Add control versus seeding comparison workflow"
 ```
 
+## UI Fix. Compact plot matrix layout
+
+The Results Dashboard plots are now rendered in a compact grid instead of being stacked vertically.
+
+Changes:
+- Added `render_plot_grid()` helper inside `pages/06_results.py`
+- Added grid column control
+- Added maximum plot count control
+- Reduced default matplotlib figure size
+- Converted diagnostic plots to a compact matrix
+- Converted comparison plots to control-vs-seeding and difference matrices
+- Converted custom variable plots to a matrix layout
+
+Recommended commit message:
+
+```bash
+git commit -m "Compact results dashboard plot layout"
+```
+

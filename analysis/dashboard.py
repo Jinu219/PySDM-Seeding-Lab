@@ -273,9 +273,10 @@ def plot_time_series(
     title: str,
     ylabel: str | None = None,
     show_seeding_window: bool = True,
+    figsize: tuple[float, float] = (5.2, 2.8),
 ):
-    """Create a single time-series figure with optional seeding-window shading."""
-    fig, ax = plt.subplots()
+    """Create a compact time-series figure with optional seeding-window shading."""
+    fig, ax = plt.subplots(figsize=figsize)
 
     for column in columns:
         if column in df.columns:
@@ -319,7 +320,7 @@ def plot_control_vs_seeding(comparison_df: pd.DataFrame, base_variable: str):
 
 def plot_difference(comparison_df: pd.DataFrame, base_variable: str):
     """Plot seeding-control difference for a base variable."""
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(5.2, 2.8))
 
     diff_col = f"{base_variable}_diff"
     rel_col = f"{base_variable}_relative_change_percent"
