@@ -519,3 +519,32 @@ A Streamlit sweep setup page is available:
 07. Parameter Sweep
 ```
 
+## Sweep Time-Series Comparison
+
+The sweep dashboard now emphasizes case-wise time-series comparison rather than ranking alone.
+
+For a `[sweep]` result, open:
+
+```text
+06. Results Dashboard → Sweep Time Series
+```
+
+You can compare the same variable across multiple sweep cases:
+
+- `rain_water_mixing_ratio`
+- `cloud_water_mixing_ratio`
+- `supersaturation`
+- `effective_radius_um`
+- `droplet_number_concentration_cm3`
+- `superdroplet_count`
+
+For each variable, choose:
+
+```text
+comparison → seeding / control / diff / relative_change_percent
+seeding    → seeding/timeseries.csv
+control    → control/timeseries.csv
+```
+
+Ranking is now shown only as secondary summary information.
+

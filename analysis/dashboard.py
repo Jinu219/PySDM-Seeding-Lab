@@ -459,3 +459,208 @@ def plot_sweep_ranking(sweep_df: pd.DataFrame, metric: str = "ranking_value", to
 
     return fig
 
+
+def _format_sweep_case_label(row: pd.Series) -> str:
+    """Build a compact readable label for one sweep case."""
+    parts = []
+
+    radius_key = "param.seeding.dry_radius"
+    if radius_key in row and pd.notna(row[radius_key]):
+        try:
+            parts.append(f"r={float(row[radius_key]) * 1.0e6:g} µm")
+        except Exception:
+            parts.append(f"r={row[radius_key]}")
+
+    kappa_key = "param.seeding.kappa"
+    if kappa_key in row and pd.notna(row[kappa_key]):
+        parts.append(f"κ={row[kappa_key]}")
+
+    conc_key = "param.seeding.number_concentration"
+    if conc_key in row and pd.notna(row[conc_key]):
+        parts.append(f"Nseed={row[conc_key]}")
+
+    updraft_key = "param.environment.updraft_velocity"
+    if updraft_key in row and pd.notna(row[updraft_key]):
+        parts.append(f"w={row[updraft_key]}")
+
+    if parts:
+        return ", ".join(parts)
+
+    if "case_name" in row and pd.notna(row["case_name"]):
+        return str(row["case_name"])
+
+    if "case_index" in row and pd.notna(row["case_index"]):
+        return f"case {int(row['case_index'])}"
+
+    return "case"
+
+
+def _resolve_sweep_case_dir(sweep_dir: Path, row: pd.Series) -> Path:
+    """Resolve one case result directory from a sweep summary row."""
+    if "result_dir" not in row or pd.isna(row["result_dir"]):
+        raise ValueError("Sweep row does not contain a valid result_dir.")
+
+    return sweep_dir / str(row["result_dir"])
+
+
+def _read_sweep_case_dataframe(case_dir: Path, curve_source: str) -> pd.DataFrame:
+    """
+    Read one case dataframe.
+
+    curve_source:
+    - comparison: comparison.csv
+    - control: control/timeseries.csv
+    - seeding: seeding/timeseries.csv
+    """
+    if curve_source == "comparison":
+        path = case_dir / "comparison.csv"
+    elif curve_source == "control":
+        path = case_dir / "control" / "timeseries.csv"
+    elif curve_source == "seeding":
+        path = case_dir / "seeding" / "timeseries.csv"
+    else:
+        raise ValueError(f"Unknown curve_source: {curve_source}")
+
+    if not path.exists():
+        return pd.DataFrame()
+
+    return pd.read_csv(path)
+
+
+def sweep_base_variables(
+    sweep_dir: Path,
+    sweep_df: pd.DataFrame,
+    *,
+    curve_source: str = "comparison",
+) -> List[str]:
+    """Find variables that can be plotted across sweep cases."""
+    if sweep_df.empty:
+        return []
+
+    variables = set()
+
+    for _, row in sweep_df.iterrows():
+        case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+        df = _read_sweep_case_dataframe(case_dir, curve_source)
+        if df.empty:
+            continue
+
+        if curve_source == "comparison":
+            for col in df.columns:
+                if col.endswith("_seeding"):
+                    base = col[: -len("_seeding")]
+                    if f"{base}_control" in df.columns and f"{base}_diff" in df.columns:
+                        if base != "seeding_active":
+                            variables.add(base)
+        else:
+            for col in df.columns:
+                if col != "time_s" and pd.api.types.is_numeric_dtype(df[col]):
+                    if col != "seeding_active":
+                        variables.add(col)
+
+        if variables:
+            break
+
+    preferred = [
+        "rain_water_mixing_ratio",
+        "cloud_water_mixing_ratio",
+        "supersaturation",
+        "effective_radius_um",
+        "mean_radius_m",
+        "droplet_number_concentration_cm3",
+        "droplet_number_concentration",
+        "rain_drop_number_concentration",
+        "superdroplet_count",
+    ]
+
+    ordered = [var for var in preferred if var in variables]
+    ordered += sorted([var for var in variables if var not in ordered])
+    return ordered
+
+
+def build_sweep_overlay_dataframe(
+    sweep_dir: Path,
+    sweep_df: pd.DataFrame,
+    *,
+    variable: str,
+    curve_source: str = "comparison",
+    comparison_mode: str = "seeding",
+    max_cases: int = 12,
+) -> pd.DataFrame:
+    """
+    Build a wide dataframe for overlaying the same variable across sweep cases.
+
+    For comparison case outputs:
+    - comparison_mode = control, seeding, diff, or relative_change_percent
+    """
+    if sweep_df.empty:
+        return pd.DataFrame()
+
+    work_df = sweep_df.copy()
+    if "rank" in work_df.columns:
+        work_df = work_df.sort_values("rank", ascending=True)
+    elif "ranking_value" in work_df.columns:
+        work_df = work_df.sort_values("ranking_value", ascending=False, na_position="last")
+
+    work_df = work_df.head(max_cases)
+
+    wide_df: pd.DataFrame | None = None
+
+    for _, row in work_df.iterrows():
+        case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+        case_df = _read_sweep_case_dataframe(case_dir, curve_source)
+
+        if case_df.empty or "time_s" not in case_df.columns:
+            continue
+
+        if curve_source == "comparison":
+            if comparison_mode == "relative_change_percent":
+                value_col = f"{variable}_relative_change_percent"
+            else:
+                value_col = f"{variable}_{comparison_mode}"
+        else:
+            value_col = variable
+
+        if value_col not in case_df.columns:
+            continue
+
+        label = _format_sweep_case_label(row)
+        curve = case_df[["time_s", value_col]].rename(columns={value_col: label})
+
+        if wide_df is None:
+            wide_df = curve
+        else:
+            wide_df = pd.merge(wide_df, curve, on="time_s", how="outer")
+
+    if wide_df is None:
+        return pd.DataFrame()
+
+    return wide_df.sort_values("time_s").reset_index(drop=True)
+
+
+def plot_sweep_overlay(
+    overlay_df: pd.DataFrame,
+    *,
+    variable: str,
+    curve_label: str,
+):
+    """Plot a variable over time for multiple sweep cases."""
+    fig, ax = plt.subplots(figsize=(6.0, 3.2))
+
+    if overlay_df.empty or "time_s" not in overlay_df.columns:
+        ax.set_title(f"No sweep time-series data: {variable}")
+        return fig
+
+    for col in overlay_df.columns:
+        if col == "time_s":
+            continue
+        ax.plot(overlay_df["time_s"], overlay_df[col], label=col)
+
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel(variable)
+    ax.set_title(f"{variable} · {curve_label}")
+    ax.legend(fontsize="x-small", loc="best")
+    fig.tight_layout()
+
+    return fig
+

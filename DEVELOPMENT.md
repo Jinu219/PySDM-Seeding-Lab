@@ -356,3 +356,23 @@ Recommended commit message:
 git commit -m "Fix missing sweep ranking dashboard function"
 ```
 
+## Fix. Add sweep time-series comparison plots
+
+The initial sweep dashboard overemphasized ranking and did not show the case-wise time evolution of physical variables.
+
+Changes:
+- Added sweep case loading utilities to `analysis/dashboard.py`
+- Added overlay dataframe builder for sweep cases
+- Added sweep overlay plotting function
+- Rebuilt sweep dashboard layout around time-series comparison
+- Added `Sweep Time Series` tab
+- Added variable selection for rain water, cloud water, supersaturation, radius, number concentration, and superdroplet count
+- Added comparison mode selection: seeding, control, diff, relative_change_percent
+- Moved ranking to secondary summary / table view
+
+Recommended commit message:
+
+```bash
+git commit -m "Add sweep time-series comparison plots"
+```
+
