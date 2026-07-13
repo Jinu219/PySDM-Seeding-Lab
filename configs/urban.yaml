@@ -7,7 +7,8 @@ experiment:
 simulation:
   adapter: placeholder_warm_cloud
   case_name: base
-  notes: Placeholder adapter is used until the first real PySDM simulation is connected.
+  notes: Use placeholder_warm_cloud for UI testing or pysdm_parcel for real PySDM
+    simulation.
 environment:
   temperature: 302.0
   pressure: 100000.0
@@ -37,6 +38,7 @@ seeding:
   injection_end: 1200
   injection_altitude: 500.0
   delivery_method: idealized_uniform
+  number_concentration: 10.0
 dynamics:
   updraft_strength: 1.2
   downdraft_strength: 0.0

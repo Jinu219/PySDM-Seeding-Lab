@@ -59,6 +59,12 @@ with col1:
         value=float(seed.get("particle_density", 1770.0)),
         step=10.0,
     )
+    seed["number_concentration"] = st.number_input(
+        "Seeding number concentration" + unit_label("seeding", "number_concentration"),
+        min_value=0.0,
+        value=float(seed.get("number_concentration", 10.0)),
+        step=1.0,
+    )
     seed["number_superdroplets"] = st.number_input(
         "Number of seeding super-droplets" + unit_label("seeding", "number_superdroplets"),
         min_value=1,

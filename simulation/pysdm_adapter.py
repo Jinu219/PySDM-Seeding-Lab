@@ -102,15 +102,10 @@ def run_placeholder_warm_cloud(spec: SimulationRunSpec) -> AdapterResult:
 
 
 def run_pysdm_parcel(spec: SimulationRunSpec) -> AdapterResult:
-    """
-    Future real PySDM parcel adapter.
+    """Run the first real PySDM parcel seeding adapter."""
+    from simulation.pysdm_parcel_adapter import run_pysdm_parcel_simulation
 
-    Step 5 will connect the first actual PySDM simulation here.
-    """
-    raise NotImplementedError(
-        "The real PySDM parcel adapter is not connected yet. "
-        "Use adapter='placeholder_warm_cloud' until Step 5."
-    )
+    return run_pysdm_parcel_simulation(spec)
 
 
 ADAPTER_REGISTRY: Dict[str, AdapterFunction] = {

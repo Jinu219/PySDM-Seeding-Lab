@@ -111,7 +111,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 "info",
                 "simulation.adapter",
                 "pysdm_parcel adapter is selected.",
-                "This adapter is reserved for Step 5 when the first real PySDM simulation is connected.",
+                "This requires PySDM and PySDM-examples to be installed in the active Python environment.",
             )
         )
 
@@ -446,6 +446,25 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                     "seeding.particle_density",
                     "particle_density must be positive.",
                     "Use kg/m^3 units.",
+                )
+            )
+
+        if seed.get("number_concentration", 0) < 0:
+            issues.append(
+                _issue(
+                    "error",
+                    "seeding.number_concentration",
+                    "number_concentration must be non-negative.",
+                    "Use cm^-3 units.",
+                )
+            )
+        elif seed.get("number_concentration", 0) == 0:
+            issues.append(
+                _issue(
+                    "warning",
+                    "seeding.number_concentration",
+                    "seeding number concentration is zero.",
+                    "Injected super-droplets may have zero physical multiplicity.",
                 )
             )
 

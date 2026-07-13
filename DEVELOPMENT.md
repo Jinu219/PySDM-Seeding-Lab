@@ -100,3 +100,45 @@ Recommended commit message:
 git commit -m "Organize simulation runner and adapter interface"
 ```
 
+## Step 5. Connect first real PySDM simulation
+
+The first real PySDM adapter was connected under `simulation.adapter = pysdm_parcel`.
+
+Changes:
+- Added `simulation/pysdm_parcel_adapter.py`
+- Connected `pysdm_parcel` in the adapter registry
+- Added lazy imports for `PySDM` and `PySDM_examples`
+- Added conversion from app concentration units `cm^-3` to PySDM example spectra units `kg_dry_air^-1`
+- Added stateful seeding injection-rate function
+- Mapped YAML environment, aerosol, seeding, and microphysics fields into `PySDM_examples.seeding.Settings`
+- Added `seeding.number_concentration`
+- Updated seeding UI to expose physical seeding concentration
+- Added `requirements-pysdm.txt`
+- Added CLI runner `scripts/run_config.py`
+- Updated Run page to show a clean exception if PySDM is not installed
+
+Recommended commit message:
+
+```bash
+git commit -m "Connect initial PySDM parcel seeding adapter"
+```
+
+## Fix. CLI import path
+
+Fixed direct CLI execution from the project root.
+
+Problem:
+- Running `python scripts/run_config.py` sets `sys.path[0]` to `scripts/`
+- The top-level `simulation` package was therefore not importable
+
+Changes:
+- Added project-root insertion to `scripts/run_config.py`
+- Added `scripts/__init__.py`
+- Resolved relative config and output paths from the project root
+
+Recommended commit message:
+
+```bash
+git commit -m "Fix CLI project root import path"
+```
+

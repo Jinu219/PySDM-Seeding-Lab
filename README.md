@@ -278,3 +278,36 @@ pysdm_parcel
 `placeholder_warm_cloud` is the current synthetic test adapter.  
 `pysdm_parcel` is reserved for the first real PySDM simulation connection in the next development step.
 
+## Real PySDM Adapter
+
+The first real PySDM adapter is connected through:
+
+```text
+simulation.adapter = pysdm_parcel
+```
+
+This adapter uses the seeding example framework from `PySDM_examples.seeding` and maps the app configuration into a parcel-based warm-cloud hygroscopic seeding simulation.
+
+### Install Optional PySDM Dependencies
+
+```bash
+pip install -r requirements-pysdm.txt
+```
+
+or, when working from a local PySDM repository, make sure both `PySDM` and `PySDM_examples` are importable in the active environment.
+
+### Run from Streamlit
+
+1. Open the main app page.
+2. Set `Simulation Adapter` to `pysdm_parcel`.
+3. Open `05. Run Simulation`.
+4. Click `Run Experiment`.
+
+### Run from CLI
+
+```bash
+python scripts/run_config.py --adapter pysdm_parcel
+```
+
+The previous `placeholder_warm_cloud` adapter is still available for UI testing when PySDM is not installed.
+

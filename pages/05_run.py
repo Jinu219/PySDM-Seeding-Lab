@@ -74,9 +74,13 @@ with st.expander("Current configuration"):
 run_disabled = summary["error"] > 0
 
 if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
-    with st.spinner("Running simulation..."):
-        result_path = run_experiment(
-            cfg,
-            output_dir=Path(output.get("base_dir", "results")),
-        )
-    st.success(f"Experiment finished. Result saved to: {result_path}")
+    try:
+        with st.spinner("Running simulation..."):
+            result_path = run_experiment(
+                cfg,
+                output_dir=Path(output.get("base_dir", "results")),
+            )
+        st.success(f"Experiment finished. Result saved to: {result_path}")
+    except Exception as exc:
+        st.error("Simulation failed.")
+        st.exception(exc)
