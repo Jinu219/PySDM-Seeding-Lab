@@ -790,3 +790,26 @@ For sweep ranking with ensemble cases, use a metric such as:
 ensemble.metrics.rain_water_mixing_ratio_diff_final_mean
 ```
 
+## Scenario-named results and simplified dashboard
+
+When a saved scenario is selected in Run Simulation, the run configuration now automatically uses the scenario slug as `experiment.name`.
+
+Example:
+
+```text
+Scenario: dry_radius_kappa_sweep
+Result directory: results/20260713_XXXXXX_dry_radius_kappa_sweep_parameter_sweep
+```
+
+The dashboard also supports sweep cases that were run as ensemble result directories.  
+If a sweep result shows no plottable variables, it usually means the result was generated before the latest dashboard/diagnostic update. Rerun the scenario.
+
+Simplified recommended workflow:
+
+```text
+00. Save scenario
+01–05. Save settings and sweep into that scenario
+06. Select scenario and run
+07. Select the result with the same scenario name
+```
+

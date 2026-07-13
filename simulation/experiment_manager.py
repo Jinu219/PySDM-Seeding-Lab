@@ -163,3 +163,49 @@ def scenario_options(include_working_config: bool = True) -> List[Dict[str, Any]
         )
 
     return options
+
+
+
+def scenario_slug_from_path(path: str | Path) -> str:
+    """Return scenario slug from a scenario YAML path."""
+    payload = read_scenario(path)
+    metadata = payload.get("metadata", {})
+    return str(metadata.get("slug") or Path(path).stem)
+
+
+def scenario_name_from_path(path: str | Path) -> str:
+    """Return human-readable scenario name from a scenario YAML path."""
+    payload = read_scenario(path)
+    metadata = payload.get("metadata", {})
+    return str(metadata.get("name") or Path(path).stem)
+
+
+def apply_scenario_identity(config: Dict[str, Any], path: str | Path) -> Dict[str, Any]:
+    """
+    Return a config copy whose experiment identity is tied to the scenario.
+
+    This makes result directories and dashboard labels use the scenario name
+    instead of the generic default experiment name.
+    """
+    cfg = dict(config)
+    cfg = yaml.safe_load(yaml.safe_dump(config, sort_keys=False, allow_unicode=True)) or {}
+
+    payload = read_scenario(path)
+    metadata = payload.get("metadata", {})
+    slug = str(metadata.get("slug") or Path(path).stem)
+    name = str(metadata.get("name") or slug)
+    memo = str(metadata.get("memo") or "")
+
+    cfg.setdefault("experiment", {})
+    cfg["experiment"]["name"] = slug
+    cfg["experiment"]["scenario_name"] = name
+    cfg["experiment"]["scenario_slug"] = slug
+    cfg["experiment"]["scenario_memo"] = memo
+
+    cfg.setdefault("metadata", {})
+    cfg["metadata"]["scenario_name"] = name
+    cfg["metadata"]["scenario_slug"] = slug
+    cfg["metadata"]["scenario_path"] = str(path)
+    cfg["metadata"]["scenario_memo"] = memo
+
+    return cfg

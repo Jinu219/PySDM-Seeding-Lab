@@ -552,3 +552,21 @@ Recommended commit message:
 git commit -m "Add ensemble statistics and plot downloads"
 ```
 
+## Fix. Scenario-named results and simplified sweep dashboard
+
+Changes:
+- Added scenario identity helpers to experiment manager
+- Run page applies scenario slug/name to `experiment.name`
+- Result directories now include scenario slug when running a scenario
+- Parameter Sweep applies scenario identity when configuring a scenario
+- Sweep dashboard can read ensemble case result directories
+- Added recommended sweep variable selection
+- Added clearer old-result warning when no variables are plottable
+- Added scenario metric in Run Overview
+
+Recommended commit message:
+
+```bash
+git commit -m "Use scenario names for results and simplify dashboard"
+```
+

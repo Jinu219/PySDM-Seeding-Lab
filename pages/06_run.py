@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from simulation.config import load_config
-from simulation.experiment_manager import list_scenarios, load_scenario_config, read_scenario
+from simulation.experiment_manager import apply_scenario_identity, list_scenarios, load_scenario_config, read_scenario
 from simulation.runner import run_experiment
 from simulation.validation import (
     validate_config,
@@ -15,11 +15,12 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "scenario-run-page-20260713"
+UI_BUILD_ID = "scenario-names-simple-dashboard-20260713"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
 st.caption("현재 working configuration을 검증하고 simulation runner를 실행합니다.")
+st.info("Simple workflow: select scenario → check result name preview → Run Experiment → open Results Dashboard.")
 build_badge("UI build", UI_BUILD_ID)
 
 working_cfg = load_config(CONFIG_PATH)
@@ -34,10 +35,11 @@ selected_scenario_label = st.selectbox("Scenario to run", scenario_options)
 scenario_memo = ""
 if selected_scenario_label == "Current working config":
     cfg = working_cfg
+    selected_scenario = None
 else:
     selected_scenario = scenarios[scenario_options.index(selected_scenario_label) - 1]
     scenario_payload = read_scenario(selected_scenario["path"])
-    cfg = scenario_payload.get("config", {})
+    cfg = apply_scenario_identity(scenario_payload.get("config", {}), selected_scenario["path"])
     scenario_memo = scenario_payload.get("metadata", {}).get("memo", "")
 
 experiment = cfg.get("experiment", {})
@@ -49,6 +51,9 @@ if scenario_memo:
     st.info(scenario_memo)
 
 st.subheader("Run Options")
+run_name_preview = cfg.get("experiment", {}).get("name", "experiment")
+st.success(f"Result name preview: `{run_name_preview}`")
+st.caption("The result directory will include this scenario/experiment name.")
 col1, col2, col3 = st.columns(3)
 
 with col1:

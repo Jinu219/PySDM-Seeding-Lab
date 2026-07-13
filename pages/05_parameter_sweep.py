@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from simulation.config import save_config
-from simulation.experiment_manager import scenario_options, read_scenario, update_scenario_config
+from simulation.experiment_manager import apply_scenario_identity, scenario_options, read_scenario, update_scenario_config
 from simulation.schema import EXPERIMENT_MODES
 from simulation.sweep import count_sweep_cases
 from simulation.ui_helpers import load_working_config, page_header, schema_expander
@@ -31,7 +31,7 @@ if selected_scenario.get("is_working_config", False):
     scenario_memo = ""
 else:
     payload = read_scenario(selected_scenario["path"])
-    cfg = payload.get("config", {})
+    cfg = apply_scenario_identity(payload.get("config", {}), selected_scenario["path"])
     scenario_memo = payload.get("metadata", {}).get("memo", "")
 
 if scenario_memo:
@@ -74,7 +74,7 @@ sweep["ranking_metric"] = st.text_input(
     value=str(
         sweep.get(
             "ranking_metric",
-            "comparison.efficiency.seeding_efficiency_score",
+            "ensemble.metrics.rain_water_mixing_ratio_diff_final_mean",
         )
     ),
 )

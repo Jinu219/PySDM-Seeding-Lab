@@ -12,7 +12,7 @@ import yaml
 from analysis.ensemble_statistics import ensemble_variable_bases
 from analysis.growth_pathway_diagnostics import GROWTH_PATHWAY_VARIABLE_GROUPS, GROWTH_PATHWAY_PREFERRED_ORDER
 
-DASHBOARD_BUILD_ID = "growth-pathway-ensemble-20260713"
+DASHBOARD_BUILD_ID = "scenario-names-simple-dashboard-20260713"
 
 
 @dataclass(frozen=True)
@@ -624,9 +624,14 @@ def _read_sweep_case_dataframe(case_dir: Path, curve_source: str) -> pd.DataFram
     - comparison: comparison.csv
     - control: control/timeseries.csv
     - seeding: seeding/timeseries.csv
+    - ensemble: ensemble_statistics.csv
     """
-    if curve_source == "comparison":
+    if curve_source == "ensemble":
+        path = case_dir / "ensemble_statistics.csv"
+    elif curve_source == "comparison":
         path = case_dir / "comparison.csv"
+        if not path.exists() and (case_dir / "ensemble_statistics.csv").exists():
+            path = case_dir / "ensemble_statistics.csv"
     elif curve_source == "control":
         path = case_dir / "control" / "timeseries.csv"
     elif curve_source == "seeding":
@@ -658,7 +663,17 @@ def sweep_base_variables(
         if df.empty:
             continue
 
-        if curve_source == "comparison":
+        is_ensemble_stats = "ensemble_statistics.csv" in str(case_dir / "ensemble_statistics.csv") and any(
+            col.endswith("_mean") for col in df.columns
+        )
+
+        if is_ensemble_stats:
+            for col in df.columns:
+                if col.endswith("_mean"):
+                    base = col[: -len("_mean")]
+                    if base.endswith("_diff") or base in GROWTH_PATHWAY_PREFERRED_ORDER:
+                        variables.add(base)
+        elif curve_source == "comparison":
             for col in df.columns:
                 if col.endswith("_seeding"):
                     base = col[: -len("_seeding")]
@@ -674,7 +689,14 @@ def sweep_base_variables(
         if variables:
             break
 
-    preferred = GROWTH_PATHWAY_PREFERRED_ORDER + [
+    preferred = [
+        "rain_water_mixing_ratio_diff",
+        "cloud_water_mixing_ratio_diff",
+        "all_activated_water_mixing_ratio_diff",
+        "water_vapour_mixing_ratio_diff",
+        "supersaturation_percent_diff",
+        "effective_radius_all_um_diff",
+    ] + GROWTH_PATHWAY_PREFERRED_ORDER + [
         "rain_water_mixing_ratio",
         "cloud_water_mixing_ratio",
         "supersaturation",
@@ -703,8 +725,11 @@ def build_sweep_overlay_dataframe(
     """
     Build a wide dataframe for overlaying the same variable across sweep cases.
 
-    For comparison case outputs:
+    For normal comparison outputs:
     - comparison_mode = control, seeding, diff, or relative_change_percent
+
+    For ensemble case outputs:
+    - the mean statistic is used by default: <variable>_mean
     """
     if sweep_df.empty:
         return pd.DataFrame()
@@ -727,7 +752,16 @@ def build_sweep_overlay_dataframe(
         if case_df.empty or "time_s" not in case_df.columns:
             continue
 
-        if curve_source == "comparison":
+        is_ensemble_stats = any(col.endswith("_mean") for col in case_df.columns)
+
+        if is_ensemble_stats:
+            if f"{variable}_mean" in case_df.columns:
+                value_col = f"{variable}_mean"
+            elif variable in case_df.columns:
+                value_col = variable
+            else:
+                continue
+        elif curve_source == "comparison":
             if comparison_mode == "relative_change_percent":
                 value_col = f"{variable}_relative_change_percent"
             else:
@@ -1197,3 +1231,23 @@ def plot_ensemble_uncertainty(
     fig.tight_layout()
 
     return fig
+
+
+
+def recommended_sweep_variables(available_vars: List[str]) -> List[str]:
+    """Return a compact recommended set for first-look sweep dashboard."""
+    preferred = [
+        "rain_water_mixing_ratio_diff",
+        "cloud_water_mixing_ratio_diff",
+        "all_activated_water_mixing_ratio_diff",
+        "water_vapour_mixing_ratio_diff",
+        "supersaturation_percent_diff",
+        "effective_radius_all_um_diff",
+        "rain_water_mixing_ratio",
+        "cloud_water_mixing_ratio",
+        "supersaturation_percent",
+    ]
+    out = [var for var in preferred if var in available_vars]
+    if out:
+        return out
+    return available_vars[:4]
