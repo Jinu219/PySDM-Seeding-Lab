@@ -548,3 +548,42 @@ control    → control/timeseries.csv
 
 Ranking is now shown only as secondary summary information.
 
+## Sweep Sensitivity Diagnostics
+
+The sweep dashboard now checks whether case curves actually differ.
+
+Important interpretation rule:
+
+```text
+If all sweep case curves overlap, the sweep did not produce visible parameter sensitivity.
+```
+
+This can mean:
+
+- the result is from `placeholder_warm_cloud`
+- the adapter does not actually use the swept parameter
+- the selected diagnostic is not sensitive to the parameter
+- absolute seeding curves were plotted instead of `diff = seeding - control`
+
+For artificial rain evaluation, use the default sweep view:
+
+```text
+Output source = comparison
+Comparison mode = diff
+Variable = rain_water_mixing_ratio / cloud_water_mixing_ratio / supersaturation
+```
+
+The dashboard also includes a parameter-response heatmap for two-dimensional sweeps such as dry radius × κ.
+
+## Project Integrity Check
+
+Before running Streamlit after a dashboard update, run:
+
+```bash
+python scripts/check_project_integrity.py
+```
+
+This checks that `analysis/dashboard.py` and `pages/06_results.py` are compatible and that all dashboard functions required by the Results page are available.
+
+The Results page now imports `analysis.dashboard` as a module instead of importing many individual functions directly. This prevents repeated `ImportError` crashes when dashboard functions are added over time.
+

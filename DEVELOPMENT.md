@@ -376,3 +376,65 @@ Recommended commit message:
 git commit -m "Add sweep time-series comparison plots"
 ```
 
+## Fix. Replace dashboard module with complete sweep exports
+
+Fixed another Streamlit import error caused by an incomplete local `analysis/dashboard.py`.
+
+Problem:
+- `pages/06_results.py` imports sweep time-series helper functions
+- The local dashboard module did not include `build_sweep_overlay_dataframe`
+- Streamlit failed with:
+  `ImportError: cannot import name 'build_sweep_overlay_dataframe'`
+
+Changes:
+- Replaced `analysis/dashboard.py` with a complete module
+- Guaranteed exports:
+  - `plot_sweep_ranking`
+  - `sweep_base_variables`
+  - `build_sweep_overlay_dataframe`
+  - `plot_sweep_overlay`
+- Preserved single-run and comparison dashboard utilities
+
+Recommended commit message:
+
+```bash
+git commit -m "Fix sweep time-series dashboard imports"
+```
+
+## Fix. Make sweep dashboard scientifically diagnostic
+
+The sweep dashboard now emphasizes whether parameter changes actually create different model responses.
+
+Changes:
+- Default sweep comparison mode changed from absolute seeding curve to `diff = seeding - control`
+- Added spread diagnostics across sweep curves
+- Added warning when sweep curves overlap
+- Added parameter-response heatmap for two-parameter sweeps
+- Added helper functions:
+  - `compute_overlay_spread`
+  - `sweep_param_columns`
+  - `plot_sweep_heatmap`
+
+Recommended commit message:
+
+```bash
+git commit -m "Add sweep sensitivity diagnostics"
+```
+
+## Fix. Stabilize dashboard imports permanently
+
+Repeated Results page crashes occurred because `pages/06_results.py` imported many functions directly from `analysis.dashboard`, while local copies of `dashboard.py` could lag behind.
+
+Changes:
+- Replaced `analysis/dashboard.py` with complete current implementation
+- Rewrote `pages/06_results.py` to use `import analysis.dashboard as dash`
+- Added a runtime required-function check inside the Results page
+- Added `scripts/check_project_integrity.py`
+- This makes future dashboard changes less likely to crash with direct `ImportError`
+
+Recommended commit message:
+
+```bash
+git commit -m "Stabilize dashboard imports and integrity checks"
+```
+

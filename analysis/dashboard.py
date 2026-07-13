@@ -78,6 +78,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         validation_path = entry.path / "validation_report.json"
 
         sweep_df = pd.read_csv(sweep_path)
+
         return {
             "entry": entry,
             "timeseries": sweep_df,
@@ -114,6 +115,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         return {
             "entry": entry,
             "timeseries": comparison_df,
+            "sweep": pd.DataFrame(),
             "comparison": comparison_df,
             "control": control_df,
             "seeding": seeding_df,
@@ -144,6 +146,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         return {
             "entry": entry,
             "timeseries": df,
+            "sweep": pd.DataFrame(),
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
             "seeding": pd.DataFrame(),
@@ -164,6 +167,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
     return {
         "entry": entry,
         "timeseries": df,
+        "sweep": pd.DataFrame(),
         "comparison": pd.DataFrame(),
         "control": pd.DataFrame(),
         "seeding": pd.DataFrame(),
@@ -269,20 +273,18 @@ def recommended_column_groups(df: pd.DataFrame) -> Dict[str, List[str]]:
 
 def comparison_base_variables(comparison_df: pd.DataFrame) -> List[str]:
     """Return physically meaningful base variable names available in a comparison dataframe."""
-    excluded = {
-        "seeding_active",
-    }
+    excluded = {"seeding_active"}
 
     preferred_order = [
         "rain_water_mixing_ratio",
         "cloud_water_mixing_ratio",
+        "supersaturation",
         "effective_radius_um",
+        "mean_radius_m",
         "droplet_number_concentration_cm3",
         "droplet_number_concentration",
         "rain_drop_number_concentration",
         "superdroplet_count",
-        "mean_radius_m",
-        "supersaturation",
     ]
 
     bases = []
@@ -296,7 +298,6 @@ def comparison_base_variables(comparison_df: pd.DataFrame) -> List[str]:
 
     ordered = [base for base in preferred_order if base in bases]
     ordered += sorted([base for base in bases if base not in ordered])
-
     return ordered
 
 
@@ -325,6 +326,19 @@ def _seeding_intervals(df: pd.DataFrame) -> List[tuple[float, float]]:
     return intervals
 
 
+def _seeding_intervals_from_comparison(comparison_df: pd.DataFrame) -> List[tuple[float, float]]:
+    for candidate in ["seeding_active_seeding", "seeding_active"]:
+        if candidate in comparison_df.columns:
+            temp = pd.DataFrame(
+                {
+                    "time_s": comparison_df["time_s"],
+                    "seeding_active": comparison_df[candidate],
+                }
+            )
+            return _seeding_intervals(temp)
+    return []
+
+
 def plot_time_series(
     df: pd.DataFrame,
     columns: List[str],
@@ -350,8 +364,9 @@ def plot_time_series(
     ax.set_title(title)
 
     if len(columns) > 1:
-        ax.legend()
+        ax.legend(fontsize="x-small")
 
+    fig.tight_layout()
     return fig
 
 
@@ -371,7 +386,7 @@ def plot_control_vs_seeding(comparison_df: pd.DataFrame, base_variable: str):
     return plot_time_series(
         comparison_df,
         [f"{base_variable}_control", f"{base_variable}_seeding"],
-        title=f"{base_variable}",
+        title=base_variable,
         ylabel=base_variable,
         show_seeding_window=True,
     )
@@ -382,7 +397,6 @@ def plot_difference(comparison_df: pd.DataFrame, base_variable: str):
     fig, ax = plt.subplots(figsize=(5.2, 2.8))
 
     diff_col = f"{base_variable}_diff"
-    rel_col = f"{base_variable}_relative_change_percent"
 
     if diff_col in comparison_df.columns:
         ax.plot(comparison_df["time_s"], comparison_df[diff_col], label="difference")
@@ -393,37 +407,8 @@ def plot_difference(comparison_df: pd.DataFrame, base_variable: str):
     ax.set_xlabel("Time [s]")
     ax.set_ylabel(f"Δ {base_variable}")
     ax.set_title(f"Δ {base_variable}")
-    ax.legend()
-
-    return fig
-
-
-def _seeding_intervals_from_comparison(comparison_df: pd.DataFrame) -> List[tuple[float, float]]:
-    for candidate in ["seeding_active_seeding", "seeding_active"]:
-        if candidate in comparison_df.columns:
-            temp = pd.DataFrame({"time_s": comparison_df["time_s"], "seeding_active": comparison_df[candidate]})
-            return _seeding_intervals(temp)
-    return []
-
-
-
-def plot_sweep_ranking(sweep_df: pd.DataFrame, metric: str = "ranking_value", top_n: int = 10):
-    """Plot top-N sweep cases by ranking metric."""
-    fig, ax = plt.subplots(figsize=(6.0, 3.2))
-
-    if sweep_df.empty or metric not in sweep_df.columns:
-        ax.set_title("No sweep ranking data")
-        return fig
-
-    plot_df = sweep_df.copy()
-    plot_df = plot_df.dropna(subset=[metric])
-    plot_df = plot_df.sort_values(metric, ascending=False).head(top_n)
-
-    labels = plot_df["case_name"] if "case_name" in plot_df.columns else plot_df.index.astype(str)
-    ax.barh(labels[::-1], plot_df[metric].to_numpy()[::-1])
-    ax.set_xlabel(metric)
-    ax.set_ylabel("Sweep case")
-    ax.set_title(f"Top {min(top_n, len(plot_df))} sweep cases")
+    ax.legend(fontsize="x-small")
+    fig.tight_layout()
 
     return fig
 
@@ -445,13 +430,13 @@ def plot_sweep_ranking(sweep_df: pd.DataFrame, metric: str = "ranking_value", to
         return fig
 
     if "case_name" in plot_df.columns:
-        labels = plot_df["case_name"].astype(str)
+        labels = [str(value) for value in plot_df["case_name"]]
     elif "case_index" in plot_df.columns:
-        labels = plot_df["case_index"].astype(str)
+        labels = [str(value) for value in plot_df["case_index"]]
     else:
-        labels = plot_df.index.astype(str)
+        labels = [str(value) for value in plot_df.index]
 
-    ax.barh(labels.iloc[::-1], plot_df[metric].to_numpy()[::-1])
+    ax.barh(labels[::-1], plot_df[metric].to_numpy()[::-1])
     ax.set_xlabel(metric)
     ax.set_ylabel("Sweep case")
     ax.set_title(f"Top {min(top_n, len(plot_df))} sweep cases")
@@ -499,7 +484,6 @@ def _resolve_sweep_case_dir(sweep_dir: Path, row: pd.Series) -> Path:
     """Resolve one case result directory from a sweep summary row."""
     if "result_dir" not in row or pd.isna(row["result_dir"]):
         raise ValueError("Sweep row does not contain a valid result_dir.")
-
     return sweep_dir / str(row["result_dir"])
 
 
@@ -584,7 +568,7 @@ def build_sweep_overlay_dataframe(
     *,
     variable: str,
     curve_source: str = "comparison",
-    comparison_mode: str = "seeding",
+    comparison_mode: str = "diff",
     max_cases: int = 12,
 ) -> pd.DataFrame:
     """
@@ -664,3 +648,102 @@ def plot_sweep_overlay(
 
     return fig
 
+
+def compute_overlay_spread(overlay_df: pd.DataFrame, *, tolerance: float = 1.0e-14) -> Dict[str, Any]:
+    """
+    Diagnose whether sweep case curves actually differ.
+
+    Returns spread statistics across case curves at each time.
+    """
+    if overlay_df.empty or "time_s" not in overlay_df.columns:
+        return {
+            "n_cases": 0,
+            "max_abs_spread": None,
+            "mean_abs_spread": None,
+            "final_abs_spread": None,
+            "curves_overlap": True,
+        }
+
+    value_cols = [col for col in overlay_df.columns if col != "time_s"]
+    if not value_cols:
+        return {
+            "n_cases": 0,
+            "max_abs_spread": None,
+            "mean_abs_spread": None,
+            "final_abs_spread": None,
+            "curves_overlap": True,
+        }
+
+    values = overlay_df[value_cols]
+    row_spread = values.max(axis=1, skipna=True) - values.min(axis=1, skipna=True)
+
+    max_abs_spread = float(row_spread.max(skipna=True)) if len(row_spread) else None
+    mean_abs_spread = float(row_spread.mean(skipna=True)) if len(row_spread) else None
+    final_abs_spread = float(row_spread.iloc[-1]) if len(row_spread) else None
+
+    curves_overlap = (
+        max_abs_spread is None
+        or not pd.notna(max_abs_spread)
+        or abs(max_abs_spread) <= tolerance
+    )
+
+    return {
+        "n_cases": len(value_cols),
+        "max_abs_spread": max_abs_spread,
+        "mean_abs_spread": mean_abs_spread,
+        "final_abs_spread": final_abs_spread,
+        "curves_overlap": bool(curves_overlap),
+    }
+
+
+def sweep_param_columns(sweep_df: pd.DataFrame) -> List[str]:
+    """Return numeric sweep parameter columns."""
+    return [
+        col
+        for col in sweep_df.columns
+        if col.startswith("param.") and pd.api.types.is_numeric_dtype(sweep_df[col])
+    ]
+
+
+def plot_sweep_heatmap(
+    sweep_df: pd.DataFrame,
+    *,
+    x_param: str,
+    y_param: str,
+    metric: str,
+):
+    """Plot a 2D parameter-response heatmap from sweep_summary.csv."""
+    fig, ax = plt.subplots(figsize=(5.2, 3.8))
+
+    if (
+        sweep_df.empty
+        or x_param not in sweep_df.columns
+        or y_param not in sweep_df.columns
+        or metric not in sweep_df.columns
+    ):
+        ax.set_title("No heatmap data")
+        return fig
+
+    pivot = sweep_df.pivot_table(
+        index=y_param,
+        columns=x_param,
+        values=metric,
+        aggfunc="mean",
+    )
+
+    if pivot.empty:
+        ax.set_title("No heatmap data")
+        return fig
+
+    image = ax.imshow(pivot.to_numpy(), aspect="auto", origin="lower")
+    ax.set_xticks(range(len(pivot.columns)))
+    ax.set_xticklabels([str(value) for value in pivot.columns], rotation=45, ha="right")
+    ax.set_yticks(range(len(pivot.index)))
+    ax.set_yticklabels([str(value) for value in pivot.index])
+    ax.set_xlabel(x_param)
+    ax.set_ylabel(y_param)
+    ax.set_title(metric)
+    fig.colorbar(image, ax=ax, label=metric)
+    fig.tight_layout()
+
+    return fig
