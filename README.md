@@ -311,3 +311,39 @@ python scripts/run_config.py --adapter pysdm_parcel
 
 The previous `placeholder_warm_cloud` adapter is still available for UI testing when PySDM is not installed.
 
+## Result Storage
+
+Each simulation run is now saved as a complete result directory:
+
+```text
+results/
+└── <run_id>/
+    ├── config.yaml
+    ├── timeseries.csv
+    ├── summary.json
+    ├── metadata.json
+    └── validation_report.json
+```
+
+The runner returns the result directory path instead of a single CSV file.
+
+## Progress Reporting
+
+CLI runs now print coarse progress messages:
+
+```bash
+python scripts/run_config.py --adapter pysdm_parcel
+```
+
+Example:
+
+```text
+[01/05 |  20.00%] runner: Normalizing configuration
+[02/05 |  40.00%] runner: Building run specification
+[03/05 |  60.00%] runner: Running adapter: pysdm_parcel
+...
+```
+
+For the real PySDM adapter, the current progress is stage-based.  
+Fine-grained per-time-step progress will require deeper integration with the PySDM simulation loop.
+

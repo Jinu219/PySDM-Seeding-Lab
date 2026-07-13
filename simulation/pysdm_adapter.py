@@ -5,21 +5,27 @@ from typing import Callable, Dict
 import numpy as np
 import pandas as pd
 
+from simulation.progress import ProgressCallback, emit_progress
 from simulation.types import AdapterResult, SimulationRunSpec
 
 
-AdapterFunction = Callable[[SimulationRunSpec], AdapterResult]
+AdapterFunction = Callable[[SimulationRunSpec, ProgressCallback], AdapterResult]
 
 
-def run_placeholder_warm_cloud(spec: SimulationRunSpec) -> AdapterResult:
+def run_placeholder_warm_cloud(
+    spec: SimulationRunSpec,
+    progress_callback: ProgressCallback = None,
+) -> AdapterResult:
     """
     Temporary warm-cloud-like placeholder adapter.
 
     This adapter does not call PySDM yet.
     It only preserves the final adapter interface so that UI, runner,
-    result storage, and analysis can be developed before the real PySDM
-    simulation is connected.
+    result storage, and analysis can be developed before or alongside
+    the real PySDM simulation.
     """
+    emit_progress(progress_callback, "adapter", 1, 4, "Preparing placeholder settings")
+
     settings = spec.settings
     env = settings.get("environment", {})
     seed = settings.get("seeding", {})
@@ -29,6 +35,8 @@ def run_placeholder_warm_cloud(spec: SimulationRunSpec) -> AdapterResult:
     duration = int(env.get("duration", 1500))
     timestep = int(env.get("timestep", 15))
     time_s = np.arange(0, duration + timestep, timestep)
+
+    emit_progress(progress_callback, "adapter", 2, 4, f"Computing synthetic {len(time_s)}-step time series")
 
     updraft = float(env.get("updraft_velocity", 1.0))
     rh = float(env.get("relative_humidity", 95.0))
@@ -67,6 +75,8 @@ def run_placeholder_warm_cloud(spec: SimulationRunSpec) -> AdapterResult:
     rain_drop_number = 5 + 10 * (rain_water / max(rain_water.max(), 1e-12))
     mean_radius_m = background_radius * (1 + 5 * cloud_water / max(cloud_water.max(), 1e-12))
 
+    emit_progress(progress_callback, "adapter", 3, 4, "Formatting placeholder output")
+
     df = pd.DataFrame(
         {
             "time_s": time_s,
@@ -91,8 +101,10 @@ def run_placeholder_warm_cloud(spec: SimulationRunSpec) -> AdapterResult:
 
     metadata = {
         **spec.metadata,
-        "adapter_note": "Synthetic placeholder output. Replace with real PySDM adapter in Step 5.",
+        "adapter_note": "Synthetic placeholder output. Use pysdm_parcel for real PySDM output.",
     }
+
+    emit_progress(progress_callback, "adapter", 4, 4, "Placeholder adapter finished")
 
     return AdapterResult(
         timeseries=df,
@@ -101,11 +113,14 @@ def run_placeholder_warm_cloud(spec: SimulationRunSpec) -> AdapterResult:
     )
 
 
-def run_pysdm_parcel(spec: SimulationRunSpec) -> AdapterResult:
+def run_pysdm_parcel(
+    spec: SimulationRunSpec,
+    progress_callback: ProgressCallback = None,
+) -> AdapterResult:
     """Run the first real PySDM parcel seeding adapter."""
     from simulation.pysdm_parcel_adapter import run_pysdm_parcel_simulation
 
-    return run_pysdm_parcel_simulation(spec)
+    return run_pysdm_parcel_simulation(spec, progress_callback=progress_callback)
 
 
 ADAPTER_REGISTRY: Dict[str, AdapterFunction] = {
@@ -119,7 +134,10 @@ def available_adapters() -> list[str]:
     return sorted(ADAPTER_REGISTRY.keys())
 
 
-def run_adapter(spec: SimulationRunSpec) -> AdapterResult:
+def run_adapter(
+    spec: SimulationRunSpec,
+    progress_callback: ProgressCallback = None,
+) -> AdapterResult:
     """Run the adapter selected in the SimulationRunSpec."""
     adapter_name = spec.adapter_name
 
@@ -129,7 +147,7 @@ def run_adapter(spec: SimulationRunSpec) -> AdapterResult:
             f"Available adapters: {available_adapters()}"
         )
 
-    result = ADAPTER_REGISTRY[adapter_name](spec)
+    result = ADAPTER_REGISTRY[adapter_name](spec, progress_callback)
     result.require_timeseries()
     return result
 

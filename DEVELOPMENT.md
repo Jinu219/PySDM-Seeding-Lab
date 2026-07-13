@@ -162,3 +162,24 @@ Recommended commit message:
 git commit -m "Fix PySDM spectrum sampling API compatibility"
 ```
 
+## Step 6. Improve result storage and progress reporting
+
+Simulation outputs are now saved as structured run directories instead of single CSV files.
+
+Changes:
+- Added `simulation/progress.py`
+- Added CLI progress reporter
+- Updated `simulation/runner.py` to save full run directories
+- Saved `config.yaml`, `timeseries.csv`, `summary.json`, `metadata.json`, and `validation_report.json`
+- Added time-series summary metrics using `np.trapezoid`
+- Updated placeholder and PySDM adapters to emit stage-based progress
+- Updated Streamlit Run page with progress bar and status messages
+- Updated Results page to read new result directories and legacy CSV files
+- Added `.gitignore` for generated results, logs, local envs, and caches
+
+Recommended commit message:
+
+```bash
+git commit -m "Save structured simulation results with progress reporting"
+```
+

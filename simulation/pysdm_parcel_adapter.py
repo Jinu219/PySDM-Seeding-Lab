@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict
 import numpy as np
 import pandas as pd
 
+from simulation.progress import ProgressCallback, emit_progress
 from simulation.types import AdapterResult, SimulationRunSpec
 
 
@@ -151,8 +152,9 @@ def _sample_spectrum_deterministic(sampler: Any, *, n_sd: int, backend: Any | No
         f"Available public attributes/methods: {available}"
     ) from last_error
 
-def _configure_settings(spec: SimulationRunSpec) -> Any:
+def _configure_settings(spec: SimulationRunSpec, progress_callback: ProgressCallback = None) -> Any:
     """Create and override PySDM_examples.seeding.Settings from app configuration."""
+    emit_progress(progress_callback, "adapter", 1, 5, "Creating PySDM Settings")
     modules = _require_pysdm()
 
     Formulae = modules["Formulae"]
@@ -212,6 +214,8 @@ def _configure_settings(spec: SimulationRunSpec) -> Any:
     settings.w_min = updraft_m_s * si.m / si.s
     settings.w_max = updraft_m_s * si.m / si.s
     settings.updraft = lambda _t: updraft_m_s * si.m / si.s
+
+    emit_progress(progress_callback, "adapter", 2, 5, "Mapping aerosol and seeding spectra")
 
     # Background aerosol spectrum
     background_n_per_kg = _number_concentration_cm3_to_per_kg(
@@ -304,7 +308,10 @@ def _output_to_dataframe(output: Dict[str, Any], spec: SimulationRunSpec) -> pd.
     return df
 
 
-def run_pysdm_parcel_simulation(spec: SimulationRunSpec) -> AdapterResult:
+def run_pysdm_parcel_simulation(
+    spec: SimulationRunSpec,
+    progress_callback: ProgressCallback = None,
+) -> AdapterResult:
     """
     Run the first real PySDM parcel seeding simulation.
 
@@ -314,10 +321,26 @@ def run_pysdm_parcel_simulation(spec: SimulationRunSpec) -> AdapterResult:
     modules = _require_pysdm()
     Simulation = modules["Simulation"]
 
-    settings = _configure_settings(spec)
+    settings = _configure_settings(spec, progress_callback=progress_callback)
+
+    env = spec.settings.get("environment", {})
+    duration = int(env.get("duration", 1500))
+    timestep = int(env.get("timestep", 15))
+    expected_steps = int(duration / max(timestep, 1)) + 1
+
+    emit_progress(progress_callback, "adapter", 3, 5, "Initializing PySDM Simulation object")
     simulation = Simulation(settings=settings)
+
+    emit_progress(
+        progress_callback,
+        "adapter",
+        4,
+        5,
+        f"Running PySDM simulation internally; expected output steps: {expected_steps}",
+    )
     output = simulation.run()
 
+    emit_progress(progress_callback, "adapter", 5, 5, "Converting PySDM output to DataFrame")
     df = _output_to_dataframe(output, spec)
 
     summary = {

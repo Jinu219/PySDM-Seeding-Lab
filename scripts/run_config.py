@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 from simulation.config import load_config
+from simulation.progress import StdoutProgressReporter
 from simulation.runner import run_experiment
 
 
@@ -25,6 +26,7 @@ def main() -> None:
     parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--adapter", default=None, choices=["placeholder_warm_cloud", "pysdm_parcel"])
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--quiet", action="store_true", help="Disable progress messages.")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -40,8 +42,10 @@ def main() -> None:
     if not output_dir.is_absolute():
         output_dir = PROJECT_ROOT / output_dir
 
-    result_path = run_experiment(cfg, output_dir=output_dir)
-    print(result_path)
+    reporter = StdoutProgressReporter(enabled=not args.quiet)
+    result_path = run_experiment(cfg, output_dir=output_dir, progress_callback=reporter)
+
+    print(f"Result directory: {result_path}")
 
 
 if __name__ == "__main__":

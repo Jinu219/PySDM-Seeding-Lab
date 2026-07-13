@@ -74,13 +74,23 @@ with st.expander("Current configuration"):
 run_disabled = summary["error"] > 0
 
 if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
+    progress_bar = st.progress(0)
+    status_box = st.empty()
+
+    def report_progress(stage: str, current: int, total: int, message: str) -> None:
+        progress_bar.progress(min(current / max(total, 1), 1.0))
+        status_box.info(f"[{current}/{total}] {stage}: {message}")
+
     try:
         with st.spinner("Running simulation..."):
             result_path = run_experiment(
                 cfg,
                 output_dir=Path(output.get("base_dir", "results")),
+                progress_callback=report_progress,
             )
-        st.success(f"Experiment finished. Result saved to: {result_path}")
+        progress_bar.progress(1.0)
+        status_box.success(f"Finished: {result_path}")
+        st.success(f"Experiment finished. Result directory: {result_path}")
     except Exception as exc:
         st.error("Simulation failed.")
         st.exception(exc)
