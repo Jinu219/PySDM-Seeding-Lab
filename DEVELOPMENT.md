@@ -313,3 +313,25 @@ Recommended commit message:
 git commit -m "Add seeding efficiency metrics"
 ```
 
+## Step 10. Add parameter sweep workflow
+
+The project now supports parameter sweeps through `experiment.mode = parameter_sweep`.
+
+Changes:
+- Added `simulation/sweep.py`
+- Added sweep section to config schema
+- Added `run_parameter_sweep()` to simulation runner
+- Added automatic Cartesian product generation for sweep parameters
+- Added per-case execution using `sweep.run_mode`
+- Added sweep ranking table generation
+- Added `sweep_summary.csv`
+- Added Streamlit page `07_parameter_sweep.py`
+- Updated Results Dashboard to discover and display sweep results
+- Added sweep ranking plot and table
+
+Recommended commit message:
+
+```bash
+git commit -m "Add parameter sweep experiment workflow"
+```
+

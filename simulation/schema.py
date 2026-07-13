@@ -96,6 +96,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "collision": False,
         "sedimentation": False,
     },
+    "sweep": {
+        "run_mode": "control_vs_seeding",
+        "max_runs": 100,
+        "ranking_metric": "comparison.efficiency.seeding_efficiency_score",
+        "parameters": [
+            {
+                "name": "seeding.dry_radius",
+                "values": [5.0e-7, 1.0e-6, 1.5e-6],
+            },
+            {
+                "name": "seeding.kappa",
+                "values": [0.8, 1.0, 1.2],
+            },
+        ],
+    },
     "output": {
         "base_dir": "results",
         "save_config": True,

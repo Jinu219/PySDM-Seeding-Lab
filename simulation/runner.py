@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+import pandas as pd
 import yaml
 
 from analysis.comparison import build_difference_dataframe, summarize_comparison
@@ -14,6 +15,7 @@ from simulation.builder import build_run_spec
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.pysdm_adapter import run_adapter
 from simulation.schema import normalize_config
+from simulation.sweep import build_sweep_row, generate_sweep_cases
 from simulation.validation import validation_report_rows, validation_summary
 
 
@@ -51,7 +53,7 @@ def run_experiment(
         return run_control_vs_seeding(cfg, output_dir, progress_callback=progress_callback)
 
     if mode == "parameter_sweep":
-        raise NotImplementedError("parameter_sweep mode is reserved for Step 10.")
+        return run_parameter_sweep(cfg, output_dir, progress_callback=progress_callback)
 
     return run_single_experiment(cfg, output_dir, progress_callback=progress_callback)
 
@@ -208,6 +210,158 @@ def run_control_vs_seeding(
     emit_progress(progress_callback, "comparison", 8, total_stages, f"Finished: {run_dir}")
 
     return run_dir
+
+
+
+def run_parameter_sweep(
+    config: Dict[str, Any],
+    output_dir: Path,
+    progress_callback: ProgressCallback = None,
+) -> Path:
+    """
+    Run a parameter sweep.
+
+    Each generated case is executed using `sweep.run_mode`.
+    The default case mode is `control_vs_seeding`, so each case produces
+    a paired control/seeding comparison and an efficiency score.
+
+    Result structure:
+
+    results/
+    └── <run_id>_parameter_sweep/
+        ├── config.yaml
+        ├── metadata.json
+        ├── summary.json
+        ├── sweep_summary.csv
+        ├── validation_report.json
+        └── cases/
+            ├── <case run dir>/
+            └── ...
+    """
+    cfg = normalize_config(config)
+    sweep = cfg.get("sweep", {})
+    ranking_metric = str(
+        sweep.get(
+            "ranking_metric",
+            "comparison.efficiency.seeding_efficiency_score",
+        )
+    )
+
+    cases = generate_sweep_cases(cfg)
+    total_cases = len(cases)
+
+    experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_id = f"{timestamp}_{experiment_name}_parameter_sweep"
+
+    sweep_dir = output_dir / run_id
+    cases_dir = sweep_dir / "cases"
+    sweep_dir.mkdir(parents=True, exist_ok=True)
+    cases_dir.mkdir(parents=True, exist_ok=True)
+
+    emit_progress(
+        progress_callback,
+        "sweep",
+        1,
+        total_cases + 2,
+        f"Generated {total_cases} sweep cases",
+    )
+
+    rows = []
+
+    for idx, case in enumerate(cases, start=1):
+        emit_progress(
+            progress_callback,
+            "sweep",
+            idx + 1,
+            total_cases + 2,
+            f"Running {case.case_name}",
+        )
+
+        case_result_dir = run_experiment(
+            case.config,
+            cases_dir,
+            progress_callback=progress_callback,
+        )
+
+        summary_path = case_result_dir / "summary.json"
+        if summary_path.exists():
+            with summary_path.open("r", encoding="utf-8") as f:
+                case_summary = json.load(f)
+        else:
+            case_summary = {}
+
+        rows.append(
+            build_sweep_row(
+                case=case,
+                result_dir=str(case_result_dir.relative_to(sweep_dir)),
+                summary=case_summary,
+                ranking_metric=ranking_metric,
+            )
+        )
+
+    sweep_df = pd.DataFrame(rows)
+
+    if "ranking_value" in sweep_df.columns:
+        sweep_df = sweep_df.sort_values(
+            by="ranking_value",
+            ascending=False,
+            na_position="last",
+        ).reset_index(drop=True)
+        sweep_df.insert(0, "rank", range(1, len(sweep_df) + 1))
+
+    emit_progress(
+        progress_callback,
+        "sweep",
+        total_cases + 2,
+        total_cases + 2,
+        "Writing sweep summary",
+    )
+
+    sweep_df.to_csv(sweep_dir / "sweep_summary.csv", index=False)
+    _write_yaml(sweep_dir / "config.yaml", cfg)
+    _write_json(sweep_dir / "validation_report.json", validation_report_rows(cfg))
+
+    best_case = None
+    if len(sweep_df) > 0:
+        best_case = sweep_df.iloc[0].to_dict()
+
+    metadata_payload = {
+        "run_id": run_id,
+        "created_at": timestamp,
+        "experiment_name": experiment_name,
+        "experiment_mode": "parameter_sweep",
+        "adapter_name": cfg.get("simulation", {}).get("adapter"),
+        "case_name": "parameter_sweep",
+        "result_type": "parameter_sweep",
+        "n_cases": total_cases,
+        "ranking_metric": ranking_metric,
+        "result_files": {
+            "config": "config.yaml",
+            "sweep_summary": "sweep_summary.csv",
+            "summary": "summary.json",
+            "metadata": "metadata.json",
+            "validation_report": "validation_report.json",
+            "cases": "cases/",
+        },
+    }
+
+    summary_payload = {
+        "run_id": run_id,
+        "experiment_name": experiment_name,
+        "experiment_mode": "parameter_sweep",
+        "adapter_name": cfg.get("simulation", {}).get("adapter"),
+        "case_name": "parameter_sweep",
+        "n_cases": total_cases,
+        "ranking_metric": ranking_metric,
+        "best_case": best_case,
+        "validation": validation_summary(cfg),
+    }
+
+    _write_json(sweep_dir / "metadata.json", metadata_payload)
+    _write_json(sweep_dir / "summary.json", summary_payload)
+
+    return sweep_dir
 
 
 def _write_single_result_files(

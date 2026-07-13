@@ -27,7 +27,16 @@ def discover_results(result_dir: Path) -> List[ResultEntry]:
     entries: List[ResultEntry] = []
 
     for path in sorted([p for p in result_dir.iterdir() if p.is_dir()], reverse=True):
-        if (path / "comparison.csv").exists():
+        if (path / "sweep_summary.csv").exists():
+            entries.append(
+                ResultEntry(
+                    path=path,
+                    label=f"[sweep] {path.name}",
+                    is_run_directory=True,
+                    result_type="parameter_sweep",
+                )
+            )
+        elif (path / "comparison.csv").exists():
             entries.append(
                 ResultEntry(
                     path=path,
@@ -61,6 +70,34 @@ def discover_results(result_dir: Path) -> List[ResultEntry]:
 
 def load_result(entry: ResultEntry) -> Dict[str, Any]:
     """Load a result directory or legacy CSV into a common dictionary."""
+    if entry.result_type == "parameter_sweep":
+        sweep_path = entry.path / "sweep_summary.csv"
+        summary_path = entry.path / "summary.json"
+        metadata_path = entry.path / "metadata.json"
+        config_path = entry.path / "config.yaml"
+        validation_path = entry.path / "validation_report.json"
+
+        sweep_df = pd.read_csv(sweep_path)
+        return {
+            "entry": entry,
+            "timeseries": sweep_df,
+            "sweep": sweep_df,
+            "comparison": pd.DataFrame(),
+            "control": pd.DataFrame(),
+            "seeding": pd.DataFrame(),
+            "summary": _read_json(summary_path),
+            "metadata": _read_json(metadata_path),
+            "config": _read_yaml(config_path),
+            "validation": _read_json(validation_path),
+            "files": {
+                "sweep_summary": sweep_path,
+                "summary": summary_path,
+                "metadata": metadata_path,
+                "config": config_path,
+                "validation": validation_path,
+            },
+        }
+
     if entry.result_type == "comparison":
         comparison_path = entry.path / "comparison.csv"
         summary_path = entry.path / "summary.json"
@@ -367,3 +404,25 @@ def _seeding_intervals_from_comparison(comparison_df: pd.DataFrame) -> List[tupl
             temp = pd.DataFrame({"time_s": comparison_df["time_s"], "seeding_active": comparison_df[candidate]})
             return _seeding_intervals(temp)
     return []
+
+
+
+def plot_sweep_ranking(sweep_df: pd.DataFrame, metric: str = "ranking_value", top_n: int = 10):
+    """Plot top-N sweep cases by ranking metric."""
+    fig, ax = plt.subplots(figsize=(6.0, 3.2))
+
+    if sweep_df.empty or metric not in sweep_df.columns:
+        ax.set_title("No sweep ranking data")
+        return fig
+
+    plot_df = sweep_df.copy()
+    plot_df = plot_df.dropna(subset=[metric])
+    plot_df = plot_df.sort_values(metric, ascending=False).head(top_n)
+
+    labels = plot_df["case_name"] if "case_name" in plot_df.columns else plot_df.index.astype(str)
+    ax.barh(labels[::-1], plot_df[metric].to_numpy()[::-1])
+    ax.set_xlabel(metric)
+    ax.set_ylabel("Sweep case")
+    ax.set_title(f"Top {min(top_n, len(plot_df))} sweep cases")
+
+    return fig

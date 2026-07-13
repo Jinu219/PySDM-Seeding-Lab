@@ -475,3 +475,47 @@ A negative rain-onset shift means rain appeared earlier in the seeding run.
 `seeding_efficiency_score` is a heuristic dashboard score for quick ranking.  
 It is not a final scientific objective function and should be revised after the real PySDM workflow is validated.
 
+## Parameter Sweep Workflow
+
+When `experiment.mode` is set to `parameter_sweep`, the runner generates all combinations from `sweep.parameters`.
+
+Example:
+
+```yaml
+experiment:
+  mode: parameter_sweep
+
+sweep:
+  run_mode: control_vs_seeding
+  max_runs: 100
+  ranking_metric: comparison.efficiency.seeding_efficiency_score
+  parameters:
+    - name: seeding.dry_radius
+      values: [5.0e-7, 1.0e-6, 1.5e-6]
+    - name: seeding.kappa
+      values: [0.8, 1.0, 1.2]
+```
+
+The output structure is:
+
+```text
+results/
+└── <run_id>_parameter_sweep/
+    ├── config.yaml
+    ├── metadata.json
+    ├── summary.json
+    ├── sweep_summary.csv
+    ├── validation_report.json
+    └── cases/
+        ├── <case result directory>/
+        └── ...
+```
+
+The Results Dashboard detects sweep results and shows a ranking chart and summary table.
+
+A Streamlit sweep setup page is available:
+
+```text
+07. Parameter Sweep
+```
+

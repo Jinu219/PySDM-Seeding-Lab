@@ -15,6 +15,7 @@ from analysis.dashboard import (
     plot_control_vs_seeding,
     plot_difference,
     plot_selected_variable,
+    plot_sweep_ranking,
     plot_time_series,
     recommended_column_groups,
 )
@@ -56,6 +57,7 @@ selected_entry = st.selectbox(
 
 loaded = load_result(selected_entry)
 df = loaded["timeseries"]
+sweep_df = loaded.get("sweep", pd.DataFrame())
 comparison_df = loaded.get("comparison", pd.DataFrame())
 control_df = loaded.get("control", pd.DataFrame())
 seeding_df = loaded.get("seeding", pd.DataFrame())
@@ -65,6 +67,7 @@ config = loaded["config"]
 validation = loaded["validation"]
 files = loaded["files"]
 
+is_sweep = selected_entry.result_type == "parameter_sweep"
 is_comparison = selected_entry.result_type == "comparison"
 
 flat_summary_for_notice = flatten_summary(summary)
@@ -132,7 +135,14 @@ with tab_dashboard:
 
     flat_summary = flatten_summary(summary)
 
-    if is_comparison:
+    if is_sweep:
+        preferred_metrics = [
+            "n_cases",
+            "best_case.ranking_value",
+            "best_case.case_name",
+            "ranking_metric",
+        ]
+    elif is_comparison:
         preferred_metrics = [
             "comparison.efficiency.seeding_efficiency_score",
             "comparison.efficiency.accumulated_rain_enhancement",
@@ -183,7 +193,21 @@ with tab_dashboard:
     matrix_cols = st.slider("Plot grid columns", min_value=1, max_value=3, value=2)
     max_plots = st.slider("Maximum plots in dashboard", min_value=2, max_value=8, value=5)
 
-    if is_comparison:
+    if is_sweep:
+        st.subheader("Sweep Ranking")
+        if sweep_df.empty:
+            st.info("No sweep summary table found.")
+        else:
+            metric = st.selectbox(
+                "Ranking metric column",
+                [col for col in sweep_df.columns if pd.api.types.is_numeric_dtype(sweep_df[col])],
+                index=0 if "ranking_value" not in sweep_df.columns else [col for col in sweep_df.columns if pd.api.types.is_numeric_dtype(sweep_df[col])].index("ranking_value"),
+            )
+            top_n = st.slider("Top N", min_value=3, max_value=min(20, len(sweep_df)), value=min(10, len(sweep_df)))
+            st.pyplot(plot_sweep_ranking(sweep_df, metric=metric, top_n=top_n), use_container_width=True)
+            st.dataframe(sweep_df.head(top_n), use_container_width=True)
+
+    elif is_comparison:
         st.subheader("Comparison Plot Matrix")
         st.caption("Control and seeding curves are shown side by side. Placeholder results are only for UI/workflow testing.")
 
@@ -282,7 +306,17 @@ if is_comparison and tab_comparison is not None:
         st.json(summary.get("comparison", summary))
 
 with tab_tables:
-    if is_comparison:
+    if is_sweep:
+        st.subheader("Sweep Summary Table")
+        st.dataframe(sweep_df, use_container_width=True)
+        st.download_button(
+            "Download sweep summary CSV",
+            data=sweep_df.to_csv(index=False).encode("utf-8"),
+            file_name="sweep_summary.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    elif is_comparison:
         st.subheader("Comparison Table")
         st.dataframe(comparison_df, use_container_width=True)
 
