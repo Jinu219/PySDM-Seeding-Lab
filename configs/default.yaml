@@ -33,12 +33,12 @@ seeding:
   geometric_sigma: 1.2
   kappa: 0.8
   particle_density: 1770.0
-  number_concentration: 10.0
   number_superdroplets: 100
   injection_start: 900
   injection_end: 1200
   injection_altitude: 500.0
   delivery_method: idealized_uniform
+  number_concentration: 10.0
 dynamics:
   updraft_strength: 1.0
   downdraft_strength: 0.0

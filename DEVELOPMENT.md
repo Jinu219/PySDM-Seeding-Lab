@@ -183,3 +183,27 @@ Recommended commit message:
 git commit -m "Save structured simulation results with progress reporting"
 ```
 
+## Step 7. Build result dashboard
+
+The Results page was upgraded into a dashboard for structured result directories and legacy CSV files.
+
+Changes:
+- Added `analysis/dashboard.py`
+- Added result discovery utilities
+- Added structured result loading utilities
+- Added summary flattening and metric formatting helpers
+- Added recommended diagnostic column grouping
+- Added seeding-active window shading in plots
+- Rebuilt `pages/06_results.py` with dashboard tabs
+- Added summary metric cards
+- Added diagnostic plots for water content, radius, number concentration, and supersaturation
+- Added custom variable plot
+- Added metadata, config, validation report, and CSV download views
+- Updated `analysis/plotting.py` to reuse dashboard plotting utilities
+
+Recommended commit message:
+
+```bash
+git commit -m "Add results dashboard for simulation outputs"
+```
+

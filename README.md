@@ -347,3 +347,28 @@ Example:
 For the real PySDM adapter, the current progress is stage-based.  
 Fine-grained per-time-step progress will require deeper integration with the PySDM simulation loop.
 
+## Results Dashboard
+
+The `06. Results Dashboard` page provides a research-oriented view of simulation outputs.
+
+Dashboard features:
+
+- Select structured run directories or legacy CSV files
+- Show run overview cards
+- Show summary metric cards
+- Plot recommended diagnostic groups
+  - water content
+  - radius
+  - number concentration
+  - supersaturation
+- Shade seeding-active time windows when `seeding_active` is available
+- Show custom variable plots
+- Inspect `summary.json`, `metadata.json`, `config.yaml`, and `validation_report.json`
+- Download the time-series CSV from the dashboard
+
+Reusable dashboard utilities are implemented in:
+
+```text
+analysis/dashboard.py
+```
+
