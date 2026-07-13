@@ -1,0 +1,5 @@
+# Optional dependencies for the real PySDM adapter.
+# Install this when you want to run simulation.adapter = pysdm_parcel.
+
+PySDM
+PySDM-examples

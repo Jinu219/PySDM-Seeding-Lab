@@ -1,0 +1,1069 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+import analysis.dashboard as dash
+from simulation.ui_helpers import build_badge, inject_responsive_css
+
+
+def render_plot_grid(plot_items, *, n_cols: int = 2) -> None:
+    """Render matplotlib figures in a compact Streamlit grid."""
+    if not plot_items:
+        st.info("No plots to display.")
+        return
+
+    n_cols = max(1, int(n_cols))
+    rows = [plot_items[i : i + n_cols] for i in range(0, len(plot_items), n_cols)]
+
+    for row in rows:
+        cols = st.columns(n_cols)
+        for idx, item in enumerate(row):
+            title, fig = item
+            with cols[idx]:
+                st.caption(title)
+                st.pyplot(fig, use_container_width=True)
+                safe_title = "".join(ch if ch.isalnum() or ch in ["_", "-"] else "_" for ch in str(title))[:80]
+                st.download_button(
+                    "Download PNG",
+                    data=dash.figure_to_png_bytes(fig),
+                    file_name=f"{safe_title}.png",
+                    mime="image/png",
+                    use_container_width=True,
+                    key=f"download_{safe_title}_{idx}_{id(fig)}",
+                )
+
+
+REQUIRED_DASHBOARD_FUNCTIONS = [
+    "discover_results",
+    "load_result",
+    "flatten_summary",
+    "format_metric_value",
+    "available_numeric_columns",
+    "recommended_column_groups",
+    "comparison_base_variables",
+    "plot_time_series",
+    "plot_selected_variable",
+    "plot_control_vs_seeding",
+    "plot_difference",
+    "plot_sweep_ranking",
+    "sweep_base_variables",
+    "build_sweep_overlay_dataframe",
+    "plot_sweep_overlay",
+    "compute_overlay_spread",
+    "sweep_param_columns",
+    "plot_sweep_heatmap",
+    "build_overlay_legend_table",
+    "recommended_sweep_variables",
+    "short_sweep_param_name",
+    "format_sweep_param_value",
+    "filter_sweep_dataframe",
+    "result_is_readable",
+    "likely_injection_time_sweep",
+    "plot_sweep_effect_summary",
+    "build_sweep_effect_summary",
+    "build_sweep_overlay_dataframe_relative_time",
+    "plot_ensemble_uncertainty",
+    "ensemble_available_bases",
+    "figure_to_png_bytes",
+    "growth_pathway_all_variables",
+    "growth_pathway_variable_groups",
+]
+
+missing = [name for name in REQUIRED_DASHBOARD_FUNCTIONS if not hasattr(dash, name)]
+if missing:
+    st.error("Dashboard module is incomplete. Replace `analysis/dashboard.py` with the latest version.")
+    st.code("\n".join(missing))
+    st.info("If you already replaced the file, fully stop Streamlit and run it again. Old modules can remain in memory until restart.")
+    st.stop()
+
+
+RESULTS_UI_BUILD_ID = "sweep-case-filter-coverage-20260713"
+
+inject_responsive_css()
+st.title("07. Results Dashboard")
+st.caption("Simulation output, case-wise time-series comparison, summary metrics, and diagnostics.")
+build_badge("Results page build", RESULTS_UI_BUILD_ID)
+build_badge("Dashboard module build", getattr(dash, "DASHBOARD_BUILD_ID", "unknown"))
+
+result_dir = Path("results")
+entries = dash.discover_results(result_dir)
+
+if not entries:
+    st.info("No result files found. Run an experiment first.")
+    st.stop()
+
+show_incomplete = st.toggle(
+    "Show incomplete / in-progress results",
+    value=False,
+    help="Turn on only when you want to inspect a run that is still being written.",
+)
+if not show_incomplete:
+    entries = [entry for entry in entries if dash.result_is_readable(entry)]
+
+if not entries:
+    st.warning("No completed readable result files found yet. Wait until the run finishes or enable incomplete results.")
+    st.stop()
+
+st.info("If the build badge below does not change after update, stop Streamlit completely (`Ctrl+C`) and run `streamlit run app.py` again.")
+
+selected_entry = st.selectbox(
+    "Select result",
+    entries,
+    format_func=lambda entry: entry.label,
+)
+
+loaded = dash.load_result(selected_entry)
+df = loaded["timeseries"]
+
+if df.empty:
+    st.warning(
+        "This result directory exists, but its primary CSV is empty or still being written. "
+        "Wait for the run to finish, then refresh Results Dashboard."
+    )
+    with st.expander("Detected files"):
+        st.write(selected_entry.path)
+    st.stop()
+ensemble_df = loaded.get("ensemble", pd.DataFrame())
+member_summary_df = loaded.get("member_summary", pd.DataFrame())
+sweep_df = loaded.get("sweep", pd.DataFrame())
+comparison_df = loaded.get("comparison", pd.DataFrame())
+control_df = loaded.get("control", pd.DataFrame())
+seeding_df = loaded.get("seeding", pd.DataFrame())
+summary = loaded["summary"]
+metadata = loaded["metadata"]
+config = loaded["config"]
+validation = loaded["validation"]
+files = loaded["files"]
+
+is_ensemble = selected_entry.result_type == "ensemble"
+is_sweep = selected_entry.result_type == "parameter_sweep"
+is_comparison = selected_entry.result_type == "comparison"
+
+flat_summary_for_notice = dash.flatten_summary(summary)
+is_placeholder = any(
+    flat_summary_for_notice.get(key) is True
+    for key in [
+        "adapter_summary.is_placeholder",
+        "comparison.control.adapter_summary.is_placeholder",
+        "comparison.seeding.adapter_summary.is_placeholder",
+    ]
+)
+
+st.subheader("Run Overview")
+st.caption(f"Result folder name: `{selected_entry.path.name}`")
+
+overview_cols = st.columns(5)
+overview_cols[0].metric("Rows", f"{len(df)}")
+overview_cols[1].metric(
+    "End time",
+    dash.format_metric_value(float(df["time_s"].iloc[-1])) + " s" if "time_s" in df.columns and len(df) else "NA",
+)
+overview_cols[2].metric(
+    "Adapter",
+    metadata.get("adapter_name", summary.get("adapter_name", metadata.get("source", "unknown"))),
+)
+overview_cols[3].metric(
+    "Type",
+    selected_entry.result_type,
+)
+overview_cols[4].metric(
+    "Scenario",
+    config.get("experiment", {}).get("scenario_slug", config.get("experiment", {}).get("name", "-")),
+)
+
+if is_ensemble:
+    st.write(f"Ensemble run directory: `{selected_entry.path}`")
+elif is_sweep:
+    st.write(f"Sweep run directory: `{selected_entry.path}`")
+elif is_comparison:
+    st.write(f"Comparison run directory: `{selected_entry.path}`")
+else:
+    if "seeding_active" in df.columns:
+        active_steps = int(df["seeding_active"].fillna(0).sum())
+        st.caption(f"Seeding active steps: {active_steps}")
+    if selected_entry.is_run_directory:
+        st.write(f"Run directory: `{selected_entry.path}`")
+    else:
+        st.write(f"Legacy CSV: `{selected_entry.path}`")
+
+if is_placeholder:
+    st.warning(
+        "This result was generated by `placeholder_warm_cloud`. "
+        "The curves are synthetic workflow-test signals, not physically meaningful PySDM output. "
+        "Use `simulation.adapter = pysdm_parcel` for real PySDM results."
+    )
+
+st.divider()
+
+if is_ensemble:
+    tab_dashboard, tab_growth, tab_ensemble, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Ensemble Statistics", "Tables", "Files & Metadata", "Config / Validation"]
+    )
+    tab_exper2 = tab_growth
+    tab_comparison = None
+    tab_timeseries = None
+    tab_ranking = None
+elif is_sweep:
+    tab_dashboard, tab_growth, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
+    )
+    tab_exper2 = tab_growth
+    tab_comparison = None
+    tab_tables = tab_ranking
+elif is_comparison:
+    tab_dashboard, tab_exper2, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
+    )
+else:
+    tab_dashboard, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Timeseries Table", "Files & Metadata", "Config / Validation"]
+    )
+    tab_comparison = None
+    tab_exper2 = None
+    tab_timeseries = None
+    tab_ranking = None
+
+with tab_dashboard:
+    st.subheader("Summary Metrics")
+
+    flat_summary = dash.flatten_summary(summary)
+
+    if is_ensemble:
+        preferred_metrics = [
+            "ensemble.n_success",
+            "ensemble.n_failed",
+            "ensemble.metrics.rain_water_mixing_ratio_diff_final_mean",
+            "ensemble.metrics.rain_water_mixing_ratio_diff_integral_mean",
+        ]
+    elif is_sweep:
+        preferred_metrics = [
+            "n_cases",
+            "best_case.ranking_value",
+            "best_case.case_name",
+            "ranking_metric",
+            "n_cases",
+        ]
+    elif is_comparison:
+        preferred_metrics = [
+            "comparison.efficiency.seeding_efficiency_score",
+            "comparison.efficiency.accumulated_rain_enhancement",
+            "comparison.efficiency.accumulated_rain_enhancement_percent",
+            "comparison.efficiency.rain_enhancement_final",
+            "comparison.efficiency.rain_enhancement_final_percent",
+            "comparison.efficiency.rain_onset_time_shift_s",
+            "comparison.efficiency.cloud_to_rain_conversion_delta",
+        ]
+    else:
+        preferred_metrics = [
+            "metrics.final_rain_water_mixing_ratio",
+            "metrics.max_rain_water_mixing_ratio",
+            "metrics.accumulated_rain_water_proxy",
+            "metrics.cloud_to_rain_conversion_proxy",
+            "metrics.rain_onset_time_s",
+            "metrics.final_effective_radius_um",
+            "metrics.final_droplet_number_concentration_cm3",
+            "metrics.final_superdroplet_count",
+            "metrics.n_seeding_active_steps",
+        ]
+
+    metric_items = [(key, flat_summary.get(key)) for key in preferred_metrics if key in flat_summary]
+
+    if metric_items:
+        metric_cols = st.columns(min(4, len(metric_items)))
+        for idx, (key, value) in enumerate(metric_items):
+            metric_cols[idx % len(metric_cols)].metric(
+                key.split(".")[-1],
+                dash.format_metric_value(value),
+            )
+    else:
+        st.info("No summary metrics available yet.")
+
+    st.divider()
+
+    display_left, display_right = st.columns([2, 1])
+    with display_left:
+        matrix_cols = st.slider("Plot grid columns", min_value=1, max_value=3, value=2)
+        max_plots = st.slider("Maximum plots in dashboard", min_value=2, max_value=8, value=4)
+    with display_right:
+        st.info("Matrix plot legends are shown as separate tables so the plot area stays large.")
+        show_case_tables = st.toggle("Show case legend tables", value=True)
+
+    if is_ensemble:
+        st.subheader("Ensemble Uncertainty Matrix")
+        st.caption("Ensemble statistics are shown as mean ± std by default. Use the Ensemble Statistics tab for detailed median/IQR plots.")
+
+        bases = dash.ensemble_available_bases(ensemble_df)
+        default_bases = [base for base in [
+            "rain_water_mixing_ratio_diff",
+            "cloud_water_mixing_ratio_diff",
+            "all_activated_water_mixing_ratio_diff",
+            "water_vapour_mixing_ratio_diff",
+            "supersaturation_percent_diff",
+            "effective_radius_all_um_diff",
+        ] if base in bases]
+        selected_bases = st.multiselect(
+            "Variables",
+            bases,
+            default=default_bases[: min(4, len(default_bases))] if default_bases else bases[: min(4, len(bases))],
+            key="ensemble_dashboard_vars",
+        )
+        ensemble_items = [
+            (base, dash.plot_ensemble_uncertainty(ensemble_df, base_variable=base, mode="mean_std"))
+            for base in selected_bases[:max_plots]
+        ]
+        render_plot_grid(ensemble_items, n_cols=matrix_cols)
+
+    elif is_sweep:
+        st.subheader("Quick Parameter Effect Summary")
+        st.caption("겹쳐 보이는 time-series를 보기 전에, 각 case를 final/max/integral 값으로 요약해서 parameter 효과를 먼저 봅니다.")
+
+        available_vars_for_summary = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source="comparison")
+        param_cols_for_summary = dash.sweep_param_columns(sweep_df)
+
+        if available_vars_for_summary and param_cols_for_summary:
+            default_var_candidates = [
+                "rain_water_mixing_ratio_diff",
+                "rain_water_mixing_ratio",
+                "cloud_water_mixing_ratio_diff",
+                "all_activated_water_mixing_ratio_diff",
+                "supersaturation_percent_diff",
+            ]
+            default_var = next((var for var in default_var_candidates if var in available_vars_for_summary), available_vars_for_summary[0])
+
+            default_param = (
+                "param.seeding.injection_start"
+                if "param.seeding.injection_start" in param_cols_for_summary
+                else param_cols_for_summary[0]
+            )
+
+            s_col1, s_col2, s_col3 = st.columns(3)
+            with s_col1:
+                summary_variable = st.selectbox(
+                    "Response variable",
+                    available_vars_for_summary,
+                    index=available_vars_for_summary.index(default_var),
+                    key="quick_summary_variable",
+                )
+            with s_col2:
+                summary_parameter = st.selectbox(
+                    "Sweep parameter",
+                    param_cols_for_summary,
+                    index=param_cols_for_summary.index(default_param),
+                    key="quick_summary_parameter",
+                )
+            with s_col3:
+                summary_statistic = st.selectbox(
+                    "Statistic",
+                    ["final", "max", "integral", "peak_time_s", "min"],
+                    index=1,
+                    key="quick_summary_statistic",
+                )
+
+            quick_summary_df = dash.build_sweep_effect_summary(
+                selected_entry.path,
+                sweep_df,
+                variable=summary_variable,
+                curve_source="comparison",
+                comparison_mode="diff",
+                x_parameter=summary_parameter,
+            )
+            quick_fig = dash.plot_sweep_effect_summary(
+                quick_summary_df,
+                x_parameter=summary_parameter,
+                statistic=summary_statistic,
+                variable=summary_variable,
+            )
+            st.pyplot(quick_fig, use_container_width=True)
+            st.download_button(
+                "Download parameter summary plot",
+                data=dash.figure_to_png_bytes(quick_fig),
+                file_name=f"parameter_summary_{summary_variable}_{summary_statistic}.png",
+                mime="image/png",
+                use_container_width=True,
+            )
+            with st.expander("Parameter summary table", expanded=False):
+                st.dataframe(quick_summary_df, use_container_width=True)
+
+            if dash.likely_injection_time_sweep(sweep_df):
+                st.info("Injection-time sweep detected. Use `Sweep Time Series` → `Time axis = relative to injection start` to compare post-seeding responses more clearly.")
+        else:
+            st.info("No compact parameter summary is available for this result.")
+
+        st.subheader("Sweep Case Time-Series Matrix")
+        st.caption(
+            "각 sweep case의 시간 변화 곡선을 한 그래프에 겹쳐서 보여줍니다. "
+            "기본값은 diff = seeding - control이며, 인공강우 효과 판단은 이 차이 곡선에서 시작합니다."
+        )
+
+        curve_source = st.selectbox(
+            "Case output source",
+            ["comparison", "seeding", "control"],
+            index=0,
+            help="comparison은 각 case의 comparison.csv를 사용합니다. seeding/control은 각 case 내부의 timeseries.csv를 사용합니다.",
+        )
+
+        comparison_mode = "diff"
+        if curve_source == "comparison":
+            comparison_mode = st.selectbox(
+                "Comparison curve",
+                ["diff", "seeding", "control", "relative_change_percent"],
+                index=0,
+                help="diff는 seeding - control입니다.",
+            )
+
+        available_vars = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source=curve_source)
+
+        sweep_df = sweep_df.copy()
+        param_filter_cols = dash.sweep_param_columns(sweep_df)
+
+        with st.expander("Case filter / focus view", expanded=True):
+            st.caption(
+                "Plot은 모든 case를 자동으로 다 보여주지 않습니다. "
+                "예를 들어 dry radius가 3.0 µm까지 있어도 max cases가 작거나 앞쪽 case만 선택되면 안 보일 수 있습니다. "
+                "여기서 원하는 parameter 값만 남겨서 비교하세요."
+            )
+
+            filters = {}
+            filter_cols = st.columns(min(3, max(len(param_filter_cols), 1)))
+            for idx, param_col in enumerate(param_filter_cols):
+                unique_values = list(sweep_df[param_col].dropna().unique())
+                if len(unique_values) == 0 or len(unique_values) > 30:
+                    continue
+
+                try:
+                    unique_values = sorted(unique_values)
+                except Exception:
+                    pass
+
+                with filter_cols[idx % len(filter_cols)]:
+                    selected_values = st.multiselect(
+                        dash.short_sweep_param_name(param_col),
+                        unique_values,
+                        default=unique_values,
+                        format_func=lambda value, col=param_col: dash.format_sweep_param_value(col, value),
+                        key=f"dashboard_filter_{param_col}",
+                    )
+                filters[param_col] = selected_values
+
+            filtered_sweep_df = dash.filter_sweep_dataframe(sweep_df, filters)
+            st.metric("Selected cases", len(filtered_sweep_df))
+            if len(filtered_sweep_df) == 0:
+                st.warning("No cases selected. Adjust filters.")
+
+        default_vars = [
+            var
+            for var in [
+                "water_vapour_mixing_ratio",
+                "supersaturation_percent",
+                "cloud_water_mixing_ratio",
+                "rain_water_mixing_ratio",
+                "all_activated_water_mixing_ratio",
+                "effective_radius_all_um",
+            ]
+            if var in available_vars
+        ]
+
+        recommended_vars = dash.recommended_sweep_variables(available_vars)
+        selected_vars = st.multiselect(
+            "Variables to compare across cases",
+            available_vars,
+            default=recommended_vars[: min(4, len(recommended_vars))],
+        )
+
+        if not available_vars:
+            st.warning(
+                "No plottable variables found for this sweep result. "
+                "This usually means the result was generated by an older code version or the sweep cases are missing comparison/ensemble files. "
+                "Rerun the selected scenario after the latest update."
+            )
+
+        case_count_for_plot = max(len(filtered_sweep_df), 1)
+        max_cases = st.slider(
+            "Maximum cases per plot",
+            min_value=1,
+            max_value=max(case_count_for_plot, 1),
+            value=min(24, case_count_for_plot),
+            help="If this is smaller than selected cases, cases are sampled across the full parameter range instead of only taking the first cases.",
+        )
+
+        shaded_intervals = dash.sweep_seeding_intervals(selected_entry.path, sweep_df)
+        if shaded_intervals:
+            st.caption("Shaded time window indicates seeding-active period.")
+
+        plot_items = []
+        spread_rows = []
+        for var in selected_vars[:max_plots]:
+            overlay_df = dash.build_sweep_overlay_dataframe(
+                selected_entry.path,
+                filtered_sweep_df,
+                variable=var,
+                curve_source=curve_source,
+                comparison_mode=comparison_mode,
+                max_cases=max_cases,
+            )
+            label = f"{curve_source}:{comparison_mode}" if curve_source == "comparison" else curve_source
+            plot_items.append((var, dash.plot_sweep_overlay(overlay_df, variable=var, curve_label=label, show_legend=False, shaded_intervals=shaded_intervals)))
+            spread_rows.append({"variable": var, **dash.compute_overlay_spread(overlay_df)})
+
+        render_plot_grid(plot_items, n_cols=matrix_cols)
+
+        if show_case_tables and selected_vars:
+            first_var = selected_vars[0]
+            first_overlay_df = dash.build_sweep_overlay_dataframe(
+                selected_entry.path,
+                filtered_sweep_df,
+                variable=first_var,
+                curve_source=curve_source,
+                comparison_mode=comparison_mode,
+                max_cases=max_cases,
+            )
+            with st.expander("Case legend table", expanded=False):
+                st.caption("Legend is separated from plots to avoid shrinking the plotting area.")
+                st.dataframe(dash.style_curve_legend_table(dash.build_overlay_legend_table(first_overlay_df)), use_container_width=True)
+
+        if spread_rows:
+            st.subheader("Parameter Sensitivity Check")
+            spread_df = pd.DataFrame(spread_rows)
+            st.dataframe(spread_df, use_container_width=True)
+            if bool(spread_df["curves_overlap"].all()):
+                st.error(
+                    "All selected sweep curves overlap within numerical tolerance. "
+                    "This means the current sweep is not producing visible parameter sensitivity. "
+                    "Check whether this is a placeholder result, whether the adapter actually uses the swept parameters, "
+                    "and whether you are plotting `diff = seeding - control` rather than only absolute seeding curves."
+                )
+            elif bool(spread_df["curves_overlap"].any()):
+                st.warning(
+                    "Some variables show no spread across sweep cases. "
+                    "Those variables may not be sensitive to the selected parameters under the current setup."
+                )
+
+        with st.expander("Show sweep ranking as secondary information"):
+            if sweep_df.empty:
+                st.info("No sweep summary table found.")
+            else:
+                numeric_cols = [col for col in sweep_df.columns if pd.api.types.is_numeric_dtype(sweep_df[col])]
+                if numeric_cols:
+                    metric = st.selectbox(
+                        "Ranking metric column",
+                        numeric_cols,
+                        index=numeric_cols.index("ranking_value") if "ranking_value" in numeric_cols else 0,
+                    )
+                    top_n = st.slider(
+                        "Top N ranking",
+                        min_value=3,
+                        max_value=min(20, len(sweep_df)),
+                        value=min(10, len(sweep_df)),
+                    )
+                    st.pyplot(dash.plot_sweep_ranking(sweep_df, metric=metric, top_n=top_n), use_container_width=True)
+
+    elif is_comparison:
+        st.subheader("Comparison Plot Matrix")
+        st.caption("Control and seeding curves are shown side by side.")
+
+        bases = dash.comparison_base_variables(comparison_df)
+        default_order = [
+            "rain_water_mixing_ratio",
+            "cloud_water_mixing_ratio",
+            "supersaturation",
+            "effective_radius_um",
+            "droplet_number_concentration_cm3",
+            "superdroplet_count",
+        ]
+        selected_bases = [base for base in default_order if base in bases]
+        selected_bases += [base for base in bases if base not in selected_bases]
+        selected_bases = selected_bases[:max_plots]
+
+        plot_items = []
+        for base in selected_bases:
+            plot_items.append((f"Control vs Seeding · {base}", dash.plot_control_vs_seeding(comparison_df, base)))
+
+        render_plot_grid(plot_items, n_cols=matrix_cols)
+
+        st.subheader("Difference Plot Matrix")
+        st.caption("Difference is computed as seeding minus control.")
+        diff_items = []
+        for base in selected_bases:
+            diff_items.append((f"Seeding - Control · {base}", dash.plot_difference(comparison_df, base)))
+
+        render_plot_grid(diff_items, n_cols=matrix_cols)
+
+    else:
+        st.subheader("Diagnostic Plot Matrix")
+
+        if "time_s" not in df.columns:
+            st.warning("This result does not contain `time_s`, so time-series plots cannot be displayed.")
+        else:
+            groups = dash.recommended_column_groups(df)
+            plot_items = []
+
+            for group_name, columns in groups.items():
+                fig = dash.plot_time_series(
+                    df,
+                    columns,
+                    title=group_name,
+                    ylabel=group_name,
+                    show_seeding_window=True,
+                )
+                plot_items.append((group_name, fig))
+
+            render_plot_grid(plot_items[:max_plots], n_cols=matrix_cols)
+
+        st.divider()
+
+        st.subheader("Custom Variable Plot")
+
+        numeric_cols = dash.available_numeric_columns(df)
+        if "time_s" in df.columns and numeric_cols:
+            selected_columns = st.multiselect(
+                "Variables",
+                numeric_cols,
+                default=numeric_cols[: min(4, len(numeric_cols))],
+            )
+            custom_items = [
+                (column, dash.plot_selected_variable(df, column))
+                for column in selected_columns[:max_plots]
+            ]
+            render_plot_grid(custom_items, n_cols=matrix_cols)
+        else:
+            st.info("No numeric variables available for custom plotting.")
+
+
+
+if is_ensemble:
+    with tab_ensemble:
+        st.subheader("Ensemble Statistics")
+        st.caption("Mean ± std and median + IQR uncertainty views for repeated random seeds.")
+
+        bases = dash.ensemble_available_bases(ensemble_df)
+        if not bases:
+            st.info("No ensemble variables found.")
+        else:
+            selected_base = st.selectbox("Variable", bases, key="ensemble_stats_base")
+            mode = st.radio(
+                "Uncertainty view",
+                ["mean_std", "median_iqr"],
+                horizontal=True,
+                index=0,
+                format_func=lambda value: "Mean ± std" if value == "mean_std" else "Median + IQR",
+            )
+
+            fig = dash.plot_ensemble_uncertainty(
+                ensemble_df,
+                base_variable=selected_base,
+                mode=mode,
+                figsize=(11.5, 5.8),
+            )
+            st.pyplot(fig, use_container_width=True)
+            st.download_button(
+                "Download this plot as PNG",
+                data=dash.figure_to_png_bytes(fig),
+                file_name=f"ensemble_{selected_base}_{mode}.png",
+                mime="image/png",
+                use_container_width=True,
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Member Summary")
+                st.dataframe(member_summary_df, use_container_width=True)
+            with col2:
+                st.subheader("Ensemble Summary JSON")
+                st.json(summary.get("ensemble", {}))
+
+
+if (is_sweep or is_comparison) and tab_exper2 is not None:
+    with tab_exper2:
+        st.subheader("Seeding Growth Pathway Diagnostic View")
+        st.caption(
+            "성장 경로 분석 구조에 맞춰 thermodynamic → water mass → number concentration → size response를 봅니다. "
+            "기본 비교는 diff = seeding - control입니다."
+        )
+
+        if is_sweep:
+            curve_source = "comparison"
+            comparison_mode = st.radio(
+                "Comparison mode",
+                ["diff", "seeding", "control", "relative_change_percent"],
+                horizontal=True,
+                index=0,
+                key="exper2_sweep_mode",
+            )
+
+            available_vars = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source=curve_source)
+            groups = dash.growth_pathway_variable_groups(available_vars)
+
+            if not groups:
+                st.warning("No growth-pathway diagnostic variables are available in this sweep result. This is usually an old result. Rerun the scenario after the latest update.")
+            else:
+                selected_group = st.selectbox("Growth pathway diagnostic group", list(groups.keys()))
+                selected_vars = groups[selected_group]
+
+                max_cases_exper2 = st.slider(
+                    "Maximum cases to overlay",
+                    min_value=2,
+                    max_value=min(30, len(sweep_df)) if len(sweep_df) >= 2 else 2,
+                    value=min(12, len(sweep_df)) if len(sweep_df) >= 2 else 2,
+                    key="exper2_max_cases",
+                )
+                matrix_cols_exper2 = st.slider(
+                    "Plot columns",
+                    min_value=1,
+                    max_value=3,
+                    value=2,
+                    key="exper2_matrix_cols",
+                )
+
+                shaded_intervals = dash.sweep_seeding_intervals(selected_entry.path, sweep_df)
+                if shaded_intervals:
+                    st.caption("Shaded time window indicates seeding-active period.")
+
+                plot_items = []
+                spread_rows = []
+                legend_df = pd.DataFrame()
+                for var in selected_vars:
+                    overlay_df = dash.build_sweep_overlay_dataframe(
+                        selected_entry.path,
+                        sweep_df,
+                        variable=var,
+                        curve_source=curve_source,
+                        comparison_mode=comparison_mode,
+                        max_cases=max_cases_exper2,
+                    )
+                    if legend_df.empty:
+                        legend_df = dash.build_overlay_legend_table(overlay_df)
+                    plot_items.append(
+                        (
+                            var,
+                            dash.plot_sweep_overlay(
+                                overlay_df,
+                                variable=var,
+                                curve_label=f"comparison:{comparison_mode}",
+                                show_legend=False,
+                                shaded_intervals=shaded_intervals,
+                            ),
+                        )
+                    )
+                    spread_rows.append({"variable": var, **dash.compute_overlay_spread(overlay_df)})
+
+                render_plot_grid(plot_items, n_cols=matrix_cols_exper2)
+
+                with st.expander("Case legend table", expanded=False):
+                    st.dataframe(dash.style_curve_legend_table(legend_df), use_container_width=True)
+
+                st.subheader("Growth Pathway Sensitivity Check")
+                st.dataframe(pd.DataFrame(spread_rows), use_container_width=True)
+
+        elif is_comparison:
+            groups = dash.growth_pathway_variable_groups(dash.comparison_base_variables(comparison_df))
+
+            if not groups:
+                st.info("No growth-pathway diagnostic variables are available in this comparison result.")
+            else:
+                selected_group = st.selectbox("Growth pathway diagnostic group", list(groups.keys()))
+                selected_vars = groups[selected_group]
+                mode = st.radio(
+                    "Curve mode",
+                    ["diff", "control_vs_seeding"],
+                    horizontal=True,
+                    index=0,
+                    key="exper2_comparison_mode",
+                )
+
+                plot_items = []
+                if mode == "diff":
+                    for var in selected_vars:
+                        plot_items.append((f"Δ {var}", dash.plot_difference(comparison_df, var)))
+                else:
+                    for var in selected_vars:
+                        plot_items.append((var, dash.plot_control_vs_seeding(comparison_df, var)))
+
+                render_plot_grid(plot_items, n_cols=2)
+
+
+if is_sweep:
+    with tab_timeseries:
+        st.subheader("Sweep Time-Series Comparison")
+        st.caption(
+            "여기서 sweep의 핵심 결과를 봅니다. "
+            "dry radius, κ 등 case 조건이 다른 곡선들을 같은 변수 기준으로 겹쳐서 비교합니다. "
+            "상세 탭에서는 legend를 항상 표시해 case를 구분하기 쉽게 했습니다."
+        )
+
+        curve_source = st.radio(
+            "Output source",
+            ["comparison", "seeding", "control"],
+            horizontal=True,
+            key="sweep_ts_source",
+        )
+
+        comparison_mode = "diff"
+        if curve_source == "comparison":
+            comparison_mode = st.radio(
+                "Comparison mode",
+                ["diff", "seeding", "control", "relative_change_percent"],
+                horizontal=True,
+                key="sweep_ts_mode",
+            )
+
+        filtered_sweep_df = sweep_df.copy()
+        with st.expander("Case filter / focus view", expanded=True):
+            param_filter_cols = dash.sweep_param_columns(sweep_df)
+            filters = {}
+            filter_cols = st.columns(min(3, max(len(param_filter_cols), 1)))
+            for idx, param_col in enumerate(param_filter_cols):
+                unique_values = list(sweep_df[param_col].dropna().unique())
+                if len(unique_values) == 0 or len(unique_values) > 30:
+                    continue
+                try:
+                    unique_values = sorted(unique_values)
+                except Exception:
+                    pass
+                with filter_cols[idx % len(filter_cols)]:
+                    selected_values = st.multiselect(
+                        dash.short_sweep_param_name(param_col),
+                        unique_values,
+                        default=unique_values,
+                        format_func=lambda value, col=param_col: dash.format_sweep_param_value(col, value),
+                        key=f"sweep_ts_filter_{param_col}",
+                    )
+                filters[param_col] = selected_values
+
+            filtered_sweep_df = dash.filter_sweep_dataframe(sweep_df, filters)
+            st.metric("Selected cases", len(filtered_sweep_df))
+
+        available_vars = dash.sweep_base_variables(selected_entry.path, filtered_sweep_df, curve_source=curve_source)
+        selected_var = st.selectbox("Variable", available_vars, key="sweep_ts_variable") if available_vars else None
+
+        case_count_for_detail = max(len(filtered_sweep_df), 1)
+        max_cases = st.slider(
+            "Maximum cases to overlay",
+            min_value=1,
+            max_value=case_count_for_detail,
+            value=min(24, case_count_for_detail),
+            key="sweep_ts_max_cases",
+            help="If smaller than selected cases, cases are sampled across the full selected parameter range.",
+        )
+
+        time_axis_mode = st.selectbox(
+            "Time axis",
+            ["absolute time", "relative to injection start"],
+            index=1 if dash.likely_injection_time_sweep(sweep_df) else 0,
+            key="sweep_time_axis_mode",
+        )
+
+        if selected_var:
+            if time_axis_mode == "relative to injection start" and "param.seeding.injection_start" in sweep_df.columns:
+                overlay_df = dash.build_sweep_overlay_dataframe_relative_time(
+                    selected_entry.path,
+                    filtered_sweep_df,
+                    variable=selected_var,
+                    curve_source=curve_source,
+                    comparison_mode=comparison_mode,
+                    time_reference_param="param.seeding.injection_start",
+                    max_cases=max_cases,
+                )
+            else:
+                overlay_df = dash.build_sweep_overlay_dataframe(
+                    selected_entry.path,
+                    filtered_sweep_df,
+                    variable=selected_var,
+                    curve_source=curve_source,
+                    comparison_mode=comparison_mode,
+                    max_cases=max_cases,
+                )
+
+            detailed_shaded_intervals = dash.sweep_seeding_intervals(selected_entry.path, sweep_df)
+            if detailed_shaded_intervals:
+                st.caption("Shaded time window indicates seeding-active period.")
+
+            curve_label = f"{curve_source}:{comparison_mode}" if curve_source == "comparison" else curve_source
+            st.pyplot(
+                dash.plot_sweep_overlay(
+                    overlay_df,
+                    variable=selected_var,
+                    curve_label=curve_label,
+                    figsize=(11.5, 5.6),
+                    show_legend=False,
+                    shaded_intervals=detailed_shaded_intervals,
+                ),
+                use_container_width=True,
+            )
+
+            legend_tab, summary_tab, data_tab = st.tabs(["Case legend", "Curve value summary", "Overlay data"])
+            with legend_tab:
+                st.dataframe(dash.style_curve_legend_table(dash.build_overlay_legend_table(overlay_df)), use_container_width=True)
+            with summary_tab:
+                st.dataframe(dash.build_curve_value_summary(overlay_df), use_container_width=True)
+            with data_tab:
+                st.dataframe(overlay_df, use_container_width=True)
+
+            spread = dash.compute_overlay_spread(overlay_df)
+            st.subheader("Parameter Sensitivity Check")
+            metric_cols = st.columns(4)
+            metric_cols[0].metric("Cases", dash.format_metric_value(spread.get("n_cases")))
+            metric_cols[1].metric("Max spread", dash.format_metric_value(spread.get("max_abs_spread")))
+            metric_cols[2].metric("Mean spread", dash.format_metric_value(spread.get("mean_abs_spread")))
+            metric_cols[3].metric("Final spread", dash.format_metric_value(spread.get("final_abs_spread")))
+
+            if spread.get("curves_overlap"):
+                st.error(
+                    "The selected variable curves overlap across sweep cases. "
+                    "For a real sensitivity experiment, this is a red flag: either the selected parameter is not affecting the model output, "
+                    "the adapter is not receiving the changed config values, or the selected diagnostic is not sensitive enough."
+                )
+        else:
+            st.info("No available variables found in sweep cases.")
+
+if is_comparison and tab_comparison is not None:
+    with tab_comparison:
+        st.subheader("Control vs Seeding Analysis")
+
+        bases = dash.comparison_base_variables(comparison_df)
+        if not bases:
+            st.info("No comparable variables found.")
+        else:
+            selected_base = st.selectbox("Variable for detailed comparison", bases, key="detailed_comparison_base")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.pyplot(dash.plot_control_vs_seeding(comparison_df, selected_base), use_container_width=True)
+            with col2:
+                st.pyplot(dash.plot_difference(comparison_df, selected_base), use_container_width=True)
+
+            rel_col = f"{selected_base}_relative_change_percent"
+            if rel_col in comparison_df.columns:
+                st.subheader("Relative Change")
+                st.line_chart(comparison_df.set_index("time_s")[rel_col])
+
+        st.subheader("Efficiency Metrics JSON")
+        st.json(summary.get("comparison", {}).get("efficiency", {}))
+
+        st.subheader("Comparison Summary JSON")
+        st.json(summary.get("comparison", summary))
+
+with tab_tables:
+    if is_ensemble:
+        st.subheader("Ensemble Statistics Table")
+        st.dataframe(ensemble_df, use_container_width=True)
+        st.download_button(
+            "Download ensemble statistics CSV",
+            data=ensemble_df.to_csv(index=False).encode("utf-8"),
+            file_name="ensemble_statistics.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        st.subheader("Member Summary")
+        st.dataframe(member_summary_df, use_container_width=True)
+        st.download_button(
+            "Download member summary CSV",
+            data=member_summary_df.to_csv(index=False).encode("utf-8"),
+            file_name="member_summary.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    elif is_sweep:
+        st.subheader("Parameter Response Heatmap")
+        st.caption("2개 sweep parameter를 축으로 두고, 선택한 metric의 반응을 봅니다. Ranking보다 먼저 parameter-response 구조를 확인하세요.")
+
+        param_cols = dash.sweep_param_columns(sweep_df)
+        numeric_cols = [col for col in sweep_df.columns if pd.api.types.is_numeric_dtype(sweep_df[col])]
+
+        preferred_metric_candidates = [
+            "comparison.efficiency.accumulated_rain_enhancement",
+            "comparison.efficiency.rain_enhancement_final",
+            "comparison.efficiency.cloud_to_rain_conversion_delta",
+            "comparison.efficiency.seeding_efficiency_score",
+            "ranking_value",
+        ]
+        default_metric = next((col for col in preferred_metric_candidates if col in numeric_cols), numeric_cols[0] if numeric_cols else None)
+
+        if len(param_cols) >= 2 and default_metric is not None:
+            hcol1, hcol2, hcol3 = st.columns(3)
+            with hcol1:
+                x_param = st.selectbox("X parameter", param_cols, index=0)
+            with hcol2:
+                y_param = st.selectbox("Y parameter", param_cols, index=1 if len(param_cols) > 1 else 0)
+            with hcol3:
+                metric = st.selectbox(
+                    "Metric",
+                    numeric_cols,
+                    index=numeric_cols.index(default_metric) if default_metric in numeric_cols else 0,
+                )
+
+            st.pyplot(
+                dash.plot_sweep_heatmap(sweep_df, x_param=x_param, y_param=y_param, metric=metric),
+                use_container_width=True,
+            )
+        else:
+            st.info("Heatmap requires at least two numeric sweep parameter columns.")
+
+        st.subheader("Sweep Summary Table")
+        st.caption("Ranking은 보조 정보입니다. 각 case의 시간 변화는 `Sweep Time Series` 탭에서 확인하세요.")
+        st.dataframe(sweep_df, use_container_width=True)
+        st.download_button(
+            "Download sweep summary CSV",
+            data=sweep_df.to_csv(index=False).encode("utf-8"),
+            file_name="sweep_summary.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    elif is_comparison:
+        st.subheader("Comparison Table")
+        st.dataframe(comparison_df, use_container_width=True)
+
+        st.download_button(
+            "Download comparison CSV",
+            data=comparison_df.to_csv(index=False).encode("utf-8"),
+            file_name="comparison.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Control Timeseries")
+            st.dataframe(control_df, use_container_width=True)
+        with col2:
+            st.subheader("Seeding Timeseries")
+            st.dataframe(seeding_df, use_container_width=True)
+    else:
+        st.subheader("Timeseries")
+        st.dataframe(df, use_container_width=True)
+
+        st.download_button(
+            "Download timeseries CSV",
+            data=df.to_csv(index=False).encode("utf-8"),
+            file_name="timeseries.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+with tab_files:
+    st.subheader("Files")
+
+    for key, path in files.items():
+        if path and Path(path).exists():
+            st.write(f"- `{key}`: `{Path(path).name}`")
+
+    st.subheader("Summary JSON")
+    st.json(summary)
+
+    st.subheader("Metadata JSON")
+    st.json(metadata)
+
+with tab_config:
+    st.subheader("Configuration")
+    st.json(config)
+
+    st.subheader("Validation Report")
+    if isinstance(validation, list) and validation:
+        st.dataframe(pd.DataFrame(validation), use_container_width=True)
+    elif isinstance(validation, list):
+        st.success("No validation issues were stored for this run.")
+    else:
+        st.json(validation)

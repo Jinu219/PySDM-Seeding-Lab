@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict
+
+import streamlit as st
+
+from simulation.config import load_config, reset_config, save_config
+from simulation.experiment_manager import scenario_options, update_scenario_config
+from simulation.schema import FIELD_UNITS, schema_summary
+
+
+CONFIG_PATH = Path("configs/default.yaml")
+
+
+def load_working_config() -> Dict[str, Any]:
+    """Load the working config used by the Streamlit app."""
+    return load_config(CONFIG_PATH)
+
+
+def save_working_config(config: Dict[str, Any]) -> None:
+    """Save the working config used by the Streamlit app."""
+    save_config(config, CONFIG_PATH)
+
+
+def reset_working_config() -> Dict[str, Any]:
+    """Reset the working config to the canonical default schema."""
+    return reset_config(CONFIG_PATH)
+
+
+def unit_label(section: str, field: str) -> str:
+    """Return a readable unit suffix for a config field."""
+    unit = FIELD_UNITS.get(section, {}).get(field, "")
+    return f" [{unit}]" if unit else ""
+
+
+def page_header(title: str, description: str | None = None) -> None:
+    """Draw a consistent page header."""
+    st.title(title)
+    if description:
+        st.caption(description)
+
+
+def config_actions(config: Dict[str, Any], save_label: str = "Save Settings") -> None:
+    """
+    Draw Save and Reset buttons.
+
+    Settings can be saved either to the current working config or directly
+    into a saved experiment scenario.
+    """
+    st.markdown("Save target")
+    options = scenario_options(include_working_config=True)
+    labels = [item["label"] for item in options]
+    selected_label = st.selectbox(
+        "Where should these settings be saved?",
+        labels,
+        key=f"save_target_{save_label}",
+    )
+    selected = options[labels.index(selected_label)]
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        if st.button(save_label, use_container_width=True):
+            if selected.get("is_working_config", False):
+                save_working_config(config)
+                st.success("Settings saved to configs/default.yaml")
+            else:
+                update_scenario_config(selected["path"], config=config)
+                st.success(f"Settings saved to scenario: {selected['name']}")
+
+    with col2:
+        if st.button("Reset to Default", use_container_width=True):
+            reset_working_config()
+            st.warning("Configuration reset to default. Refresh the page to see reset values.")
+
+
+def schema_expander() -> None:
+    """Show the current schema summary in an expander."""
+    with st.expander("Current configuration schema"):
+        st.dataframe(schema_summary(), use_container_width=True)
+
+
+def scenario_loader() -> Dict[str, str]:
+    """Return available scenario config files."""
+    return {
+        "Current working config": "configs/default.yaml",
+        "Marine clean cloud": "configs/marine.yaml",
+        "Urban polluted cloud": "configs/urban.yaml",
+    }
+
+
+def inject_responsive_css() -> None:
+    """Apply a wider responsive layout and small UI quality-of-life tweaks."""
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            max-width: 110rem;
+            padding-top: 1.2rem;
+            padding-bottom: 2rem;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+        @media (max-width: 110rem;
+                padding-right: 1rem;
+            }
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.8rem;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0.25rem;
+            flex-wrap: wrap;
+        }
+        .stTabs [data-baseweb="tab"] {
+            white-space: nowrap;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def build_badge(label: str, value: str) -> None:
+    """Render a compact build/version badge."""
+    st.caption(f"{label}: `{value}`")
