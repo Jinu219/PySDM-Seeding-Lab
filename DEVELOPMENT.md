@@ -207,3 +207,24 @@ Recommended commit message:
 git commit -m "Add results dashboard for simulation outputs"
 ```
 
+## Fix. NumPy trapezoid integration
+
+Fixed the integration helper for NumPy environments where `np.trapz` is removed.
+
+Problem:
+- `_time_integral()` used `getattr(np, "trapezoid", np.trapz)`
+- The fallback argument `np.trapz` was evaluated immediately
+- In environments without `np.trapz`, this raised:
+  `AttributeError: module 'numpy' has no attribute 'trapz'`
+
+Changes:
+- Use `np.trapezoid()` first
+- Use `np.trapz()` only as a delayed fallback when it exists
+- Raise a clear error only if neither function exists
+
+Recommended commit message:
+
+```bash
+git commit -m "Fix NumPy trapezoid integration fallback"
+```
+

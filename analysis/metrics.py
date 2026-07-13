@@ -19,9 +19,18 @@ def _time_integral(df: pd.DataFrame, column: str) -> float:
     if "time_s" not in df.columns or column not in df.columns:
         return 0.0
 
-    # Prefer np.trapezoid. Keep np.trapz fallback only for older NumPy versions.
-    trapezoid = getattr(np, "trapezoid", np.trapz)
-    return float(trapezoid(df[column].to_numpy(), x=df["time_s"].to_numpy()))
+    x = df["time_s"].to_numpy()
+    y = df[column].to_numpy()
+
+    # NumPy 2.x 권장 함수는 np.trapezoid.
+    # 일부 오래된 환경에만 np.trapz가 있을 수 있으므로 fallback은 지연 평가로 처리한다.
+    if hasattr(np, "trapezoid"):
+        return float(np.trapezoid(y, x=x))
+
+    if hasattr(np, "trapz"):
+        return float(np.trapz(y, x=x))
+
+    raise AttributeError("NumPy has neither trapezoid nor trapz.")
 
 
 def accumulated_precipitation_proxy(
