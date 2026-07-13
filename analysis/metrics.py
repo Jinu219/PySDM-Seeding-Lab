@@ -90,6 +90,23 @@ def summarize_timeseries(df: pd.DataFrame) -> Dict[str, float | int | None]:
         summary["rain_onset_time_s"] = rain_onset_time(df)
         summary["accumulated_rain_water_proxy"] = accumulated_precipitation_proxy(df)
 
+    if "cloud_water_mixing_ratio" in df.columns:
+        summary["accumulated_cloud_water_proxy"] = accumulated_precipitation_proxy(
+            df,
+            column="cloud_water_mixing_ratio",
+        )
+
+    if (
+        summary.get("accumulated_rain_water_proxy") is not None
+        and summary.get("accumulated_cloud_water_proxy") not in [None, 0]
+    ):
+        summary["cloud_to_rain_conversion_proxy"] = float(
+            summary["accumulated_rain_water_proxy"]
+            / summary["accumulated_cloud_water_proxy"]
+        )
+    else:
+        summary["cloud_to_rain_conversion_proxy"] = None
+
     if "seeding_active" in df.columns:
         summary["n_seeding_active_steps"] = int(df["seeding_active"].sum())
 

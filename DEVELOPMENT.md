@@ -291,3 +291,25 @@ Recommended commit message:
 git commit -m "Clarify placeholder result interpretation in dashboard"
 ```
 
+## Step 9. Add seeding efficiency metrics
+
+First-pass efficiency metrics were added for control-vs-seeding comparison runs.
+
+Changes:
+- Added `analysis/efficiency.py`
+- Added single-run efficiency proxies
+- Added paired control-vs-seeding efficiency metrics
+- Added accumulated rain enhancement
+- Added rain-onset time shift
+- Added cloud-to-rain conversion proxy
+- Added effective-radius and droplet-number response metrics
+- Added heuristic `seeding_efficiency_score`
+- Updated comparison summary to include efficiency metrics
+- Updated Results Dashboard metric cards and JSON views
+
+Recommended commit message:
+
+```bash
+git commit -m "Add seeding efficiency metrics"
+```
+

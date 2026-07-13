@@ -444,3 +444,34 @@ Use `pysdm_parcel` for real PySDM-based output.
 
 The Results Dashboard now warns when a selected result comes from the placeholder adapter and excludes workflow columns such as `seeding_active` from comparison-variable plots.
 
+## Seeding Efficiency Metrics
+
+Step 9 adds first-pass efficiency metrics for paired control-vs-seeding simulations.
+
+Main metrics:
+
+```text
+rain_enhancement_final
+rain_enhancement_final_percent
+rain_enhancement_max
+accumulated_rain_enhancement
+accumulated_rain_enhancement_percent
+rain_onset_time_shift_s
+effective_radius_final_delta_um
+droplet_number_final_delta_cm3
+cloud_to_rain_conversion_delta
+seeding_efficiency_score
+```
+
+Sign convention:
+
+```text
+delta = seeding - control
+rain_onset_time_shift_s = seeding_onset - control_onset
+```
+
+A negative rain-onset shift means rain appeared earlier in the seeding run.
+
+`seeding_efficiency_score` is a heuristic dashboard score for quick ranking.  
+It is not a final scientific objective function and should be revised after the real PySDM workflow is validated.
+

@@ -5,6 +5,7 @@ from typing import Dict, Iterable, List
 import numpy as np
 import pandas as pd
 
+from analysis.efficiency import compute_control_vs_seeding_efficiency
 from analysis.metrics import summarize_timeseries
 
 
@@ -93,6 +94,7 @@ def summarize_comparison(
         "control": control_summary,
         "seeding": seeding_summary,
         "difference": summarize_timeseries_like_difference(difference_df),
+        "efficiency": compute_control_vs_seeding_efficiency(control_df, seeding_df),
     }
 
     for base_column in [

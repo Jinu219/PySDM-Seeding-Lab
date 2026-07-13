@@ -134,19 +134,20 @@ with tab_dashboard:
 
     if is_comparison:
         preferred_metrics = [
-            "comparison.delta_final_rain_water_mixing_ratio",
-            "comparison.relative_final_rain_water_mixing_ratio_percent",
-            "comparison.delta_accumulated_rain_water_proxy",
-            "comparison.relative_accumulated_rain_water_proxy_percent",
-            "comparison.delta_final_effective_radius_um",
-            "comparison.delta_final_droplet_number_concentration_cm3",
-            "comparison.delta_final_superdroplet_count",
+            "comparison.efficiency.seeding_efficiency_score",
+            "comparison.efficiency.accumulated_rain_enhancement",
+            "comparison.efficiency.accumulated_rain_enhancement_percent",
+            "comparison.efficiency.rain_enhancement_final",
+            "comparison.efficiency.rain_enhancement_final_percent",
+            "comparison.efficiency.rain_onset_time_shift_s",
+            "comparison.efficiency.cloud_to_rain_conversion_delta",
         ]
     else:
         preferred_metrics = [
             "metrics.final_rain_water_mixing_ratio",
             "metrics.max_rain_water_mixing_ratio",
             "metrics.accumulated_rain_water_proxy",
+            "metrics.cloud_to_rain_conversion_proxy",
             "metrics.rain_onset_time_s",
             "metrics.final_effective_radius_um",
             "metrics.final_droplet_number_concentration_cm3",
@@ -273,6 +274,9 @@ if is_comparison and tab_comparison is not None:
             if rel_col in comparison_df.columns:
                 st.subheader("Relative Change")
                 st.line_chart(comparison_df.set_index("time_s")[rel_col])
+
+        st.subheader("Efficiency Metrics JSON")
+        st.json(summary.get("comparison", {}).get("efficiency", {}))
 
         st.subheader("Comparison Summary JSON")
         st.json(summary.get("comparison", summary))
