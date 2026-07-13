@@ -868,3 +868,11 @@ pandas.errors.EmptyDataError: No columns to parse from file
 
 while a run is still writing files. Turn on `Show incomplete / in-progress results` only for debugging.
 
+## Accurate model-run progress
+
+The runner now emits explicit `model_run_complete` progress events after each real single/control/seeding model run finishes.
+
+This makes the Run page progress card update during long sweep + ensemble jobs instead of staying at zero until the end.
+
+The dashboard CSV reader was also fixed to call `pd.read_csv()` directly, preventing recursive `safe_read_csv()` calls.
+

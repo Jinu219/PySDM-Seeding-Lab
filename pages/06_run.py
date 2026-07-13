@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 import pandas as pd
 import streamlit as st
@@ -16,7 +17,7 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "compact-progress-empty-csv-fix-20260713"
+UI_BUILD_ID = "accurate-progress-safe-read-20260713"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
@@ -143,10 +144,9 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
 
     progress_state = {
         "completed_runs": 0,
-        "control_completed": 0,
-        "seeding_completed": 0,
-        "single_completed": 0,
         "events": [],
+        "current_sweep_case": None,
+        "current_ensemble_member": None,
     }
 
     def render_progress(stage: str, current: int, total: int, message: str) -> None:
@@ -156,10 +156,18 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
         overall_fraction = min(completed / total_runs, 1.0)
         stage_fraction = min(current / max(total, 1), 1.0)
 
+        context_parts = []
+        if progress_state.get("current_sweep_case"):
+            context_parts.append(f"sweep {progress_state['current_sweep_case']}")
+        if progress_state.get("current_ensemble_member"):
+            context_parts.append(f"member {progress_state['current_ensemble_member']}")
+        context = " · ".join(context_parts)
+
         overview_text.markdown(
             f"""
             **Progress overview**  
-            `{completed} / {total_runs}` model runs completed · `{remaining}` remaining · current stage: `{stage}`
+            `{completed} / {total_runs}` model runs completed · `{remaining}` remaining · current stage: `{stage}`  
+            {context}
             """
         )
         overall_bar.progress(overall_fraction)
@@ -174,9 +182,7 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
 
         if progress_state["events"]:
             event_box.dataframe(
-                pd.DataFrame(
-                    {"Recent events": progress_state["events"][-8:][::-1]}
-                ),
+                pd.DataFrame({"Recent events": progress_state["events"][-8:][::-1]}),
                 use_container_width=True,
                 hide_index=True,
             )
@@ -185,22 +191,31 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
         total_runs = max(plan.total_model_runs, 1)
         if progress_state["completed_runs"] >= total_runs:
             return
+
         progress_state["completed_runs"] += 1
-        progress_state["events"].append(label)
+        completed = progress_state["completed_runs"]
+        progress_state["events"].append(f"{completed}/{total_runs} · {label}")
+
+    def _parse_sweep_message(message: str) -> None:
+        match = re.search(r"sweep case\s+(\d+)/(\d+)", message)
+        if match:
+            progress_state["current_sweep_case"] = f"{match.group(1)}/{match.group(2)}"
+
+    def _parse_ensemble_message(message: str) -> None:
+        match = re.search(r"ensemble member\s+(\d+)/(\d+)", message)
+        if match:
+            progress_state["current_ensemble_member"] = f"{match.group(1)}/{match.group(2)}"
 
     def report_progress(stage: str, current: int, total: int, message: str) -> None:
-        # Detect completed model runs from high-level comparison/single stages.
-        # comparison stage 3 starts after control run completion.
-        # comparison stage 4 starts after seeding run completion.
-        if stage == "comparison" and current == 3:
-            progress_state["control_completed"] += 1
-            add_completed_run(f"Completed control run #{progress_state['control_completed']}")
-        elif stage == "comparison" and current == 4:
-            progress_state["seeding_completed"] += 1
-            add_completed_run(f"Completed seeding run #{progress_state['seeding_completed']}")
-        elif stage == "runner" and current == 4 and plan.control_factor == 1:
-            progress_state["single_completed"] += 1
-            add_completed_run(f"Completed single run #{progress_state['single_completed']}")
+        if stage == "sweep":
+            _parse_sweep_message(message)
+        elif stage == "ensemble":
+            _parse_ensemble_message(message)
+
+        if stage == "model_run_complete":
+            add_completed_run(message)
+            render_progress("model run", 1, 1, message)
+            return
 
         render_progress(stage, current, total, message)
 

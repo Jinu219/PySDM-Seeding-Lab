@@ -605,3 +605,18 @@ Recommended commit message:
 git commit -m "Compact run progress and handle incomplete result files"
 ```
 
+## Fix. Accurate progress events and safe CSV recursion
+
+Changes:
+- Runner emits explicit `model_run_complete` after every real model run
+- Run page increments Done/Left based on explicit completion events
+- Run page shows current sweep case and ensemble member context
+- Fixed accidental recursive `safe_read_csv()` call in dashboard
+- Dashboard now uses `pd.read_csv()` inside `safe_read_csv()`
+
+Recommended commit message:
+
+```bash
+git commit -m "Fix live progress accounting and CSV reader recursion"
+```
+

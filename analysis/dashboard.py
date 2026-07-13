@@ -13,7 +13,7 @@ import yaml
 from analysis.ensemble_statistics import ensemble_variable_bases
 from analysis.growth_pathway_diagnostics import GROWTH_PATHWAY_VARIABLE_GROUPS, GROWTH_PATHWAY_PREFERRED_ORDER
 
-DASHBOARD_BUILD_ID = "compact-progress-empty-csv-fix-20260713"
+DASHBOARD_BUILD_ID = "accurate-progress-safe-read-20260713"
 
 
 @dataclass(frozen=True)

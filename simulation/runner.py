@@ -133,6 +133,7 @@ def run_single_experiment(
     timeseries = result.require_timeseries()
 
     _write_single_result_files(run_dir, spec, result)
+    emit_progress(progress_callback, "model_run_complete", 1, 1, f"Completed single run: {spec.case_name}")
 
     emit_progress(progress_callback, "runner", 5, total_stages, f"Finished: {run_dir}")
 
@@ -194,6 +195,7 @@ def run_control_vs_seeding(
     control_result = run_adapter(control_spec, progress_callback=progress_callback)
     control_result = _apply_growth_pathway_diagnostics_to_result(control_result, control_spec.config)
     _write_single_result_files(control_dir, control_spec, control_result)
+    emit_progress(progress_callback, "model_run_complete", 1, 1, "Completed control run")
 
     emit_progress(progress_callback, "comparison", 3, total_stages, "Running seeding simulation")
     seeding_dir = run_dir / "seeding"
@@ -201,6 +203,7 @@ def run_control_vs_seeding(
     seeding_result = run_adapter(seeding_spec, progress_callback=progress_callback)
     seeding_result = _apply_growth_pathway_diagnostics_to_result(seeding_result, seeding_spec.config)
     _write_single_result_files(seeding_dir, seeding_spec, seeding_result)
+    emit_progress(progress_callback, "model_run_complete", 1, 1, "Completed seeding run")
 
     emit_progress(progress_callback, "comparison", 4, total_stages, "Building comparison dataframe")
     control_df = control_result.require_timeseries()
@@ -477,7 +480,7 @@ def run_parameter_sweep(
             "sweep",
             idx + 1,
             total_cases + 2,
-            f"Running {case.case_name}",
+            f"Running sweep case {idx}/{total_cases}: {case.case_name}",
         )
 
         case_result_dir = run_experiment(
