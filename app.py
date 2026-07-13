@@ -5,6 +5,7 @@ import streamlit as st
 from simulation.config import load_config, save_config
 from simulation.schema import EXPERIMENT_MODES, schema_summary
 from simulation.ui_helpers import scenario_loader
+from simulation.validation import validation_summary
 
 
 st.set_page_config(
@@ -52,6 +53,7 @@ environment = cfg.get("environment", {})
 aerosol = cfg.get("background_aerosol", {})
 seeding = cfg.get("seeding", {})
 microphysics = cfg.get("microphysics", {})
+summary = validation_summary(cfg)
 
 st.subheader("Current Experiment Summary")
 
@@ -72,6 +74,19 @@ with col3:
 with col4:
     st.metric("Seeding", "ON" if seeding.get("enabled", False) else "OFF")
     st.metric("Collision", "ON" if microphysics.get("collision", False) else "OFF")
+
+st.subheader("Validation Status")
+v1, v2, v3 = st.columns(3)
+v1.metric("Errors", summary["error"])
+v2.metric("Warnings", summary["warning"])
+v3.metric("Info", summary["info"])
+
+if summary["error"] > 0:
+    st.error("There are blocking configuration errors. Open the Run page for details.")
+elif summary["warning"] > 0:
+    st.warning("Configuration is runnable, but warnings exist. Open the Run page for details.")
+else:
+    st.success("Configuration is valid.")
 
 st.divider()
 

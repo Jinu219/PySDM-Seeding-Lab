@@ -57,3 +57,23 @@ Recommended commit message:
 git commit -m "Stabilize Streamlit parameter input pages"
 ```
 
+## Step 3. Strengthen validation
+
+The validation system now provides structured validation issues with severity levels.
+
+Changes:
+- Added `ValidationIssue` dataclass
+- Added `validate_config_detailed()`
+- Added `validation_summary()`
+- Added `validation_report_rows()`
+- Kept `validate_config()` backward-compatible by returning blocking error messages only
+- Updated Run page to display validation metrics and a detailed report table
+- Updated main app page to show validation status
+- Added more physical and workflow checks for environment, aerosol, seeding, dynamics, microphysics, and output settings
+
+Recommended commit message:
+
+```bash
+git commit -m "Strengthen configuration validation workflow"
+```
+

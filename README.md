@@ -227,3 +227,19 @@ The app provides separate pages for editing the working configuration:
 All input pages edit `configs/default.yaml` as the current working configuration.
 Scenario files such as `configs/marine.yaml` and `configs/urban.yaml` can be loaded from the main app page.
 
+## Configuration Validation
+
+The validation layer separates issues into three severity levels:
+
+- `error`: blocking issue. The simulation should not run.
+- `warning`: runnable but physically or numerically questionable.
+- `info`: non-blocking note about current assumptions or unimplemented options.
+
+The Run page displays a validation summary and a table containing:
+
+```text
+severity | field | message | suggestion
+```
+
+The validation logic is implemented in `simulation/validation.py`.
+
