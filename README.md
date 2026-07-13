@@ -212,3 +212,18 @@ output:
   save_summary:
   save_timeseries:
 ```
+
+## Streamlit Input Pages
+
+The app provides separate pages for editing the working configuration:
+
+- `01_environment.py`: atmospheric thermodynamic and parcel-rise settings
+- `02_aerosol.py`: background aerosol size distribution and hygroscopicity
+- `03_seeding.py`: seeding particle properties and injection timing
+- `04_dynamics.py`: dynamic parameters and future parameterization inputs
+- `05_run.py`: validation and simulation execution
+- `06_results.py`: result loading and basic visualization
+
+All input pages edit `configs/default.yaml` as the current working configuration.
+Scenario files such as `configs/marine.yaml` and `configs/urban.yaml` can be loaded from the main app page.
+

@@ -1,11 +1,15 @@
-import streamlit as st
 from pathlib import Path
-import pandas as pd
+
 import matplotlib.pyplot as plt
+import pandas as pd
+import streamlit as st
+
 
 st.title("06. Results")
+st.caption("저장된 simulation output을 확인하고 기본 time-series plot을 표시합니다.")
 
-result_files = sorted(Path("results").glob("*.csv"))
+result_dir = Path("results")
+result_files = sorted(result_dir.glob("*.csv"), reverse=True)
 
 if not result_files:
     st.info("No result files found. Run an experiment first.")
@@ -15,7 +19,7 @@ selected = st.selectbox("Select result file", result_files, format_func=lambda p
 df = pd.read_csv(selected)
 
 st.subheader("Result Table")
-st.dataframe(df)
+st.dataframe(df, use_container_width=True)
 
 st.subheader("Time Series")
 

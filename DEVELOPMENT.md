@@ -36,3 +36,24 @@ Recommended commit message:
 git commit -m "Define initial YAML configuration schema"
 ```
 
+## Step 2. Stabilize Streamlit input pages
+
+The Streamlit interface was updated to use the official configuration schema.
+
+Changes:
+- Added `simulation/ui_helpers.py`
+- Improved main app overview
+- Added scenario loading into `configs/default.yaml`
+- Updated environment input page
+- Updated aerosol input page with distribution preview
+- Updated seeding input page with injection-time constraints
+- Updated dynamics input page with direct/future input separation
+- Improved run and results pages
+- Added schema summary expanders to input pages
+
+Recommended commit message:
+
+```bash
+git commit -m "Stabilize Streamlit parameter input pages"
+```
+
