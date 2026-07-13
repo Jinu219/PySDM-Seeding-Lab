@@ -1,7 +1,9 @@
+schema_version: 1
 experiment:
-  name: urban_background
-  mode: scenario_preset
-
+  name: urban_polluted_cloud
+  mode: control_vs_seeding
+  description: Polluted urban-like warm cloud background.
+  random_seed: 42
 environment:
   temperature: 302.0
   pressure: 100000.0
@@ -11,26 +13,26 @@ environment:
   updraft_velocity: 1.2
   duration: 1500
   timestep: 15
-
 background_aerosol:
+  distribution_type: single_lognormal
   number_concentration: 1000.0
-  dry_radius: 5.0e-8
+  dry_radius: 5.0e-08
   geometric_sigma: 1.7
   kappa: 0.3
+  particle_density: 1500.0
   chemical_composition: urban_pollution_mixed
-
 seeding:
   enabled: true
   material_type: hygroscopic
-  dry_radius: 1.0e-6
+  dry_radius: 1.0e-06
   geometric_sigma: 1.2
   kappa: 0.8
+  particle_density: 1770.0
   number_superdroplets: 100
   injection_start: 900
   injection_end: 1200
   injection_altitude: 500.0
   delivery_method: idealized_uniform
-
 dynamics:
   updraft_strength: 1.2
   downdraft_strength: 0.0
@@ -41,8 +43,12 @@ dynamics:
   convergence: 0.0
   cape: 0.0
   cin: 0.0
-
 microphysics:
   condensation: true
   collision: false
   sedimentation: false
+output:
+  base_dir: results
+  save_config: true
+  save_summary: true
+  save_timeseries: true
