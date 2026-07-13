@@ -57,6 +57,10 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_sweep_heatmap",
     "build_overlay_legend_table",
     "recommended_sweep_variables",
+    "likely_injection_time_sweep",
+    "plot_sweep_effect_summary",
+    "build_sweep_effect_summary",
+    "build_sweep_overlay_dataframe_relative_time",
     "plot_ensemble_uncertainty",
     "ensemble_available_bases",
     "figure_to_png_bytes",
@@ -72,7 +76,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "scenario-names-simple-dashboard-20260713"
+RESULTS_UI_BUILD_ID = "progress-injection-summary-20260713"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -288,6 +292,81 @@ with tab_dashboard:
         render_plot_grid(ensemble_items, n_cols=matrix_cols)
 
     elif is_sweep:
+        st.subheader("Quick Parameter Effect Summary")
+        st.caption("겹쳐 보이는 time-series를 보기 전에, 각 case를 final/max/integral 값으로 요약해서 parameter 효과를 먼저 봅니다.")
+
+        available_vars_for_summary = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source="comparison")
+        param_cols_for_summary = dash.sweep_param_columns(sweep_df)
+
+        if available_vars_for_summary and param_cols_for_summary:
+            default_var_candidates = [
+                "rain_water_mixing_ratio_diff",
+                "rain_water_mixing_ratio",
+                "cloud_water_mixing_ratio_diff",
+                "all_activated_water_mixing_ratio_diff",
+                "supersaturation_percent_diff",
+            ]
+            default_var = next((var for var in default_var_candidates if var in available_vars_for_summary), available_vars_for_summary[0])
+
+            default_param = (
+                "param.seeding.injection_start"
+                if "param.seeding.injection_start" in param_cols_for_summary
+                else param_cols_for_summary[0]
+            )
+
+            s_col1, s_col2, s_col3 = st.columns(3)
+            with s_col1:
+                summary_variable = st.selectbox(
+                    "Response variable",
+                    available_vars_for_summary,
+                    index=available_vars_for_summary.index(default_var),
+                    key="quick_summary_variable",
+                )
+            with s_col2:
+                summary_parameter = st.selectbox(
+                    "Sweep parameter",
+                    param_cols_for_summary,
+                    index=param_cols_for_summary.index(default_param),
+                    key="quick_summary_parameter",
+                )
+            with s_col3:
+                summary_statistic = st.selectbox(
+                    "Statistic",
+                    ["final", "max", "integral", "peak_time_s", "min"],
+                    index=1,
+                    key="quick_summary_statistic",
+                )
+
+            quick_summary_df = dash.build_sweep_effect_summary(
+                selected_entry.path,
+                sweep_df,
+                variable=summary_variable,
+                curve_source="comparison",
+                comparison_mode="diff",
+                x_parameter=summary_parameter,
+            )
+            quick_fig = dash.plot_sweep_effect_summary(
+                quick_summary_df,
+                x_parameter=summary_parameter,
+                statistic=summary_statistic,
+                variable=summary_variable,
+            )
+            st.pyplot(quick_fig, use_container_width=True)
+            st.download_button(
+                "Download parameter summary plot",
+                data=dash.figure_to_png_bytes(quick_fig),
+                file_name=f"parameter_summary_{summary_variable}_{summary_statistic}.png",
+                mime="image/png",
+                use_container_width=True,
+            )
+            with st.expander("Parameter summary table", expanded=False):
+                st.dataframe(quick_summary_df, use_container_width=True)
+
+            if dash.likely_injection_time_sweep(sweep_df):
+                st.info("Injection-time sweep detected. Use `Sweep Time Series` → `Time axis = relative to injection start` to compare post-seeding responses more clearly.")
+        else:
+            st.info("No compact parameter summary is available for this result.")
+
         st.subheader("Sweep Case Time-Series Matrix")
         st.caption(
             "각 sweep case의 시간 변화 곡선을 한 그래프에 겹쳐서 보여줍니다. "
@@ -676,15 +755,33 @@ if is_sweep:
             key="sweep_ts_max_cases",
         )
 
+        time_axis_mode = st.selectbox(
+            "Time axis",
+            ["absolute time", "relative to injection start"],
+            index=1 if dash.likely_injection_time_sweep(sweep_df) else 0,
+            key="sweep_time_axis_mode",
+        )
+
         if selected_var:
-            overlay_df = dash.build_sweep_overlay_dataframe(
-                selected_entry.path,
-                sweep_df,
-                variable=selected_var,
-                curve_source=curve_source,
-                comparison_mode=comparison_mode,
-                max_cases=max_cases,
-            )
+            if time_axis_mode == "relative to injection start" and "param.seeding.injection_start" in sweep_df.columns:
+                overlay_df = dash.build_sweep_overlay_dataframe_relative_time(
+                    selected_entry.path,
+                    sweep_df,
+                    variable=selected_var,
+                    curve_source=curve_source,
+                    comparison_mode=comparison_mode,
+                    time_reference_param="param.seeding.injection_start",
+                    max_cases=max_cases,
+                )
+            else:
+                overlay_df = dash.build_sweep_overlay_dataframe(
+                    selected_entry.path,
+                    sweep_df,
+                    variable=selected_var,
+                    curve_source=curve_source,
+                    comparison_mode=comparison_mode,
+                    max_cases=max_cases,
+                )
 
             detailed_shaded_intervals = dash.sweep_seeding_intervals(selected_entry.path, sweep_df)
             if detailed_shaded_intervals:

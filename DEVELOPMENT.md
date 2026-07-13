@@ -570,3 +570,21 @@ Recommended commit message:
 git commit -m "Use scenario names for results and simplify dashboard"
 ```
 
+## Fix. Add run progress dashboard and injection-time sweep summary
+
+Changes:
+- Added `simulation/run_plan.py`
+- Run page now estimates total model runs before execution
+- Run page now shows live completed/remaining model-run progress
+- Added quick parameter-effect summary plot for sweep results
+- Added final/max/min/integral/peak_time_s case summary table
+- Added relative-time overlay for injection-start sweeps
+- Fixed ensemble result loading bug in dashboard
+- Added injection-time sweep detection helper
+
+Recommended commit message:
+
+```bash
+git commit -m "Add progress dashboard and injection-time sweep summaries"
+```
+

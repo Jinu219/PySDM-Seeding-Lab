@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import yaml
 from analysis.ensemble_statistics import ensemble_variable_bases
 from analysis.growth_pathway_diagnostics import GROWTH_PATHWAY_VARIABLE_GROUPS, GROWTH_PATHWAY_PREFERRED_ORDER
 
-DASHBOARD_BUILD_ID = "scenario-names-simple-dashboard-20260713"
+DASHBOARD_BUILD_ID = "progress-injection-summary-20260713"
 
 
 @dataclass(frozen=True)
@@ -100,8 +101,6 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "timeseries": stats_df,
             "ensemble": stats_df,
             "member_summary": member_summary_df,
-            "ensemble": pd.DataFrame(),
-            "member_summary": pd.DataFrame(),
             "sweep": pd.DataFrame(),
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
@@ -1251,3 +1250,226 @@ def recommended_sweep_variables(available_vars: List[str]) -> List[str]:
     if out:
         return out
     return available_vars[:4]
+
+
+
+def _select_sweep_value_column(
+    case_df: pd.DataFrame,
+    *,
+    variable: str,
+    curve_source: str,
+    comparison_mode: str,
+) -> str | None:
+    """Select a plottable value column from a case dataframe."""
+    if case_df.empty:
+        return None
+
+    if any(col.endswith("_mean") for col in case_df.columns):
+        candidate = f"{variable}_mean"
+        if candidate in case_df.columns:
+            return candidate
+        if variable in case_df.columns:
+            return variable
+        return None
+
+    if curve_source == "comparison":
+        if comparison_mode == "relative_change_percent":
+            candidate = f"{variable}_relative_change_percent"
+        else:
+            candidate = f"{variable}_{comparison_mode}"
+        return candidate if candidate in case_df.columns else None
+
+    return variable if variable in case_df.columns else None
+
+
+def _case_numeric_parameter(row: pd.Series, parameter_column: str) -> float | None:
+    if parameter_column not in row or pd.isna(row[parameter_column]):
+        return None
+    try:
+        return float(row[parameter_column])
+    except Exception:
+        return None
+
+
+def build_sweep_overlay_dataframe_relative_time(
+    sweep_dir: Path,
+    sweep_df: pd.DataFrame,
+    *,
+    variable: str,
+    curve_source: str = "comparison",
+    comparison_mode: str = "diff",
+    time_reference_param: str = "param.seeding.injection_start",
+    max_cases: int = 12,
+) -> pd.DataFrame:
+    """Build overlay dataframe with time shifted by a sweep parameter."""
+    if sweep_df.empty:
+        return pd.DataFrame()
+
+    work_df = sweep_df.copy()
+    if "rank" in work_df.columns:
+        work_df = work_df.sort_values("rank", ascending=True)
+    elif "ranking_value" in work_df.columns:
+        work_df = work_df.sort_values("ranking_value", ascending=False, na_position="last")
+
+    work_df = work_df.head(max_cases)
+
+    series_list = []
+    labels = []
+
+    for _, row in work_df.iterrows():
+        case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+        case_df = _read_sweep_case_dataframe(case_dir, curve_source)
+
+        if case_df.empty or "time_s" not in case_df.columns:
+            continue
+
+        value_col = _select_sweep_value_column(
+            case_df,
+            variable=variable,
+            curve_source=curve_source,
+            comparison_mode=comparison_mode,
+        )
+        if value_col is None:
+            continue
+
+        shift_value = _case_numeric_parameter(row, time_reference_param) or 0.0
+        label = _format_sweep_case_label(row)
+        labels.append(label)
+
+        temp = case_df[["time_s", value_col]].copy()
+        temp["time_relative_s"] = temp["time_s"] - shift_value
+        series = temp[["time_relative_s", value_col]].drop_duplicates(subset=["time_relative_s"]).set_index("time_relative_s")[value_col]
+        series_list.append(series)
+
+    if not series_list:
+        return pd.DataFrame()
+
+    unique_labels = _make_unique_labels(labels)
+    renamed = []
+    for series, label in zip(series_list, unique_labels):
+        s = series.copy()
+        s.name = label
+        renamed.append(s)
+
+    wide_df = pd.concat(renamed, axis=1).reset_index().rename(columns={"time_relative_s": "time_s"})
+    return wide_df.sort_values("time_s").reset_index(drop=True)
+
+
+def _time_integral(x: np.ndarray, y: np.ndarray) -> float:
+    if len(x) < 2:
+        return float("nan")
+    if hasattr(np, "trapezoid"):
+        return float(np.trapezoid(y, x=x))
+    return float(np.trapz(y, x=x))
+
+
+def build_sweep_effect_summary(
+    sweep_dir: Path,
+    sweep_df: pd.DataFrame,
+    *,
+    variable: str,
+    curve_source: str = "comparison",
+    comparison_mode: str = "diff",
+    x_parameter: str = "param.seeding.injection_start",
+) -> pd.DataFrame:
+    """Summarize each sweep case into final/max/min/integral values."""
+    if sweep_df.empty:
+        return pd.DataFrame()
+
+    rows: List[Dict[str, Any]] = []
+
+    for _, row in sweep_df.iterrows():
+        case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+        case_df = _read_sweep_case_dataframe(case_dir, curve_source)
+        value_col = _select_sweep_value_column(
+            case_df,
+            variable=variable,
+            curve_source=curve_source,
+            comparison_mode=comparison_mode,
+        )
+
+        if case_df.empty or "time_s" not in case_df.columns or value_col is None:
+            continue
+
+        values = pd.to_numeric(case_df[value_col], errors="coerce")
+        time = pd.to_numeric(case_df["time_s"], errors="coerce")
+        finite_mask = np.isfinite(values.to_numpy(dtype=float)) & np.isfinite(time.to_numpy(dtype=float))
+
+        if not finite_mask.any():
+            continue
+
+        x_values = time.to_numpy(dtype=float)[finite_mask]
+        y_values = values.to_numpy(dtype=float)[finite_mask]
+
+        metric_row: Dict[str, Any] = {
+            "case_label": _format_sweep_case_label(row),
+            "value_column": value_col,
+            "final": float(y_values[-1]),
+            "max": float(np.nanmax(y_values)),
+            "min": float(np.nanmin(y_values)),
+            "integral": _time_integral(x_values, y_values),
+            "peak_time_s": float(x_values[int(np.nanargmax(y_values))]),
+        }
+
+        for col in sweep_df.columns:
+            if col.startswith("param."):
+                metric_row[col] = row[col]
+
+        if x_parameter in row:
+            metric_row["x_parameter"] = row[x_parameter]
+        else:
+            metric_row["x_parameter"] = None
+
+        rows.append(metric_row)
+
+    return pd.DataFrame(rows)
+
+
+def plot_sweep_effect_summary(
+    summary_df: pd.DataFrame,
+    *,
+    x_parameter: str,
+    statistic: str,
+    variable: str,
+):
+    """Plot compact parameter effect summary instead of many overlapping time curves."""
+    fig, ax = plt.subplots(figsize=(8.8, 4.8))
+
+    if summary_df.empty or statistic not in summary_df.columns or x_parameter not in summary_df.columns:
+        ax.set_title("No parameter effect summary data")
+        return fig
+
+    plot_df = summary_df.copy()
+    plot_df = plot_df.dropna(subset=[x_parameter, statistic])
+
+    if plot_df.empty:
+        ax.set_title("No parameter effect summary data")
+        return fig
+
+    try:
+        plot_df[x_parameter] = pd.to_numeric(plot_df[x_parameter])
+        plot_df = plot_df.sort_values(x_parameter)
+        ax.plot(plot_df[x_parameter], plot_df[statistic], marker="o", linewidth=1.8)
+    except Exception:
+        plot_df[x_parameter] = plot_df[x_parameter].astype(str)
+        ax.bar(plot_df[x_parameter], plot_df[statistic])
+
+    ax.set_xlabel(x_parameter)
+    ax.set_ylabel(f"{statistic} of {variable}")
+    ax.set_title(f"{variable}: {statistic} by {x_parameter}", fontsize=12)
+    ax.grid(alpha=0.22)
+    fig.tight_layout()
+
+    return fig
+
+
+def likely_injection_time_sweep(sweep_df: pd.DataFrame) -> bool:
+    """Detect whether injection timing is one of the sweep axes."""
+    return any(
+        col in sweep_df.columns
+        for col in [
+            "param.seeding.injection_start",
+            "param.seeding.injection_end",
+            "param.seeding.injection_duration",
+        ]
+    )

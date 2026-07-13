@@ -813,3 +813,34 @@ Simplified recommended workflow:
 07. Select the result with the same scenario name
 ```
 
+## Progress dashboard and injection-time sweep simplification
+
+Run Simulation now shows:
+
+```text
+Run Plan
+- sweep cases
+- ensemble members
+- control/seeding factor
+- estimated model runs
+
+Live Progress
+- total model runs
+- completed
+- remaining
+- current stage
+- recent completion events
+```
+
+For injection-time sweeps, Results Dashboard now provides two easier views:
+
+```text
+Quick Parameter Effect Summary
+- summarizes each case into final/max/integral/peak_time_s
+- plots response metric by sweep parameter
+
+Sweep Time Series
+- can switch time axis to relative to injection start
+- helps compare post-seeding response when absolute-time curves overlap
+```
+

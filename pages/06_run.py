@@ -6,6 +6,7 @@ import streamlit as st
 from simulation.config import load_config
 from simulation.experiment_manager import apply_scenario_identity, list_scenarios, load_scenario_config, read_scenario
 from simulation.runner import run_experiment
+from simulation.run_plan import estimate_run_plan, run_plan_rows
 from simulation.validation import (
     validate_config,
     validation_report_rows,
@@ -15,7 +16,7 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "scenario-names-simple-dashboard-20260713"
+UI_BUILD_ID = "progress-dashboard-20260713"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
@@ -66,6 +67,23 @@ with col3:
     st.metric("Adapter", simulation.get("adapter", "placeholder_warm_cloud"))
     st.metric("Output Dir", output.get("base_dir", "results"))
 
+plan = estimate_run_plan(cfg)
+
+st.subheader("Run Plan")
+p1, p2, p3, p4 = st.columns(4)
+p1.metric("Sweep cases", plan.case_count)
+p2.metric("Ensemble members", plan.ensemble_members)
+p3.metric("Control/seeding factor", plan.control_factor)
+p4.metric("Estimated model runs", plan.total_model_runs)
+
+st.caption(plan.description)
+
+if plan.total_model_runs >= 100:
+    st.warning("This run is large. Consider testing with fewer sweep cases or ensemble members first.")
+
+with st.expander("Run plan details"):
+    st.dataframe(pd.DataFrame(run_plan_rows(cfg)), use_container_width=True)
+
 st.subheader("Configuration Validation")
 
 summary = validation_summary(cfg)
@@ -104,12 +122,66 @@ with st.expander("Current configuration"):
 run_disabled = summary["error"] > 0
 
 if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
-    progress_bar = st.progress(0)
+    plan = estimate_run_plan(cfg)
+
+    st.subheader("Live Progress")
+    overall_bar = st.progress(0)
+    stage_bar = st.progress(0)
+
+    metric_total, metric_done, metric_remaining, metric_current = st.columns(4)
     status_box = st.empty()
+    event_box = st.empty()
+
+    progress_state = {
+        "completed_runs": 0,
+        "seen_completion_events": set(),
+        "events": [],
+    }
+
+    def add_completed_run(event_key: str, label: str) -> None:
+        if event_key in progress_state["seen_completion_events"]:
+            return
+
+        progress_state["seen_completion_events"].add(event_key)
+        progress_state["completed_runs"] = min(
+            progress_state["completed_runs"] + 1,
+            max(plan.total_model_runs, 1),
+        )
+        progress_state["events"].append(label)
+        progress_state["events"] = progress_state["events"][-8:]
 
     def report_progress(stage: str, current: int, total: int, message: str) -> None:
-        progress_bar.progress(min(current / max(total, 1), 1.0))
-        status_box.info(f"[{current}/{total}] {stage}: {message}")
+        # Local stage progress
+        stage_fraction = min(current / max(total, 1), 1.0)
+        stage_bar.progress(stage_fraction)
+
+        # Estimate completed model runs from high-level runner stages.
+        # For control_vs_seeding, comparison stage 3 begins after control has finished,
+        # and stage 4 begins after seeding has finished.
+        if stage == "comparison" and current == 3:
+            add_completed_run(f"{stage}:{len(progress_state['seen_completion_events'])}:control", "Completed control run")
+        elif stage == "comparison" and current == 4:
+            add_completed_run(f"{stage}:{len(progress_state['seen_completion_events'])}:seeding", "Completed seeding run")
+        elif stage == "runner" and current == 4 and plan.control_factor == 1:
+            add_completed_run(f"{stage}:{len(progress_state['seen_completion_events'])}:single", "Completed single run")
+
+        completed = progress_state["completed_runs"]
+        total_runs = max(plan.total_model_runs, 1)
+        remaining = max(total_runs - completed, 0)
+        overall_bar.progress(min(completed / total_runs, 1.0))
+
+        metric_total.metric("Total model runs", total_runs)
+        metric_done.metric("Completed", completed)
+        metric_remaining.metric("Remaining", remaining)
+        metric_current.metric("Current stage", stage)
+
+        status_box.info(
+            f"Stage [{current}/{total}] {stage}: {message}\n\n"
+            f"Overall model-run progress: {completed}/{total_runs}"
+        )
+
+        if progress_state["events"]:
+            event_box.code("\n".join(progress_state["events"][-8:]))
 
     try:
         with st.spinner("Running simulation..."):
@@ -118,9 +190,16 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
                 output_dir=Path(output.get("base_dir", "results")),
                 progress_callback=report_progress,
             )
-        progress_bar.progress(1.0)
+
+        progress_state["completed_runs"] = max(progress_state["completed_runs"], plan.total_model_runs)
+        overall_bar.progress(1.0)
+        stage_bar.progress(1.0)
         status_box.success(f"Finished: {result_path}")
+        metric_done.metric("Completed", plan.total_model_runs)
+        metric_remaining.metric("Remaining", 0)
+
         st.success(f"Experiment finished. Result directory: {result_path}")
+        st.info("Open 07. Results Dashboard and select the result folder with this scenario name.")
     except Exception as exc:
         st.error("Simulation failed.")
         st.exception(exc)
