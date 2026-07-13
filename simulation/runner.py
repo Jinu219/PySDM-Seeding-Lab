@@ -10,6 +10,7 @@ import pandas as pd
 import yaml
 
 from analysis.comparison import build_difference_dataframe, summarize_comparison
+from analysis.exper2_diagnostics import add_exper2_diagnostics, diagnostic_health_rows
 from analysis.metrics import summarize_timeseries
 from simulation.builder import build_run_spec
 from simulation.progress import ProgressCallback, emit_progress
@@ -17,6 +18,7 @@ from simulation.pysdm_adapter import run_adapter
 from simulation.schema import normalize_config
 from simulation.sweep import build_sweep_row, generate_sweep_cases
 from simulation.validation import validation_report_rows, validation_summary
+from simulation.types import AdapterResult
 
 
 def _write_json(path: Path, payload: Dict[str, Any] | list[Dict[str, Any]]) -> None:
@@ -32,6 +34,32 @@ def _write_yaml(path: Path, payload: Dict[str, Any]) -> None:
 def _safe_name(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in ["_", "-", "."] else "_" for ch in value)
 
+
+
+def _apply_exper2_diagnostics_to_result(result: AdapterResult, config: Dict[str, Any]) -> AdapterResult:
+    """Return an AdapterResult with Exper2-style diagnostic columns added."""
+    diagnostics_cfg = config.get("diagnostics", {})
+    if not diagnostics_cfg.get("exper2_mode", True):
+        return result
+
+    enriched = add_exper2_diagnostics(result.require_timeseries(), config)
+
+    summary = {
+        **result.summary,
+        "exper2_diagnostics_enabled": True,
+        "exper2_diagnostic_columns": [
+            column
+            for column in enriched.columns
+            if column not in result.timeseries.columns
+        ],
+    }
+
+    metadata = {
+        **result.metadata,
+        "exper2_diagnostics_enabled": True,
+    }
+
+    return AdapterResult(timeseries=enriched, metadata=metadata, summary=summary)
 
 def run_experiment(
     config: Dict[str, Any],
@@ -89,6 +117,7 @@ def run_single_experiment(
 
     emit_progress(progress_callback, "runner", 3, total_stages, f"Running adapter: {spec.adapter_name}")
     result = run_adapter(spec, progress_callback=progress_callback)
+    result = _apply_exper2_diagnostics_to_result(result, spec.config)
 
     emit_progress(progress_callback, "runner", 4, total_stages, "Writing result files")
     timeseries = result.require_timeseries()
@@ -153,12 +182,14 @@ def run_control_vs_seeding(
     control_dir = run_dir / "control"
     control_spec = build_run_spec(control_cfg)
     control_result = run_adapter(control_spec, progress_callback=progress_callback)
+    control_result = _apply_exper2_diagnostics_to_result(control_result, control_spec.config)
     _write_single_result_files(control_dir, control_spec, control_result)
 
     emit_progress(progress_callback, "comparison", 3, total_stages, "Running seeding simulation")
     seeding_dir = run_dir / "seeding"
     seeding_spec = build_run_spec(seeding_cfg)
     seeding_result = run_adapter(seeding_spec, progress_callback=progress_callback)
+    seeding_result = _apply_exper2_diagnostics_to_result(seeding_result, seeding_spec.config)
     _write_single_result_files(seeding_dir, seeding_spec, seeding_result)
 
     emit_progress(progress_callback, "comparison", 4, total_stages, "Building comparison dataframe")
@@ -378,6 +409,7 @@ def _write_single_result_files(
     summary_path = run_dir / "summary.json"
     metadata_path = run_dir / "metadata.json"
     validation_path = run_dir / "validation_report.json"
+    diagnostic_health_path = run_dir / "diagnostic_health.json"
 
     _write_yaml(config_path, spec.config)
     timeseries.to_csv(timeseries_path, index=False)
@@ -405,9 +437,11 @@ def _write_single_result_files(
             "summary": str(summary_path.name),
             "metadata": str(metadata_path.name),
             "validation_report": str(validation_path.name),
+            "diagnostic_health": str(diagnostic_health_path.name),
         },
     }
 
     _write_json(summary_path, summary_payload)
     _write_json(metadata_path, metadata_payload)
     _write_json(validation_path, validation_report_rows(spec.config))
+    _write_json(diagnostic_health_path, diagnostic_health_rows(timeseries))

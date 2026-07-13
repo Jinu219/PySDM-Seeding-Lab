@@ -81,6 +81,17 @@ def summarize_timeseries(df: pd.DataFrame) -> Dict[str, float | int | None]:
         "superdroplet_count",
         "mean_radius_m",
         "supersaturation",
+        "water_vapour_mixing_ratio",
+        "supersaturation_percent",
+        "relative_humidity_percent",
+        "temperature_K",
+        "all_activated_water_mixing_ratio",
+        "cloud_droplet_concentration",
+        "rain_droplet_concentration",
+        "all_activated_concentration",
+        "effective_radius_cloud_um",
+        "effective_radius_rain_um",
+        "effective_radius_all_um",
     ]:
         if column in df.columns:
             summary[f"final_{column}"] = float(df[column].iloc[-1])

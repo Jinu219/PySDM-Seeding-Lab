@@ -8,8 +8,9 @@ from typing import Any, Dict, List
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
+from analysis.exper2_diagnostics import EXPER2_VARIABLE_GROUPS, EXPER2_PREFERRED_ORDER
 
-DASHBOARD_BUILD_ID = "scenario-seeding-window-color-legend-20260713"
+DASHBOARD_BUILD_ID = "exper2-diagnostics-20260713"
 
 
 @dataclass(frozen=True)
@@ -247,6 +248,12 @@ def available_numeric_columns(df: pd.DataFrame) -> List[str]:
 def recommended_column_groups(df: pd.DataFrame) -> Dict[str, List[str]]:
     """Return dashboard-friendly column groups based on available outputs."""
     groups = {
+        "Thermodynamic response": [
+            "water_vapour_mixing_ratio",
+            "supersaturation_percent",
+            "relative_humidity_percent",
+            "temperature_K",
+        ],
         "Water content": [
             "cloud_water_mixing_ratio",
             "rain_water_mixing_ratio",
@@ -263,6 +270,17 @@ def recommended_column_groups(df: pd.DataFrame) -> Dict[str, List[str]]:
         ],
         "Supersaturation": [
             "supersaturation",
+            "supersaturation_percent",
+        ],
+        "Exper2 number concentration": [
+            "cloud_droplet_concentration",
+            "rain_droplet_concentration",
+            "all_activated_concentration",
+        ],
+        "Exper2 effective radius": [
+            "effective_radius_cloud_um",
+            "effective_radius_rain_um",
+            "effective_radius_all_um",
         ],
     }
 
@@ -277,7 +295,7 @@ def comparison_base_variables(comparison_df: pd.DataFrame) -> List[str]:
     """Return physically meaningful base variable names available in a comparison dataframe."""
     excluded = {"seeding_active"}
 
-    preferred_order = [
+    preferred_order = EXPER2_PREFERRED_ORDER + [
         "rain_water_mixing_ratio",
         "cloud_water_mixing_ratio",
         "supersaturation",
@@ -509,6 +527,11 @@ def _format_sweep_case_label(row: pd.Series) -> str:
     if updraft_key in row and pd.notna(row[updraft_key]):
         parts.append(f"w={row[updraft_key]}")
 
+    collision_key = "param.microphysics.collision"
+    if collision_key in row and pd.notna(row[collision_key]):
+        collision_value = bool(row[collision_key])
+        parts.append("coll=ON" if collision_value else "coll=OFF")
+
     if parts:
         return ", ".join(parts)
 
@@ -602,7 +625,7 @@ def sweep_base_variables(
         if variables:
             break
 
-    preferred = [
+    preferred = EXPER2_PREFERRED_ORDER + [
         "rain_water_mixing_ratio",
         "cloud_water_mixing_ratio",
         "supersaturation",
@@ -968,6 +991,8 @@ def build_overlay_legend_table(overlay_df: pd.DataFrame) -> pd.DataFrame:
                 row["seeding_number"] = part.replace("N=", "")
             elif part.startswith("w="):
                 row["updraft"] = part.replace("w=", "")
+            elif part.startswith("coll="):
+                row["collision"] = part.replace("coll=", "")
 
         rows.append(row)
 
@@ -1028,3 +1053,19 @@ def sweep_seeding_intervals(sweep_dir: Path, sweep_df: pd.DataFrame) -> List[tup
             continue
 
     return []
+
+
+
+def exper2_variable_groups(columns: List[str]) -> Dict[str, List[str]]:
+    """Return Exper2 diagnostic groups limited to available variable names."""
+    available = set(columns)
+    return {
+        group: [col for col in vars_ if col in available]
+        for group, vars_ in EXPER2_VARIABLE_GROUPS.items()
+        if any(col in available for col in vars_)
+    }
+
+
+def exper2_all_variables() -> List[str]:
+    """Return preferred Exper2 variable order."""
+    return list(EXPER2_PREFERRED_ORDER)

@@ -47,6 +47,7 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "sweep_param_columns",
     "plot_sweep_heatmap",
     "build_overlay_legend_table",
+    "exper2_variable_groups",
 ]
 
 missing = [name for name in REQUIRED_DASHBOARD_FUNCTIONS if not hasattr(dash, name)]
@@ -57,7 +58,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "scenario-seeding-window-color-legend-20260713"
+RESULTS_UI_BUILD_ID = "exper2-diagnostics-20260713"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -145,20 +146,21 @@ if is_placeholder:
 st.divider()
 
 if is_sweep:
-    tab_dashboard, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_exper2, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Exper2 Diagnostics", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
     )
     tab_comparison = None
     tab_tables = tab_ranking
 elif is_comparison:
-    tab_dashboard, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_exper2, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Exper2 Diagnostics", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
     )
 else:
     tab_dashboard, tab_tables, tab_files, tab_config = st.tabs(
         ["Dashboard", "Timeseries Table", "Files & Metadata", "Config / Validation"]
     )
     tab_comparison = None
+    tab_exper2 = None
     tab_timeseries = None
     tab_ranking = None
 
@@ -246,12 +248,12 @@ with tab_dashboard:
         default_vars = [
             var
             for var in [
-                "rain_water_mixing_ratio",
+                "water_vapour_mixing_ratio",
+                "supersaturation_percent",
                 "cloud_water_mixing_ratio",
-                "supersaturation",
-                "effective_radius_um",
-                "droplet_number_concentration_cm3",
-                "superdroplet_count",
+                "rain_water_mixing_ratio",
+                "all_activated_water_mixing_ratio",
+                "effective_radius_all_um",
             ]
             if var in available_vars
         ]
@@ -410,6 +412,116 @@ with tab_dashboard:
             render_plot_grid(custom_items, n_cols=matrix_cols)
         else:
             st.info("No numeric variables available for custom plotting.")
+
+
+if (is_sweep or is_comparison) and tab_exper2 is not None:
+    with tab_exper2:
+        st.subheader("Exper2-style Diagnostic View")
+        st.caption(
+            "Exper2 Follow-up 구조에 맞춰 thermodynamic → water mass → number concentration → size response를 봅니다. "
+            "기본 비교는 diff = seeding - control입니다."
+        )
+
+        if is_sweep:
+            curve_source = "comparison"
+            comparison_mode = st.radio(
+                "Comparison mode",
+                ["diff", "seeding", "control", "relative_change_percent"],
+                horizontal=True,
+                index=0,
+                key="exper2_sweep_mode",
+            )
+
+            available_vars = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source=curve_source)
+            groups = dash.exper2_variable_groups(available_vars)
+
+            if not groups:
+                st.info("No Exper2 diagnostic variables are available in this sweep result.")
+            else:
+                selected_group = st.selectbox("Exper2 diagnostic group", list(groups.keys()))
+                selected_vars = groups[selected_group]
+
+                max_cases_exper2 = st.slider(
+                    "Maximum cases to overlay",
+                    min_value=2,
+                    max_value=min(30, len(sweep_df)) if len(sweep_df) >= 2 else 2,
+                    value=min(12, len(sweep_df)) if len(sweep_df) >= 2 else 2,
+                    key="exper2_max_cases",
+                )
+                matrix_cols_exper2 = st.slider(
+                    "Plot columns",
+                    min_value=1,
+                    max_value=3,
+                    value=2,
+                    key="exper2_matrix_cols",
+                )
+
+                shaded_intervals = dash.sweep_seeding_intervals(selected_entry.path, sweep_df)
+                if shaded_intervals:
+                    st.caption("Shaded time window indicates seeding-active period.")
+
+                plot_items = []
+                spread_rows = []
+                legend_df = pd.DataFrame()
+                for var in selected_vars:
+                    overlay_df = dash.build_sweep_overlay_dataframe(
+                        selected_entry.path,
+                        sweep_df,
+                        variable=var,
+                        curve_source=curve_source,
+                        comparison_mode=comparison_mode,
+                        max_cases=max_cases_exper2,
+                    )
+                    if legend_df.empty:
+                        legend_df = dash.build_overlay_legend_table(overlay_df)
+                    plot_items.append(
+                        (
+                            var,
+                            dash.plot_sweep_overlay(
+                                overlay_df,
+                                variable=var,
+                                curve_label=f"comparison:{comparison_mode}",
+                                show_legend=False,
+                                shaded_intervals=shaded_intervals,
+                            ),
+                        )
+                    )
+                    spread_rows.append({"variable": var, **dash.compute_overlay_spread(overlay_df)})
+
+                render_plot_grid(plot_items, n_cols=matrix_cols_exper2)
+
+                with st.expander("Case legend table", expanded=False):
+                    st.dataframe(dash.style_curve_legend_table(legend_df), use_container_width=True)
+
+                st.subheader("Exper2 Sensitivity Check")
+                st.dataframe(pd.DataFrame(spread_rows), use_container_width=True)
+
+        elif is_comparison:
+            groups = dash.exper2_variable_groups(dash.comparison_base_variables(comparison_df))
+
+            if not groups:
+                st.info("No Exper2 diagnostic variables are available in this comparison result.")
+            else:
+                selected_group = st.selectbox("Exper2 diagnostic group", list(groups.keys()))
+                selected_vars = groups[selected_group]
+                mode = st.radio(
+                    "Curve mode",
+                    ["diff", "control_vs_seeding"],
+                    horizontal=True,
+                    index=0,
+                    key="exper2_comparison_mode",
+                )
+
+                plot_items = []
+                if mode == "diff":
+                    for var in selected_vars:
+                        plot_items.append((f"Δ {var}", dash.plot_difference(comparison_df, var)))
+                else:
+                    for var in selected_vars:
+                        plot_items.append((var, dash.plot_control_vs_seeding(comparison_df, var)))
+
+                render_plot_grid(plot_items, n_cols=2)
+
 
 if is_sweep:
     with tab_timeseries:

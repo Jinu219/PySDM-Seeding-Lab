@@ -106,6 +106,8 @@ with col2:
     use_duration = st.checkbox("Sweep injection duration [s]", value=False)
     duration_values = st.text_input("Injection duration values [s]", value="120, 300, 600")
 
+    use_collision = st.checkbox("Sweep collision ON/OFF", value=False)
+
 
 def parse_float_list(text: str) -> list[float]:
     values = []
@@ -165,6 +167,14 @@ try:
             {
                 "name": "seeding.injection_duration",
                 "values": [int(value) for value in parse_float_list(duration_values)],
+            }
+        )
+
+    if use_collision:
+        params.append(
+            {
+                "name": "microphysics.collision",
+                "values": [False, True],
             }
         )
 

@@ -691,3 +691,48 @@ python scripts/check_project_integrity.py
 streamlit run app.py
 ```
 
+## Exper2-style Diagnostics
+
+The platform now adds Exper2 Follow-up style diagnostic columns to saved timeseries when `diagnostics.exper2_mode` is enabled.
+
+Diagnostic groups:
+
+```text
+Thermodynamic response
+- water_vapour_mixing_ratio
+- supersaturation_percent
+- relative_humidity_percent
+- temperature_K
+
+Water mass response
+- cloud_water_mixing_ratio
+- rain_water_mixing_ratio
+- all_activated_water_mixing_ratio
+
+Number concentration response
+- cloud_droplet_concentration
+- rain_droplet_concentration
+- all_activated_concentration
+
+Size response
+- effective_radius_cloud_um
+- effective_radius_rain_um
+- effective_radius_all_um
+```
+
+The Results Dashboard includes an `Exper2 Diagnostics` tab for `[comparison]` and `[sweep]` results.  
+For sweep results, start with:
+
+```text
+Comparison mode = diff
+Diagnostic group = Thermodynamic response or Water mass response
+```
+
+The Parameter Sweep page also supports:
+
+```text
+microphysics.collision = OFF / ON
+```
+
+This is needed to reproduce the Exper2 finding that rain-water response is strongly tied to collision/coalescence.
+

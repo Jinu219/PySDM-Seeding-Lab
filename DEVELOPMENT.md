@@ -511,3 +511,21 @@ Recommended commit message:
 git commit -m "Add scenario-aware settings workflow"
 ```
 
+## Step 11. Add Exper2-style diagnostics
+
+Changes:
+- Added `analysis/exper2_diagnostics.py`
+- Added `diagnostics` section to schema
+- Runner enriches adapter output with Exper2-style diagnostic columns
+- Single-run result folders now save `diagnostic_health.json`
+- Comparison outputs include Exper2 columns and differences
+- Dashboard includes an `Exper2 Diagnostics` tab
+- Parameter Sweep page supports collision ON/OFF sweep
+- Dashboard variable ordering now prioritizes Exper2 pathway diagnostics
+
+Recommended commit message:
+
+```bash
+git commit -m "Add Exper2-style diagnostic workflow"
+```
+
