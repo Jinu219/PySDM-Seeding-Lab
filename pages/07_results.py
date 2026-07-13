@@ -57,6 +57,7 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_sweep_heatmap",
     "build_overlay_legend_table",
     "recommended_sweep_variables",
+    "result_is_readable",
     "likely_injection_time_sweep",
     "plot_sweep_effect_summary",
     "build_sweep_effect_summary",
@@ -76,7 +77,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "progress-injection-summary-20260713"
+RESULTS_UI_BUILD_ID = "compact-progress-empty-csv-fix-20260713"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -91,6 +92,18 @@ if not entries:
     st.info("No result files found. Run an experiment first.")
     st.stop()
 
+show_incomplete = st.toggle(
+    "Show incomplete / in-progress results",
+    value=False,
+    help="Turn on only when you want to inspect a run that is still being written.",
+)
+if not show_incomplete:
+    entries = [entry for entry in entries if dash.result_is_readable(entry)]
+
+if not entries:
+    st.warning("No completed readable result files found yet. Wait until the run finishes or enable incomplete results.")
+    st.stop()
+
 st.info("If the build badge below does not change after update, stop Streamlit completely (`Ctrl+C`) and run `streamlit run app.py` again.")
 
 selected_entry = st.selectbox(
@@ -101,6 +114,15 @@ selected_entry = st.selectbox(
 
 loaded = dash.load_result(selected_entry)
 df = loaded["timeseries"]
+
+if df.empty:
+    st.warning(
+        "This result directory exists, but its primary CSV is empty or still being written. "
+        "Wait for the run to finish, then refresh Results Dashboard."
+    )
+    with st.expander("Detected files"):
+        st.write(selected_entry.path)
+    st.stop()
 ensemble_df = loaded.get("ensemble", pd.DataFrame())
 member_summary_df = loaded.get("member_summary", pd.DataFrame())
 sweep_df = loaded.get("sweep", pd.DataFrame())

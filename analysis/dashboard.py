@@ -13,7 +13,7 @@ import yaml
 from analysis.ensemble_statistics import ensemble_variable_bases
 from analysis.growth_pathway_diagnostics import GROWTH_PATHWAY_VARIABLE_GROUPS, GROWTH_PATHWAY_PREFERRED_ORDER
 
-DASHBOARD_BUILD_ID = "progress-injection-summary-20260713"
+DASHBOARD_BUILD_ID = "compact-progress-empty-csv-fix-20260713"
 
 
 @dataclass(frozen=True)
@@ -93,8 +93,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
 
-        stats_df = pd.read_csv(stats_path)
-        member_summary_df = pd.read_csv(member_summary_path) if member_summary_path.exists() else pd.DataFrame()
+        stats_df = safe_read_csv(stats_path)
+        member_summary_df = safe_read_csv(member_summary_path)
 
         return {
             "entry": entry,
@@ -126,7 +126,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
 
-        sweep_df = pd.read_csv(sweep_path)
+        sweep_df = safe_read_csv(sweep_path)
 
         return {
             "entry": entry,
@@ -157,9 +157,9 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         control_path = entry.path / "control" / "timeseries.csv"
         seeding_path = entry.path / "seeding" / "timeseries.csv"
 
-        comparison_df = pd.read_csv(comparison_path)
-        control_df = pd.read_csv(control_path) if control_path.exists() else pd.DataFrame()
-        seeding_df = pd.read_csv(seeding_path) if seeding_path.exists() else pd.DataFrame()
+        comparison_df = safe_read_csv(comparison_path)
+        control_df = safe_read_csv(control_path)
+        seeding_df = safe_read_csv(seeding_path)
 
         return {
             "entry": entry,
@@ -190,7 +190,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
 
-        df = pd.read_csv(timeseries_path)
+        df = safe_read_csv(timeseries_path)
 
         return {
             "entry": entry,
@@ -214,7 +214,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             },
         }
 
-    df = pd.read_csv(entry.path)
+    df = safe_read_csv(entry.path)
     return {
         "entry": entry,
         "timeseries": df,
@@ -244,6 +244,34 @@ def _read_yaml(path: Path) -> Any:
         return {}
     with path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def safe_read_csv(path: Path) -> pd.DataFrame:
+    """
+    Read a CSV without crashing the dashboard.
+
+    Returns an empty DataFrame when:
+    - file does not exist
+    - file exists but is zero-byte / headerless
+    - pandas raises EmptyDataError
+    """
+    path = Path(path)
+
+    if not path.exists():
+        return pd.DataFrame()
+
+    try:
+        if path.stat().st_size == 0:
+            return pd.DataFrame()
+    except OSError:
+        return pd.DataFrame()
+
+    try:
+        return safe_read_csv(path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+    except FileNotFoundError:
+        return pd.DataFrame()
 
 
 def flatten_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
@@ -641,7 +669,7 @@ def _read_sweep_case_dataframe(case_dir: Path, curve_source: str) -> pd.DataFram
     if not path.exists():
         return pd.DataFrame()
 
-    return pd.read_csv(path)
+    return safe_read_csv(path)
 
 
 def sweep_base_variables(
@@ -1473,3 +1501,29 @@ def likely_injection_time_sweep(sweep_df: pd.DataFrame) -> bool:
             "param.seeding.injection_duration",
         ]
     )
+
+
+
+def result_is_readable(entry: ResultEntry) -> bool:
+    """Check whether a result entry has a non-empty primary CSV."""
+    primary_files = {
+        "ensemble": "ensemble_statistics.csv",
+        "parameter_sweep": "sweep_summary.csv",
+        "comparison": "comparison.csv",
+        "single": "timeseries.csv",
+        "legacy_csv": "",
+    }
+
+    if entry.result_type == "legacy_csv":
+        path = entry.path
+    else:
+        filename = primary_files.get(entry.result_type, "")
+        path = entry.path / filename if filename else entry.path
+
+    if not path.exists():
+        return False
+
+    try:
+        return path.stat().st_size > 0
+    except OSError:
+        return False

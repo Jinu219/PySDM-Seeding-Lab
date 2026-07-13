@@ -844,3 +844,27 @@ Sweep Time Series
 - helps compare post-seeding response when absolute-time curves overlap
 ```
 
+## Compact progress and safe result loading
+
+The run page now updates one compact progress card instead of appending repeated metric rows.
+
+Progress card:
+
+```text
+Progress overview
+overall progress bar
+stage progress bar
+Total / Done / Left / Stage
+current status
+recent events table
+```
+
+The Results Dashboard now skips incomplete or empty result directories by default.  
+This prevents:
+
+```text
+pandas.errors.EmptyDataError: No columns to parse from file
+```
+
+while a run is still writing files. Turn on `Show incomplete / in-progress results` only for debugging.
+

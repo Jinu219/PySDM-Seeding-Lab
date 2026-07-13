@@ -588,3 +588,20 @@ Recommended commit message:
 git commit -m "Add progress dashboard and injection-time sweep summaries"
 ```
 
+## Fix. Compact progress card and empty CSV handling
+
+Changes:
+- Run page now uses persistent placeholders instead of appending metric rows
+- Live progress is displayed in one compact card
+- Added `safe_read_csv()` to dashboard
+- Dashboard now skips zero-byte / empty CSV result files
+- Added incomplete-result toggle in Results Dashboard
+- Fixed `pandas.errors.EmptyDataError` when a run is still writing
+- Added result readability checks
+
+Recommended commit message:
+
+```bash
+git commit -m "Compact run progress and handle incomplete result files"
+```
+

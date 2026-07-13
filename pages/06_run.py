@@ -16,7 +16,7 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "progress-dashboard-20260713"
+UI_BUILD_ID = "compact-progress-empty-csv-fix-20260713"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
@@ -125,65 +125,87 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
     plan = estimate_run_plan(cfg)
 
     st.subheader("Live Progress")
-    overall_bar = st.progress(0)
-    stage_bar = st.progress(0)
 
-    metric_total, metric_done, metric_remaining, metric_current = st.columns(4)
-    status_box = st.empty()
-    event_box = st.empty()
+    progress_card = st.container(border=True)
+    with progress_card:
+        overview_text = st.empty()
+        overall_bar = st.progress(0)
+        stage_bar = st.progress(0)
+
+        metric_cols = st.columns(4)
+        metric_total_box = metric_cols[0].empty()
+        metric_done_box = metric_cols[1].empty()
+        metric_remaining_box = metric_cols[2].empty()
+        metric_stage_box = metric_cols[3].empty()
+
+        status_box = st.empty()
+        event_box = st.empty()
 
     progress_state = {
         "completed_runs": 0,
-        "seen_completion_events": set(),
+        "control_completed": 0,
+        "seeding_completed": 0,
+        "single_completed": 0,
         "events": [],
     }
 
-    def add_completed_run(event_key: str, label: str) -> None:
-        if event_key in progress_state["seen_completion_events"]:
-            return
-
-        progress_state["seen_completion_events"].add(event_key)
-        progress_state["completed_runs"] = min(
-            progress_state["completed_runs"] + 1,
-            max(plan.total_model_runs, 1),
-        )
-        progress_state["events"].append(label)
-        progress_state["events"] = progress_state["events"][-8:]
-
-    def report_progress(stage: str, current: int, total: int, message: str) -> None:
-        # Local stage progress
+    def render_progress(stage: str, current: int, total: int, message: str) -> None:
+        total_runs = max(plan.total_model_runs, 1)
+        completed = min(progress_state["completed_runs"], total_runs)
+        remaining = max(total_runs - completed, 0)
+        overall_fraction = min(completed / total_runs, 1.0)
         stage_fraction = min(current / max(total, 1), 1.0)
+
+        overview_text.markdown(
+            f"""
+            **Progress overview**  
+            `{completed} / {total_runs}` model runs completed · `{remaining}` remaining · current stage: `{stage}`
+            """
+        )
+        overall_bar.progress(overall_fraction)
         stage_bar.progress(stage_fraction)
 
-        # Estimate completed model runs from high-level runner stages.
-        # For control_vs_seeding, comparison stage 3 begins after control has finished,
-        # and stage 4 begins after seeding has finished.
-        if stage == "comparison" and current == 3:
-            add_completed_run(f"{stage}:{len(progress_state['seen_completion_events'])}:control", "Completed control run")
-        elif stage == "comparison" and current == 4:
-            add_completed_run(f"{stage}:{len(progress_state['seen_completion_events'])}:seeding", "Completed seeding run")
-        elif stage == "runner" and current == 4 and plan.control_factor == 1:
-            add_completed_run(f"{stage}:{len(progress_state['seen_completion_events'])}:single", "Completed single run")
+        metric_total_box.metric("Total", total_runs)
+        metric_done_box.metric("Done", completed)
+        metric_remaining_box.metric("Left", remaining)
+        metric_stage_box.metric("Stage", stage)
 
-        completed = progress_state["completed_runs"]
-        total_runs = max(plan.total_model_runs, 1)
-        remaining = max(total_runs - completed, 0)
-        overall_bar.progress(min(completed / total_runs, 1.0))
-
-        metric_total.metric("Total model runs", total_runs)
-        metric_done.metric("Completed", completed)
-        metric_remaining.metric("Remaining", remaining)
-        metric_current.metric("Current stage", stage)
-
-        status_box.info(
-            f"Stage [{current}/{total}] {stage}: {message}\n\n"
-            f"Overall model-run progress: {completed}/{total_runs}"
-        )
+        status_box.info(f"Stage [{current}/{total}] {stage}: {message}")
 
         if progress_state["events"]:
-            event_box.code("\n".join(progress_state["events"][-8:]))
+            event_box.dataframe(
+                pd.DataFrame(
+                    {"Recent events": progress_state["events"][-8:][::-1]}
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    def add_completed_run(label: str) -> None:
+        total_runs = max(plan.total_model_runs, 1)
+        if progress_state["completed_runs"] >= total_runs:
+            return
+        progress_state["completed_runs"] += 1
+        progress_state["events"].append(label)
+
+    def report_progress(stage: str, current: int, total: int, message: str) -> None:
+        # Detect completed model runs from high-level comparison/single stages.
+        # comparison stage 3 starts after control run completion.
+        # comparison stage 4 starts after seeding run completion.
+        if stage == "comparison" and current == 3:
+            progress_state["control_completed"] += 1
+            add_completed_run(f"Completed control run #{progress_state['control_completed']}")
+        elif stage == "comparison" and current == 4:
+            progress_state["seeding_completed"] += 1
+            add_completed_run(f"Completed seeding run #{progress_state['seeding_completed']}")
+        elif stage == "runner" and current == 4 and plan.control_factor == 1:
+            progress_state["single_completed"] += 1
+            add_completed_run(f"Completed single run #{progress_state['single_completed']}")
+
+        render_progress(stage, current, total, message)
 
     try:
+        render_progress("queued", 0, 1, "Waiting to start")
         with st.spinner("Running simulation..."):
             result_path = run_experiment(
                 cfg,
@@ -191,12 +213,9 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
                 progress_callback=report_progress,
             )
 
-        progress_state["completed_runs"] = max(progress_state["completed_runs"], plan.total_model_runs)
-        overall_bar.progress(1.0)
-        stage_bar.progress(1.0)
-        status_box.success(f"Finished: {result_path}")
-        metric_done.metric("Completed", plan.total_model_runs)
-        metric_remaining.metric("Remaining", 0)
+        progress_state["completed_runs"] = plan.total_model_runs
+        progress_state["events"].append("All runs completed")
+        render_progress("finished", 1, 1, f"Finished: {result_path}")
 
         st.success(f"Experiment finished. Result directory: {result_path}")
         st.info("Open 07. Results Dashboard and select the result folder with this scenario name.")
