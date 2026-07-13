@@ -57,6 +57,9 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_sweep_heatmap",
     "build_overlay_legend_table",
     "recommended_sweep_variables",
+    "short_sweep_param_name",
+    "format_sweep_param_value",
+    "filter_sweep_dataframe",
     "result_is_readable",
     "likely_injection_time_sweep",
     "plot_sweep_effect_summary",
@@ -77,7 +80,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "compact-progress-empty-csv-fix-20260713"
+RESULTS_UI_BUILD_ID = "sweep-case-filter-coverage-20260713"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -412,6 +415,44 @@ with tab_dashboard:
             )
 
         available_vars = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source=curve_source)
+
+        sweep_df = sweep_df.copy()
+        param_filter_cols = dash.sweep_param_columns(sweep_df)
+
+        with st.expander("Case filter / focus view", expanded=True):
+            st.caption(
+                "Plot은 모든 case를 자동으로 다 보여주지 않습니다. "
+                "예를 들어 dry radius가 3.0 µm까지 있어도 max cases가 작거나 앞쪽 case만 선택되면 안 보일 수 있습니다. "
+                "여기서 원하는 parameter 값만 남겨서 비교하세요."
+            )
+
+            filters = {}
+            filter_cols = st.columns(min(3, max(len(param_filter_cols), 1)))
+            for idx, param_col in enumerate(param_filter_cols):
+                unique_values = list(sweep_df[param_col].dropna().unique())
+                if len(unique_values) == 0 or len(unique_values) > 30:
+                    continue
+
+                try:
+                    unique_values = sorted(unique_values)
+                except Exception:
+                    pass
+
+                with filter_cols[idx % len(filter_cols)]:
+                    selected_values = st.multiselect(
+                        dash.short_sweep_param_name(param_col),
+                        unique_values,
+                        default=unique_values,
+                        format_func=lambda value, col=param_col: dash.format_sweep_param_value(col, value),
+                        key=f"dashboard_filter_{param_col}",
+                    )
+                filters[param_col] = selected_values
+
+            filtered_sweep_df = dash.filter_sweep_dataframe(sweep_df, filters)
+            st.metric("Selected cases", len(filtered_sweep_df))
+            if len(filtered_sweep_df) == 0:
+                st.warning("No cases selected. Adjust filters.")
+
         default_vars = [
             var
             for var in [
@@ -439,11 +480,13 @@ with tab_dashboard:
                 "Rerun the selected scenario after the latest update."
             )
 
+        case_count_for_plot = max(len(filtered_sweep_df), 1)
         max_cases = st.slider(
             "Maximum cases per plot",
-            min_value=2,
-            max_value=min(20, len(sweep_df)) if len(sweep_df) >= 2 else 2,
-            value=min(9, len(sweep_df)) if len(sweep_df) >= 2 else 2,
+            min_value=1,
+            max_value=max(case_count_for_plot, 1),
+            value=min(24, case_count_for_plot),
+            help="If this is smaller than selected cases, cases are sampled across the full parameter range instead of only taking the first cases.",
         )
 
         shaded_intervals = dash.sweep_seeding_intervals(selected_entry.path, sweep_df)
@@ -455,7 +498,7 @@ with tab_dashboard:
         for var in selected_vars[:max_plots]:
             overlay_df = dash.build_sweep_overlay_dataframe(
                 selected_entry.path,
-                sweep_df,
+                filtered_sweep_df,
                 variable=var,
                 curve_source=curve_source,
                 comparison_mode=comparison_mode,
@@ -471,7 +514,7 @@ with tab_dashboard:
             first_var = selected_vars[0]
             first_overlay_df = dash.build_sweep_overlay_dataframe(
                 selected_entry.path,
-                sweep_df,
+                filtered_sweep_df,
                 variable=first_var,
                 curve_source=curve_source,
                 comparison_mode=comparison_mode,
@@ -766,15 +809,43 @@ if is_sweep:
                 key="sweep_ts_mode",
             )
 
-        available_vars = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source=curve_source)
+        filtered_sweep_df = sweep_df.copy()
+        with st.expander("Case filter / focus view", expanded=True):
+            param_filter_cols = dash.sweep_param_columns(sweep_df)
+            filters = {}
+            filter_cols = st.columns(min(3, max(len(param_filter_cols), 1)))
+            for idx, param_col in enumerate(param_filter_cols):
+                unique_values = list(sweep_df[param_col].dropna().unique())
+                if len(unique_values) == 0 or len(unique_values) > 30:
+                    continue
+                try:
+                    unique_values = sorted(unique_values)
+                except Exception:
+                    pass
+                with filter_cols[idx % len(filter_cols)]:
+                    selected_values = st.multiselect(
+                        dash.short_sweep_param_name(param_col),
+                        unique_values,
+                        default=unique_values,
+                        format_func=lambda value, col=param_col: dash.format_sweep_param_value(col, value),
+                        key=f"sweep_ts_filter_{param_col}",
+                    )
+                filters[param_col] = selected_values
+
+            filtered_sweep_df = dash.filter_sweep_dataframe(sweep_df, filters)
+            st.metric("Selected cases", len(filtered_sweep_df))
+
+        available_vars = dash.sweep_base_variables(selected_entry.path, filtered_sweep_df, curve_source=curve_source)
         selected_var = st.selectbox("Variable", available_vars, key="sweep_ts_variable") if available_vars else None
 
+        case_count_for_detail = max(len(filtered_sweep_df), 1)
         max_cases = st.slider(
             "Maximum cases to overlay",
-            min_value=2,
-            max_value=min(30, len(sweep_df)) if len(sweep_df) >= 2 else 2,
-            value=min(12, len(sweep_df)) if len(sweep_df) >= 2 else 2,
+            min_value=1,
+            max_value=case_count_for_detail,
+            value=min(24, case_count_for_detail),
             key="sweep_ts_max_cases",
+            help="If smaller than selected cases, cases are sampled across the full selected parameter range.",
         )
 
         time_axis_mode = st.selectbox(
@@ -788,7 +859,7 @@ if is_sweep:
             if time_axis_mode == "relative to injection start" and "param.seeding.injection_start" in sweep_df.columns:
                 overlay_df = dash.build_sweep_overlay_dataframe_relative_time(
                     selected_entry.path,
-                    sweep_df,
+                    filtered_sweep_df,
                     variable=selected_var,
                     curve_source=curve_source,
                     comparison_mode=comparison_mode,
@@ -798,7 +869,7 @@ if is_sweep:
             else:
                 overlay_df = dash.build_sweep_overlay_dataframe(
                     selected_entry.path,
-                    sweep_df,
+                    filtered_sweep_df,
                     variable=selected_var,
                     curve_source=curve_source,
                     comparison_mode=comparison_mode,

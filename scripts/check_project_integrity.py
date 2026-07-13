@@ -70,7 +70,27 @@ def check_page_files() -> None:
         )
 
 
+
+def check_safe_read_csv_no_recursion() -> None:
+    dashboard_path = PROJECT_ROOT / "analysis" / "dashboard.py"
+    text = dashboard_path.read_text(encoding="utf-8")
+    start = text.find("def safe_read_csv")
+    end = text.find("def flatten_summary", start)
+    if start == -1 or end == -1:
+        raise RuntimeError("Could not locate safe_read_csv block in analysis/dashboard.py")
+
+    block = text[start:end]
+    if "return safe_read_csv(path)" in block:
+        raise RuntimeError(
+            "safe_read_csv is recursively calling itself. "
+            "Run: python scripts/fix_dashboard_recursion.py"
+        )
+    if "return pd.read_csv(path)" not in block:
+        raise RuntimeError("safe_read_csv does not call pd.read_csv(path).")
+
+
 def main() -> None:
+    check_safe_read_csv_no_recursion()
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
 

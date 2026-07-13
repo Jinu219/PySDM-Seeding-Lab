@@ -13,7 +13,7 @@ import yaml
 from analysis.ensemble_statistics import ensemble_variable_bases
 from analysis.growth_pathway_diagnostics import GROWTH_PATHWAY_VARIABLE_GROUPS, GROWTH_PATHWAY_PREFERRED_ORDER
 
-DASHBOARD_BUILD_ID = "accurate-progress-safe-read-20260713"
+DASHBOARD_BUILD_ID = "sweep-case-filter-coverage-20260713"
 
 
 @dataclass(frozen=True)
@@ -267,7 +267,7 @@ def safe_read_csv(path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        return safe_read_csv(path)
+        return pd.read_csv(path)
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
     except FileNotFoundError:
@@ -584,16 +584,29 @@ def _format_sweep_case_label(row: pd.Series) -> str:
     """Build a compact readable label for one sweep case."""
     parts = []
 
+    if "case_index" in row and pd.notna(row["case_index"]):
+        try:
+            parts.append(f"c{int(row['case_index']):03d}")
+        except Exception:
+            parts.append(f"c{row['case_index']}")
+
     radius_key = "param.seeding.dry_radius"
     if radius_key in row and pd.notna(row[radius_key]):
         try:
-            parts.append(f"r={float(row[radius_key]) * 1.0e6:g} µm")
+            parts.append(f"r={float(row[radius_key]) * 1.0e6:g}µm")
         except Exception:
             parts.append(f"r={row[radius_key]}")
 
     kappa_key = "param.seeding.kappa"
     if kappa_key in row and pd.notna(row[kappa_key]):
         parts.append(f"κ={row[kappa_key]}")
+
+    injection_key = "param.seeding.injection_start"
+    if injection_key in row and pd.notna(row[injection_key]):
+        try:
+            parts.append(f"inj={float(row[injection_key]):g}s")
+        except Exception:
+            parts.append(f"inj={row[injection_key]}")
 
     conc_key = "param.seeding.number_concentration"
     if conc_key in row and pd.notna(row[conc_key]):
@@ -613,9 +626,6 @@ def _format_sweep_case_label(row: pd.Series) -> str:
 
     if "case_name" in row and pd.notna(row["case_name"]):
         return str(row["case_name"])
-
-    if "case_index" in row and pd.notna(row["case_index"]):
-        return f"case {int(row['case_index'])}"
 
     return "case"
 
@@ -740,6 +750,84 @@ def sweep_base_variables(
     return ordered
 
 
+
+
+def _limit_sweep_cases_for_display(work_df: pd.DataFrame, max_cases: int) -> pd.DataFrame:
+    """
+    Pick cases for display without hiding the tail of the sweep grid.
+
+    Old behavior used `.head(max_cases)`, which meant a 54-case grid with
+    max_cases=20 only showed early radius values and could hide r=3 µm.
+    This function samples evenly across the selected cases so the full
+    parameter range remains visible.
+    """
+    if work_df.empty:
+        return work_df
+
+    work_df = work_df.copy()
+
+    if "case_index" in work_df.columns:
+        work_df = work_df.sort_values("case_index", ascending=True)
+    elif "case_name" in work_df.columns:
+        work_df = work_df.sort_values("case_name", ascending=True)
+
+    if len(work_df) <= max_cases:
+        return work_df
+
+    indices = np.linspace(0, len(work_df) - 1, max_cases)
+    indices = sorted(set(int(round(idx)) for idx in indices))
+    return work_df.iloc[indices].reset_index(drop=True)
+
+
+def short_sweep_param_name(column: str) -> str:
+    """Human-friendly sweep parameter name."""
+    return column.replace("param.", "")
+
+
+def format_sweep_param_value(column: str, value: Any) -> str:
+    """Human-friendly sweep parameter value."""
+    if pd.isna(value):
+        return "NA"
+
+    if column.endswith("dry_radius"):
+        try:
+            return f"{float(value) * 1.0e6:g} µm"
+        except Exception:
+            return str(value)
+
+    if column.endswith("injection_start") or column.endswith("injection_end") or column.endswith("injection_duration"):
+        try:
+            return f"{float(value):g} s"
+        except Exception:
+            return str(value)
+
+    if column.endswith("collision"):
+        return "ON" if bool(value) else "OFF"
+
+    if column.endswith("kappa"):
+        try:
+            return f"{float(value):g}"
+        except Exception:
+            return str(value)
+
+    try:
+        numeric = float(value)
+        if abs(numeric) < 1.0e-3 and numeric != 0:
+            return f"{numeric:.3e}"
+        return f"{numeric:g}"
+    except Exception:
+        return str(value)
+
+
+def filter_sweep_dataframe(sweep_df: pd.DataFrame, filters: Dict[str, List[Any]]) -> pd.DataFrame:
+    """Filter sweep summary dataframe by selected parameter values."""
+    out = sweep_df.copy()
+    for column, values in filters.items():
+        if column not in out.columns or not values:
+            continue
+        out = out[out[column].isin(values)]
+    return out.reset_index(drop=True)
+
 def build_sweep_overlay_dataframe(
     sweep_dir: Path,
     sweep_df: pd.DataFrame,
@@ -767,7 +855,7 @@ def build_sweep_overlay_dataframe(
     elif "ranking_value" in work_df.columns:
         work_df = work_df.sort_values("ranking_value", ascending=False, na_position="last")
 
-    work_df = work_df.head(max_cases)
+    work_df = _limit_sweep_cases_for_display(work_df, max_cases)
 
     series_list = []
     labels = []
@@ -1093,6 +1181,8 @@ def build_overlay_legend_table(overlay_df: pd.DataFrame) -> pd.DataFrame:
         for part in parts:
             if part.startswith("c") and part[1:].isdigit():
                 row["case"] = part
+            elif part.startswith("inj="):
+                row["injection_start"] = part.replace("inj=", "")
             elif part.startswith("r="):
                 row["dry_radius"] = part.replace("r=", "")
             elif part.startswith("κ="):
@@ -1339,7 +1429,7 @@ def build_sweep_overlay_dataframe_relative_time(
     elif "ranking_value" in work_df.columns:
         work_df = work_df.sort_values("ranking_value", ascending=False, na_position="last")
 
-    work_df = work_df.head(max_cases)
+    work_df = _limit_sweep_cases_for_display(work_df, max_cases)
 
     series_list = []
     labels = []

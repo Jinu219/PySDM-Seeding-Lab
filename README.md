@@ -876,3 +876,58 @@ This makes the Run page progress card update during long sweep + ensemble jobs i
 
 The dashboard CSV reader was also fixed to call `pd.read_csv()` directly, preventing recursive `safe_read_csv()` calls.
 
+## Dashboard recursion hotfix
+
+If Results Dashboard shows:
+
+```text
+RecursionError: maximum recursion depth exceeded
+analysis/dashboard.py → safe_read_csv → return safe_read_csv(path)
+```
+
+run:
+
+```bash
+python scripts/fix_dashboard_recursion.py
+python scripts/check_project_integrity.py
+```
+
+The correct line inside `safe_read_csv()` is:
+
+```python
+return pd.read_csv(path)
+```
+
+## Sweep case filtering and coverage sampling
+
+Sweep plots no longer simply take the first `max_cases` rows.  
+When selected cases are more than `max_cases`, cases are sampled across the full sweep grid so large values such as `dry_radius = 3.0 µm` are not silently hidden.
+
+The Results Dashboard also includes:
+
+```text
+Case filter / focus view
+```
+
+Use it to focus on a subset such as:
+
+```text
+dry_radius = all
+kappa = 0.8
+injection_start = 900 s
+```
+
+or:
+
+```text
+dry_radius = 3.0 µm
+kappa = all
+injection_start = all
+```
+
+Curve labels now include case id and injection start, for example:
+
+```text
+c054, r=3µm, κ=1.2, inj=1200s
+```
+

@@ -620,3 +620,31 @@ Recommended commit message:
 git commit -m "Fix live progress accounting and CSV reader recursion"
 ```
 
+## Hotfix. Dashboard safe_read_csv recursion
+
+Changes:
+- Force `safe_read_csv()` to call `pd.read_csv(path)`
+- Added `scripts/fix_dashboard_recursion.py`
+- Integrity check now fails if `safe_read_csv()` calls itself recursively
+
+Recommended commit message:
+
+```bash
+git commit -m "Fix dashboard CSV reader recursion"
+```
+
+## Fix. Sweep case filtering and full-range display
+
+Changes:
+- Added case filter controls to sweep plots
+- Added full-range sampling instead of `.head(max_cases)`
+- Added injection-start information to curve labels
+- Added readable formatting for dry radius, kappa, injection time, collision
+- Prevents large-radius cases such as 3.0 µm from being hidden by default plot limits
+
+Recommended commit message:
+
+```bash
+git commit -m "Add sweep case filters and full-range plotting"
+```
+
