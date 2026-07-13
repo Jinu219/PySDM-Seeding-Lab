@@ -142,3 +142,23 @@ Recommended commit message:
 git commit -m "Fix CLI project root import path"
 ```
 
+## Fix. PySDM ConstantMultiplicity sampling API compatibility
+
+Fixed a PySDM adapter crash caused by installed PySDM versions where
+`ConstantMultiplicity` does not expose `sample_deterministic()`.
+
+Problem:
+- `pysdm_parcel` crashed with:
+  `AttributeError: 'ConstantMultiplicity' object has no attribute 'sample_deterministic'`
+
+Changes:
+- Added `_sample_spectrum_deterministic()` compatibility helper
+- The helper tries `sample_deterministic(...)` first and then `sample(...)`
+- Added `scripts/diagnose_pysdm_api.py` for checking installed PySDM / PySDM_examples versions and sampler methods
+
+Recommended commit message:
+
+```bash
+git commit -m "Fix PySDM spectrum sampling API compatibility"
+```
+

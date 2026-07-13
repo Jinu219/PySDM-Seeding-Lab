@@ -102,6 +102,55 @@ def _make_injection_rate(
     return injection_rate
 
 
+def _sample_spectrum_deterministic(sampler: Any, *, n_sd: int, backend: Any | None = None):
+    """
+    Sample a PySDM spectrum while tolerating PySDM API differences.
+
+    Some installed PySDM versions expose `sample_deterministic(...)`, while
+    others expose a more generic `sample(...)` method. This helper keeps the
+    adapter compatible with both.
+    """
+    method_names = (
+        "sample_deterministic",
+        "sample",
+    )
+
+    last_error: Exception | None = None
+
+    for method_name in method_names:
+        method = getattr(sampler, method_name, None)
+        if not callable(method):
+            continue
+
+        call_attempts = []
+        if backend is not None:
+            call_attempts.extend(
+                [
+                    lambda: method(n_sd=n_sd, backend=backend),
+                    lambda: method(n_sd, backend=backend),
+                ]
+            )
+
+        call_attempts.extend(
+            [
+                lambda: method(n_sd=n_sd),
+                lambda: method(n_sd),
+            ]
+        )
+
+        for call in call_attempts:
+            try:
+                return call()
+            except TypeError as exc:
+                last_error = exc
+
+    available = [name for name in dir(sampler) if not name.startswith("_")]
+    raise AttributeError(
+        "Could not sample spectrum from ConstantMultiplicity. "
+        "Tried methods: sample_deterministic, sample. "
+        f"Available public attributes/methods: {available}"
+    ) from last_error
+
 def _configure_settings(spec: SimulationRunSpec) -> Any:
     """Create and override PySDM_examples.seeding.Settings from app configuration."""
     modules = _require_pysdm()
@@ -184,13 +233,17 @@ def _configure_settings(spec: SimulationRunSpec) -> Any:
         temperature_k=temperature_k,
     )
 
-    r_dry_seed, seed_multiplicity = ConstantMultiplicity(
+    seed_sampler = ConstantMultiplicity(
         Lognormal(
             norm_factor=seeding_n_per_kg * settings.mass_of_dry_air,
             m_mode=float(seed.get("dry_radius", 1.0e-6)) * si.m,
             s_geom=float(seed.get("geometric_sigma", 1.2)),
         )
-    ).sample_deterministic(n_sd=n_sd_seeding)
+    )
+    r_dry_seed, seed_multiplicity = _sample_spectrum_deterministic(
+        seed_sampler,
+        n_sd=n_sd_seeding,
+    )
 
     v_dry_seed = formulae.trivia.volume(radius=r_dry_seed)
     seed_kappa = float(seed.get("kappa", 0.8))
