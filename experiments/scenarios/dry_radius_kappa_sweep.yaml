@@ -4,11 +4,12 @@ metadata:
   memo: '목적: seeding dry radius와 κ 변화가 rain water / cloud water / supersaturation에
     미치는 영향 확인'
   created_at: '2026-07-13T15:28:42'
+  updated_at: '2026-07-13T15:36:21'
 config:
   schema_version: 1
   experiment:
     name: default_seeding_test
-    mode: control_vs_seeding
+    mode: parameter_sweep
     description: Basic warm-cloud hygroscopic seeding configuration.
     random_seed: 42
   simulation:
@@ -20,7 +21,7 @@ config:
     temperature: 300.0
     pressure: 100000.0
     water_vapour_mixing_ratio: 0.0222
-    relative_humidity: 95.0
+    relative_humidity: 52.0
     initial_altitude: 0.0
     updraft_velocity: 1.0
     duration: 1500
@@ -70,6 +71,9 @@ config:
       - 5.0e-07
       - 1.0e-06
       - 1.5e-06
+      - 3.0e-06
+      - 4.9999999999999996e-06
+      - 9.999999999999999e-06
     - name: seeding.kappa
       values:
       - 0.8

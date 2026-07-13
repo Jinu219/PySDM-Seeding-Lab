@@ -3,17 +3,41 @@ from __future__ import annotations
 import streamlit as st
 
 from simulation.config import save_config
+from simulation.experiment_manager import scenario_options, read_scenario, update_scenario_config
 from simulation.schema import EXPERIMENT_MODES
 from simulation.sweep import count_sweep_cases
 from simulation.ui_helpers import load_working_config, page_header, schema_expander
 
 
 page_header(
-    "07. Parameter Sweep",
+    "05. Parameter Sweep",
     "여러 seeding condition 조합을 자동으로 생성하고 실행하기 위한 sweep 설정입니다.",
 )
 
-cfg = load_working_config()
+working_cfg = load_working_config()
+
+st.subheader("Scenario / Config Source")
+scenario_items = scenario_options(include_working_config=True)
+scenario_labels = [item["label"] for item in scenario_items]
+selected_scenario_label = st.selectbox(
+    "Configure sweep for",
+    scenario_labels,
+    key="parameter_sweep_scenario_source",
+)
+selected_scenario = scenario_items[scenario_labels.index(selected_scenario_label)]
+
+if selected_scenario.get("is_working_config", False):
+    cfg = working_cfg
+    scenario_memo = ""
+else:
+    payload = read_scenario(selected_scenario["path"])
+    cfg = payload.get("config", {})
+    scenario_memo = payload.get("metadata", {}).get("memo", "")
+
+if scenario_memo:
+    st.markdown("Scenario memo")
+    st.info(scenario_memo)
+
 sweep = cfg.setdefault("sweep", {})
 experiment = cfg.setdefault("experiment", {})
 
@@ -171,7 +195,12 @@ except Exception as exc:
 if st.button("Save Sweep Settings", use_container_width=True):
     cfg["experiment"] = experiment
     cfg["sweep"] = sweep
-    save_config(cfg, "configs/default.yaml")
-    st.success("Sweep settings saved to configs/default.yaml")
+
+    if selected_scenario.get("is_working_config", False):
+        save_config(cfg, "configs/default.yaml")
+        st.success("Sweep settings saved to configs/default.yaml")
+    else:
+        update_scenario_config(selected_scenario["path"], config=cfg)
+        st.success(f"Sweep settings saved to scenario: {selected_scenario['name']}")
 
 schema_expander()

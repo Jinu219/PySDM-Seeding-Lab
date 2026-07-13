@@ -657,3 +657,37 @@ streamlit run app.py
 Sweep plots now show seeding-active periods with shaded time windows.  
 Curve colors are mapped to case labels in a separate styled legend table.
 
+## Scenario-Aware Settings Pages
+
+Pages 01–05 can now save settings directly into a saved scenario.
+
+Workflow:
+
+```text
+00. Experiment Scenarios
+  - create scenario with name and memo
+
+01–04. Environment / Aerosol / Seeding / Dynamics
+  - choose Save target
+  - save settings into Current working config or a saved scenario
+
+05. Parameter Sweep
+  - choose the scenario/config source
+  - save sweep settings into the same scenario
+
+06. Run Simulation
+  - choose Scenario to run
+  - inspect config and run
+
+07. Results Dashboard
+  - inspect results
+```
+
+If Streamlit reports duplicate URL pathnames such as `run`, remove old page files:
+
+```bash
+python scripts/cleanup_old_pages.py
+python scripts/check_project_integrity.py
+streamlit run app.py
+```
+

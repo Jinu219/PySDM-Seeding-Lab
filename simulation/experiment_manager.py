@@ -108,3 +108,58 @@ def scenario_table_rows() -> List[Dict[str, Any]]:
 def load_working_config(path: str | Path = "configs/default.yaml") -> Dict[str, Any]:
     """Small wrapper used by scenario pages."""
     return load_config(path)
+
+
+
+def update_scenario_config(
+    path: str | Path,
+    *,
+    config: Dict[str, Any],
+    memo: str | None = None,
+) -> Dict[str, Any]:
+    """Update the config section of an existing scenario while preserving metadata."""
+    path = Path(path)
+    payload = read_scenario(path)
+    metadata = payload.get("metadata", {})
+
+    metadata["updated_at"] = datetime.now().isoformat(timespec="seconds")
+    if memo is not None:
+        metadata["memo"] = memo.strip()
+
+    payload["metadata"] = metadata
+    payload["config"] = config
+
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(payload, f, sort_keys=False, allow_unicode=True)
+
+    return payload
+
+
+def scenario_options(include_working_config: bool = True) -> List[Dict[str, Any]]:
+    """Return options for UI selectors."""
+    options: List[Dict[str, Any]] = []
+    if include_working_config:
+        options.append(
+            {
+                "label": "Current working config",
+                "name": "Current working config",
+                "path": "",
+                "memo": "",
+                "is_working_config": True,
+            }
+        )
+
+    for item in list_scenarios():
+        label = f"{item['name']} · {item.get('created_at', '')}"
+        memo = item.get("memo", "")
+        if memo:
+            label += f" · {memo[:42]}"
+        options.append(
+            {
+                **item,
+                "label": label,
+                "is_working_config": False,
+            }
+        )
+
+    return options

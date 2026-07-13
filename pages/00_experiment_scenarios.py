@@ -20,11 +20,11 @@ inject_responsive_css()
 
 st.title("00. Experiment Scenarios")
 st.caption("실험 시나리오를 저장하고, 저장된 시나리오를 working config에 적용합니다.")
-build_badge("Scenario page build", "scenario-manager-20260713")
+build_badge("Scenario page build", "scenario-target-save-20260713")
 
 st.info(
-    "권장 흐름: 2~4번 페이지에서 세팅값 조정 → 여기서 시나리오로 저장 → "
-    "Parameter Sweep / Run Simulation에서 해당 시나리오를 선택해 실행"
+    "권장 흐름: 01~05 페이지에서 세팅값 조정 → 저장 대상에서 scenario 선택 → "
+    "06 Run Simulation에서 해당 시나리오를 선택해 실행 → 07 Results에서 확인"
 )
 
 working_cfg = load_config("configs/default.yaml")

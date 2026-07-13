@@ -6,6 +6,7 @@ from typing import Any, Dict
 import streamlit as st
 
 from simulation.config import load_config, reset_config, save_config
+from simulation.experiment_manager import scenario_options, update_scenario_config
 from simulation.schema import FIELD_UNITS, schema_summary
 
 
@@ -41,13 +42,32 @@ def page_header(title: str, description: str | None = None) -> None:
 
 
 def config_actions(config: Dict[str, Any], save_label: str = "Save Settings") -> None:
-    """Draw Save and Reset buttons in a consistent layout."""
+    """
+    Draw Save and Reset buttons.
+
+    Settings can be saved either to the current working config or directly
+    into a saved experiment scenario.
+    """
+    st.markdown("Save target")
+    options = scenario_options(include_working_config=True)
+    labels = [item["label"] for item in options]
+    selected_label = st.selectbox(
+        "Where should these settings be saved?",
+        labels,
+        key=f"save_target_{save_label}",
+    )
+    selected = options[labels.index(selected_label)]
+
     col1, col2 = st.columns([1, 1])
 
     with col1:
         if st.button(save_label, use_container_width=True):
-            save_working_config(config)
-            st.success("Settings saved to configs/default.yaml")
+            if selected.get("is_working_config", False):
+                save_working_config(config)
+                st.success("Settings saved to configs/default.yaml")
+            else:
+                update_scenario_config(selected["path"], config=config)
+                st.success(f"Settings saved to scenario: {selected['name']}")
 
     with col2:
         if st.button("Reset to Default", use_container_width=True):

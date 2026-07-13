@@ -33,6 +33,43 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
 ]
 
 
+
+def check_page_files() -> None:
+    expected = {
+        "00_experiment_scenarios.py",
+        "01_environment.py",
+        "02_aerosol.py",
+        "03_seeding.py",
+        "04_dynamics.py",
+        "05_parameter_sweep.py",
+        "06_run.py",
+        "07_results.py",
+    }
+    forbidden = {
+        "05_run.py",
+        "06_results.py",
+        "07_parameter_sweep.py",
+    }
+
+    page_dir = PROJECT_ROOT / "pages"
+    existing = {path.name for path in page_dir.glob("*.py")}
+
+    bad = sorted(existing.intersection(forbidden))
+    if bad:
+        raise RuntimeError(
+            "Old page files still exist and can cause duplicate Streamlit URL pathnames:\\n"
+            + "\\n".join(f"- pages/{name}" for name in bad)
+            + "\\nRun: python scripts/cleanup_old_pages.py"
+        )
+
+    missing_pages = sorted(expected - existing)
+    if missing_pages:
+        raise RuntimeError(
+            "Expected page files are missing:\\n"
+            + "\\n".join(f"- pages/{name}" for name in missing_pages)
+        )
+
+
 def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)

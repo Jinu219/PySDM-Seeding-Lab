@@ -494,3 +494,20 @@ Recommended commit message:
 git commit -m "Add experiment scenarios and improve sweep visualization"
 ```
 
+## Fix. Scenario-aware setting pages and duplicate page cleanup
+
+Changes:
+- Added direct scenario save support to shared `config_actions()`
+- Pages 01–04 can save settings into a selected scenario
+- Parameter Sweep page can configure a selected scenario directly
+- Run page can run selected scenarios
+- Extended experiment manager with `update_scenario_config()` and `scenario_options()`
+- Strengthened duplicate page cleanup and integrity checks
+- Removed old page filenames from package to avoid Streamlit duplicate pathname errors
+
+Recommended commit message:
+
+```bash
+git commit -m "Add scenario-aware settings workflow"
+```
+

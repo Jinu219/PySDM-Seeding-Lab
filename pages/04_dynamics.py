@@ -15,6 +15,7 @@ page_header(
 )
 
 cfg = load_working_config()
+st.info("아래 Save target에서 Current working config 또는 저장된 scenario를 선택해 이 페이지의 설정을 저장할 수 있습니다.")
 dyn = cfg.setdefault("dynamics", {})
 env = cfg.setdefault("environment", {})
 

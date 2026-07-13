@@ -1,7 +1,7 @@
 schema_version: 1
 experiment:
   name: default_seeding_test
-  mode: parameter_sweep
+  mode: control_vs_seeding
   description: Basic warm-cloud hygroscopic seeding configuration.
   random_seed: 42
 simulation:

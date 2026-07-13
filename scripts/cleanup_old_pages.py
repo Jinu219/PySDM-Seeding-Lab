@@ -24,7 +24,7 @@ def main() -> None:
     else:
         print("No old page files found.")
 
-    print("Current expected page order:")
+    print("\nCurrent expected page order:")
     print("- pages/00_experiment_scenarios.py")
     print("- pages/01_environment.py")
     print("- pages/02_aerosol.py")
@@ -33,6 +33,7 @@ def main() -> None:
     print("- pages/05_parameter_sweep.py")
     print("- pages/06_run.py")
     print("- pages/07_results.py")
+    print("\nIf Streamlit still reports duplicate pathnames, fully stop it with Ctrl+C and restart.")
 
 
 if __name__ == "__main__":
