@@ -2,6 +2,16 @@
 
 ## Current milestone snapshot (2026-07-14)
 
+Execution-robustness status:
+- The 24-case, 240-member failed sweep incident was traced to a 281-character
+  Windows nested output path rather than to the selected sweep parameters.
+- New nested runs use compact case/member/result directory names and preserve full
+  scientific labels in metadata instead of filesystem paths.
+- Ensemble and sweep execution health is explicit, complete failures propagate only
+  after evidence is saved, and Results diagnoses older failed runs accurately.
+- This reliability gate is complete. The failed historical result has no recoverable
+  time series and should be rerun before scientific interpretation.
+
 Portable-report and qualification status:
 - Every new result writes `report.pdf`, with water-budget, spectrum-transition,
   or numerical-convergence figures embedded when available.

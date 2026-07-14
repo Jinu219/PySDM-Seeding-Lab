@@ -58,11 +58,12 @@ from analysis.ensemble_statistics import (
     member_summary_rows,
 )
 from simulation.builder import build_run_spec
+from simulation.path_policy import filesystem_token, resolve_result_directory
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.pysdm_adapter import run_adapter
 from simulation.run_timing import record_run_timing
 from simulation.schema import normalize_config
-from simulation.sweep import build_sweep_row, generate_sweep_cases
+from simulation.sweep import build_sweep_row, flatten_nested_dict, generate_sweep_cases
 from simulation.validation import validation_report_rows, validation_summary
 from simulation.types import AdapterResult, SimulationRunSpec
 
@@ -72,6 +73,70 @@ from simulation.types import AdapterResult, SimulationRunSpec
 # runtime estimates in simulation/run_plan.py stay meaningful regardless of
 # where an individual run's output_dir happens to point.
 TIMING_HISTORY_ROOT = Path("results")
+ENSEMBLE_MEMBER_SUMMARY_METRICS = {
+    "seeding_efficiency_score": "comparison.efficiency.seeding_efficiency_score",
+    "accumulated_rain_enhancement": "comparison.efficiency.accumulated_rain_enhancement",
+    "rain_enhancement_final": "comparison.efficiency.rain_enhancement_final",
+    "rain_onset_time_shift_s": "comparison.efficiency.rain_onset_time_shift_s",
+    "cloud_to_rain_conversion_delta": "comparison.efficiency.cloud_to_rain_conversion_delta",
+}
+
+
+class ExperimentExecutionError(RuntimeError):
+    """Raised after durable failure artifacts have been written."""
+
+    def __init__(self, message: str, *, result_dir: Path):
+        super().__init__(message)
+        self.result_dir = Path(result_dir)
+
+
+def _exception_fields(exc: Exception) -> Dict[str, Any]:
+    """Return CSV/JSON-safe exception details without discarding the OS error code."""
+    return {
+        "error": repr(exc),
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "error_errno": getattr(exc, "errno", None),
+        "error_winerror": getattr(exc, "winerror", None),
+    }
+
+
+def _member_result_metrics(result_dir: Path) -> Dict[str, Any]:
+    """Extract ranking-relevant scalar metrics from one successful member result."""
+    summary_path = Path(result_dir) / "summary.json"
+    if not summary_path.exists():
+        return {}
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    flat = flatten_nested_dict(payload)
+    return {
+        f"metric.{short_name}": flat.get(dotted_name)
+        for short_name, dotted_name in ENSEMBLE_MEMBER_SUMMARY_METRICS.items()
+    }
+
+
+def _summarize_member_metrics(member_summary_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    """Summarize successful member scalar metrics for ensemble-aware sweep ranking."""
+    summaries: Dict[str, Dict[str, Any]] = {}
+    if member_summary_df.empty:
+        return summaries
+    for column in member_summary_df.columns:
+        if not column.startswith("metric."):
+            continue
+        values = pd.to_numeric(member_summary_df[column], errors="coerce").dropna()
+        if values.empty:
+            continue
+        short_name = column.removeprefix("metric.")
+        summaries[short_name] = {
+            "mean": float(values.mean()),
+            "std": float(values.std(ddof=1)) if len(values) > 1 else 0.0,
+            "min": float(values.min()),
+            "max": float(values.max()),
+            "n": int(len(values)),
+        }
+    return summaries
 
 
 def _estimate_n_sd_total(spec: SimulationRunSpec) -> int | None:
@@ -146,11 +211,6 @@ def _figure_payload(title: str, figure: Any) -> tuple[str, bytes]:
         plt.close(figure)
 
 
-def _safe_name(value: str) -> str:
-    return "".join(ch if ch.isalnum() or ch in ["_", "-", "."] else "_" for ch in value)
-
-
-
 def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: Dict[str, Any]) -> AdapterResult:
     """Return an AdapterResult with Exper2-style diagnostic columns added."""
     diagnostics_cfg = config.get("diagnostics", {})
@@ -222,6 +282,8 @@ def run_experiment(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run an experiment according to `experiment.mode`.
@@ -235,21 +297,43 @@ def run_experiment(
     mode = cfg.get("experiment", {}).get("mode", "single")
 
     if mode == "parameter_sweep":
-        return run_parameter_sweep(cfg, output_dir, progress_callback=progress_callback)
+        return run_parameter_sweep(
+            cfg,
+            output_dir,
+            progress_callback=progress_callback,
+            result_dir_name=result_dir_name,
+        )
 
     if cfg.get("ensemble", {}).get("enabled", False):
-        return run_ensemble_experiment(cfg, output_dir, progress_callback=progress_callback)
+        return run_ensemble_experiment(
+            cfg,
+            output_dir,
+            progress_callback=progress_callback,
+            result_dir_name=result_dir_name,
+        )
 
     if mode == "control_vs_seeding":
-        return run_control_vs_seeding(cfg, output_dir, progress_callback=progress_callback)
+        return run_control_vs_seeding(
+            cfg,
+            output_dir,
+            progress_callback=progress_callback,
+            result_dir_name=result_dir_name,
+        )
 
-    return run_single_experiment(cfg, output_dir, progress_callback=progress_callback)
+    return run_single_experiment(
+        cfg,
+        output_dir,
+        progress_callback=progress_callback,
+        result_dir_name=result_dir_name,
+    )
 
 
 def run_single_experiment(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run a single experiment and save a full result directory.
@@ -272,7 +356,7 @@ def run_single_experiment(
     emit_progress(progress_callback, "runner", 2, total_stages, "Building run specification")
     spec = build_run_spec(cfg)
 
-    run_dir = output_dir / spec.run_id
+    run_dir = resolve_result_directory(output_dir, spec.run_id, result_dir_name)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     emit_progress(progress_callback, "runner", 3, total_stages, f"Running adapter: {spec.adapter_name}")
@@ -295,6 +379,8 @@ def run_control_vs_seeding(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run paired control and seeding simulations and save a comparison directory.
@@ -324,11 +410,11 @@ def run_control_vs_seeding(
     emit_progress(progress_callback, "comparison", 1, total_stages, "Preparing control and seeding configurations")
     cfg = normalize_config(config)
 
-    experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
+    experiment_name = str(cfg.get("experiment", {}).get("name", "experiment"))
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
-    run_id = f"{timestamp}_{experiment_name}_control_vs_seeding"
-    run_dir = output_dir / run_id
+    run_id = f"{timestamp}_{filesystem_token(experiment_name)}_control_vs_seeding"
+    run_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     control_cfg = copy.deepcopy(cfg)
@@ -558,6 +644,8 @@ def run_ensemble_experiment(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run an ensemble for either single or control_vs_seeding mode.
@@ -584,12 +672,12 @@ def run_ensemble_experiment(
     seeds = member_seed_list(cfg)
     n_members = len(seeds)
 
-    experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
+    experiment_name = str(cfg.get("experiment", {}).get("name", "experiment"))
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
-    run_id = f"{timestamp}_{experiment_name}_{mode}_ensemble"
+    run_id = f"{timestamp}_{filesystem_token(experiment_name)}_{mode}_ensemble"
 
-    run_dir = output_dir / run_id
+    run_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
     members_dir = run_dir / "members"
     run_dir.mkdir(parents=True, exist_ok=True)
     members_dir.mkdir(parents=True, exist_ok=True)
@@ -611,21 +699,35 @@ def run_ensemble_experiment(
 
         try:
             if mode == "control_vs_seeding":
-                member_result_dir = run_control_vs_seeding(member_cfg, member_parent, progress_callback=progress_callback)
+                member_result_dir = run_control_vs_seeding(
+                    member_cfg,
+                    member_parent,
+                    progress_callback=progress_callback,
+                    result_dir_name="comparison",
+                )
             else:
-                member_result_dir = run_single_experiment(member_cfg, member_parent, progress_callback=progress_callback)
+                member_result_dir = run_single_experiment(
+                    member_cfg,
+                    member_parent,
+                    progress_callback=progress_callback,
+                    result_dir_name="single",
+                )
 
             member_data_paths.append(_primary_member_data_path(member_result_dir, mode))
 
-            member_records.append(
-                {
-                    "member_index": idx,
-                    "random_seed": int(seed),
-                    "success": True,
-                    "result_dir": str(member_result_dir.relative_to(run_dir)),
-                    "error": "",
-                }
-            )
+            member_record = {
+                "member_index": idx,
+                "random_seed": int(seed),
+                "success": True,
+                "result_dir": str(member_result_dir.relative_to(run_dir)),
+                "error": "",
+                "error_type": "",
+                "error_message": "",
+                "error_errno": None,
+                "error_winerror": None,
+            }
+            member_record.update(_member_result_metrics(member_result_dir))
+            member_records.append(member_record)
         except Exception as exc:
             member_records.append(
                 {
@@ -633,7 +735,7 @@ def run_ensemble_experiment(
                     "random_seed": int(seed),
                     "success": False,
                     "result_dir": "",
-                    "error": repr(exc),
+                    **_exception_fields(exc),
                 }
             )
 
@@ -652,6 +754,26 @@ def run_ensemble_experiment(
 
     n_success = int(member_summary_df["success"].sum()) if "success" in member_summary_df.columns else 0
     n_failed = int(len(member_summary_df) - n_success)
+    member_metric_summary = _summarize_member_metrics(member_summary_df)
+    execution_status = (
+        "failed"
+        if n_success == 0
+        else "partial"
+        if n_failed > 0
+        else "success"
+    )
+    first_member_errors = [
+        str(record.get("error_message") or record.get("error") or "")
+        for record in member_records
+        if not record.get("success")
+    ][:5]
+    execution_payload = {
+        "status": execution_status,
+        "requested_members": n_members,
+        "successful_members": n_success,
+        "failed_members": n_failed,
+        "first_errors": first_member_errors,
+    }
 
     metadata_payload = {
         "run_id": run_id,
@@ -664,6 +786,9 @@ def run_ensemble_experiment(
         "n_members_requested": n_members,
         "n_success": n_success,
         "n_failed": n_failed,
+        "execution_status": execution_status,
+        "execution": execution_payload,
+        "member_metric_summary": member_metric_summary,
         "ensemble_statistics_build_id": ENSEMBLE_BUILD_ID,
         "ensemble_aggregation_method": "column_streaming_from_member_csv",
         "ensemble_aggregation_diagnostics": aggregation_diagnostics,
@@ -705,6 +830,7 @@ def run_ensemble_experiment(
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
         "case_name": "ensemble",
         "result_type": "ensemble",
+        "execution": execution_payload,
         "ensemble": {
             "n_members_requested": n_members,
             "n_success": n_success,
@@ -712,6 +838,7 @@ def run_ensemble_experiment(
             "aggregation_method": "column_streaming_from_member_csv",
             "aggregation": aggregation_diagnostics,
             "member_seeds": seeds,
+            "member_metrics": member_metric_summary,
             "metrics": ensemble_summary_metrics(stats_df),
         },
         "validation": validation_summary(cfg),
@@ -755,12 +882,22 @@ def run_ensemble_experiment(
         ),
     )
 
+    if n_success == 0:
+        first_error = first_member_errors[0] if first_member_errors else "unknown member failure"
+        raise ExperimentExecutionError(
+            f"All {n_members} ensemble members failed. First error: {first_error}",
+            result_dir=run_dir,
+        )
+
     return run_dir
+
 
 def run_parameter_sweep(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run a parameter sweep.
@@ -794,12 +931,12 @@ def run_parameter_sweep(
     cases = generate_sweep_cases(cfg)
     total_cases = len(cases)
 
-    experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
+    experiment_name = str(cfg.get("experiment", {}).get("name", "experiment"))
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
-    run_id = f"{timestamp}_{experiment_name}_parameter_sweep"
+    run_id = f"{timestamp}_{filesystem_token(experiment_name)}_parameter_sweep"
 
-    sweep_dir = output_dir / run_id
+    sweep_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
     cases_dir = sweep_dir / "cases"
     sweep_dir.mkdir(parents=True, exist_ok=True)
     cases_dir.mkdir(parents=True, exist_ok=True)
@@ -823,11 +960,25 @@ def run_parameter_sweep(
             f"Running sweep case {idx}/{total_cases}: {case.case_name}",
         )
 
-        case_result_dir = run_experiment(
-            case.config,
-            cases_dir,
-            progress_callback=progress_callback,
-        )
+        case_directory_name = f"case_{idx:03d}"
+        case_status = "success"
+        case_error = ""
+        try:
+            case_result_dir = run_experiment(
+                case.config,
+                cases_dir,
+                progress_callback=progress_callback,
+                result_dir_name=case_directory_name,
+            )
+        except ExperimentExecutionError as exc:
+            case_result_dir = exc.result_dir
+            case_status = "failed"
+            case_error = str(exc)
+        except Exception as exc:
+            case_result_dir = cases_dir / case_directory_name
+            case_result_dir.mkdir(parents=True, exist_ok=True)
+            case_status = "failed"
+            case_error = repr(exc)
 
         summary_path = case_result_dir / "summary.json"
         if summary_path.exists():
@@ -836,14 +987,27 @@ def run_parameter_sweep(
         else:
             case_summary = {}
 
-        rows.append(
-            build_sweep_row(
-                case=case,
-                result_dir=str(case_result_dir.relative_to(sweep_dir)),
-                summary=case_summary,
-                ranking_metric=ranking_metric,
-            )
+        nested_status = str(case_summary.get("execution", {}).get("status", "")).lower()
+        if case_status == "success" and nested_status in {"partial", "failed"}:
+            case_status = nested_status
+        if not case_error and nested_status == "failed":
+            first_errors = case_summary.get("execution", {}).get("first_errors", [])
+            case_error = str(first_errors[0]) if first_errors else "Nested case execution failed."
+
+        row = build_sweep_row(
+            case=case,
+            result_dir=str(case_result_dir.relative_to(sweep_dir)),
+            summary=case_summary,
+            ranking_metric=ranking_metric,
         )
+        row.update(
+            {
+                "case_status": case_status,
+                "case_success": case_status == "success",
+                "case_error": case_error,
+            }
+        )
+        rows.append(row)
 
     sweep_df = pd.DataFrame(rows)
 
@@ -855,7 +1019,34 @@ def run_parameter_sweep(
         ).reset_index(drop=True)
         sweep_df.insert(0, "rank", range(1, len(sweep_df) + 1))
 
-    convergence_table = build_numerical_convergence_table(sweep_df, cfg)
+    status_counts = (
+        sweep_df["case_status"].value_counts().to_dict()
+        if "case_status" in sweep_df.columns
+        else {"success": len(sweep_df)}
+    )
+    n_successful_cases = int(status_counts.get("success", 0))
+    n_partial_cases = int(status_counts.get("partial", 0))
+    n_failed_cases = int(status_counts.get("failed", 0))
+    sweep_execution_status = (
+        "failed"
+        if n_failed_cases == total_cases
+        else "partial"
+        if n_failed_cases > 0 or n_partial_cases > 0
+        else "success"
+    )
+    execution_payload = {
+        "status": sweep_execution_status,
+        "requested_cases": total_cases,
+        "successful_cases": n_successful_cases,
+        "partial_cases": n_partial_cases,
+        "failed_cases": n_failed_cases,
+    }
+    convergence_input = (
+        sweep_df[sweep_df["case_status"] != "failed"].copy()
+        if "case_status" in sweep_df.columns
+        else sweep_df
+    )
+    convergence_table = build_numerical_convergence_table(convergence_input, cfg)
     convergence_summary = summarize_numerical_convergence(convergence_table)
 
     emit_progress(
@@ -876,8 +1067,13 @@ def run_parameter_sweep(
         _write_json(sweep_dir / "qualification_plan.json", qualification_payload)
 
     best_case = None
-    if len(sweep_df) > 0:
-        best_case = sweep_df.iloc[0].to_dict()
+    usable_cases = (
+        sweep_df[sweep_df["case_status"] != "failed"]
+        if "case_status" in sweep_df.columns
+        else sweep_df
+    )
+    if len(usable_cases) > 0:
+        best_case = usable_cases.iloc[0].to_dict()
 
     metadata_payload = {
         "run_id": run_id,
@@ -888,6 +1084,8 @@ def run_parameter_sweep(
         "case_name": "parameter_sweep",
         "result_type": "parameter_sweep",
         "n_cases": total_cases,
+        "execution_status": sweep_execution_status,
+        "execution": execution_payload,
         "ranking_metric": ranking_metric,
         "result_files": {
             "config": "config.yaml",
@@ -939,6 +1137,7 @@ def run_parameter_sweep(
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
         "case_name": "parameter_sweep",
         "n_cases": total_cases,
+        "execution": execution_payload,
         "ranking_metric": ranking_metric,
         "best_case": best_case,
         "numerical_convergence": convergence_summary,
@@ -993,6 +1192,13 @@ def run_parameter_sweep(
             run_id=run_id,
         ),
     )
+
+    if n_failed_cases == total_cases:
+        raise ExperimentExecutionError(
+            f"All {total_cases} sweep cases failed. Review case_status and case_error in "
+            "sweep_summary.csv.",
+            result_dir=sweep_dir,
+        )
 
     return sweep_dir
 

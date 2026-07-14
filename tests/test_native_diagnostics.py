@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -26,6 +27,7 @@ from analysis.numerical_convergence import (
 )
 from analysis.result_manifest import inspect_result_compatibility
 from analysis.reporting import REPORT_BUILD_ID, build_pdf_report
+from analysis.dashboard import sweep_execution_status_table
 from analysis.spectrum_transition import (
     build_spectrum_transition_table,
     build_transition_onset_robustness,
@@ -37,7 +39,13 @@ from simulation.pysdm_parcel_adapter import (
     _output_to_dataframe,
     run_pysdm_parcel_simulation,
 )
-from simulation.runner import run_experiment
+from simulation.path_policy import filesystem_token, path_character_count
+from simulation.runner import (
+    ExperimentExecutionError,
+    run_ensemble_experiment,
+    run_experiment,
+    run_parameter_sweep,
+)
 from simulation.schema import default_config
 from simulation.validation import validate_config_detailed
 from simulation.wet_radius_spectrum import (
@@ -72,6 +80,123 @@ def _small_native_config() -> dict:
 
 
 class NativeDiagnosticMappingTests(unittest.TestCase):
+    def test_nested_sweep_ensemble_uses_compact_paths(self):
+        cfg = default_config()
+        cfg["experiment"]["name"] = "long experiment name " * 5
+        cfg["experiment"]["mode"] = "parameter_sweep"
+        cfg["simulation"]["adapter"] = "placeholder_warm_cloud"
+        cfg["environment"]["duration"] = 20
+        cfg["environment"]["timestep"] = 10
+        cfg["seeding"]["injection_start"] = 10
+        cfg["seeding"]["injection_end"] = 20
+        cfg["sweep"]["run_mode"] = "control_vs_seeding"
+        cfg["sweep"]["parameters"] = [
+            {"name": "seeding.dry_radius", "values": [1.0e-6]},
+        ]
+        cfg.setdefault("ensemble", {})["enabled"] = True
+        cfg["ensemble"]["n_members"] = 2
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir) / "deep_parent"
+            result_dir = run_experiment(cfg, output_dir)
+            sweep = pd.read_csv(result_dir / "sweep_summary.csv")
+            compact_case = result_dir / "cases" / "case_001"
+            member_comparison = (
+                compact_case / "members" / "member_001" / "comparison"
+            )
+            comparison_exists = (member_comparison / "comparison.csv").exists()
+            all_path_lengths = [path_character_count(path) for path in result_dir.rglob("*")]
+
+        self.assertEqual(sweep["case_status"].tolist(), ["success"])
+        self.assertEqual(sweep["ensemble.n_success"].tolist(), [2])
+        self.assertTrue(sweep["ranking_value"].notna().all())
+        self.assertEqual(
+            sweep["ranking_source"].iloc[0],
+            "ensemble.member_metrics.seeding_efficiency_score.mean",
+        )
+        self.assertTrue(comparison_exists)
+        self.assertLess(max(all_path_lengths), 260)
+        self.assertLessEqual(len(filesystem_token("x" * 200)), 48)
+        self.assertEqual(filesystem_token("CON.txt"), "_CON.txt")
+
+    def test_all_failed_ensemble_writes_health_then_raises(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "control_vs_seeding"
+        cfg.setdefault("ensemble", {})["enabled"] = True
+        cfg["ensemble"]["n_members"] = 2
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch(
+                "simulation.runner.run_control_vs_seeding",
+                side_effect=FileNotFoundError(206, "path too long"),
+            ):
+                with self.assertRaises(ExperimentExecutionError) as raised:
+                    run_ensemble_experiment(cfg, Path(tmp_dir))
+            result_dir = raised.exception.result_dir
+            summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
+            members = pd.read_csv(result_dir / "member_summary.csv")
+
+        self.assertEqual(summary["execution"]["status"], "failed")
+        self.assertEqual(summary["execution"]["failed_members"], 2)
+        self.assertEqual(set(members["error_type"]), {"FileNotFoundError"})
+        self.assertTrue((members["success"] == False).all())  # noqa: E712
+
+    def test_failed_sweep_case_is_preserved_and_propagated(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "parameter_sweep"
+        cfg["sweep"]["parameters"] = [
+            {"name": "seeding.kappa", "values": [0.8]},
+        ]
+
+        def fail_case(config, output_dir, progress_callback=None, *, result_dir_name=None):
+            result_dir = Path(output_dir) / str(result_dir_name)
+            result_dir.mkdir(parents=True, exist_ok=True)
+            raise ExperimentExecutionError("synthetic nested failure", result_dir=result_dir)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch("simulation.runner.run_experiment", side_effect=fail_case):
+                with self.assertRaises(ExperimentExecutionError) as raised:
+                    run_parameter_sweep(cfg, Path(tmp_dir))
+            result_dir = raised.exception.result_dir
+            sweep = pd.read_csv(result_dir / "sweep_summary.csv")
+            summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(sweep["case_status"].tolist(), ["failed"])
+        self.assertIn("synthetic nested failure", sweep["case_error"].iloc[0])
+        self.assertEqual(summary["execution"]["status"], "failed")
+        self.assertEqual(summary["execution"]["failed_cases"], 1)
+
+    def test_sweep_health_infers_legacy_all_member_failure(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            case_dir = root / "cases" / "legacy_case"
+            case_dir.mkdir(parents=True)
+            (case_dir / "ensemble_statistics.csv").write_text("\n", encoding="utf-8")
+            pd.DataFrame(
+                [
+                    {
+                        "success": False,
+                        "error": "FileNotFoundError: path too long",
+                    }
+                ]
+            ).to_csv(case_dir / "member_summary.csv", index=False)
+            sweep = pd.DataFrame(
+                [
+                    {
+                        "case_index": 1,
+                        "case_name": "legacy_case",
+                        "result_dir": "cases/legacy_case",
+                        "ensemble.n_success": 0,
+                        "ensemble.n_failed": 1,
+                    }
+                ]
+            )
+            health = sweep_execution_status_table(root, sweep)
+
+        self.assertEqual(health["execution_status"].tolist(), ["failed"])
+        self.assertEqual(health["member_failed"].tolist(), [1])
+        self.assertIn("path too long", health["error"].iloc[0])
+
     def test_native_product_mapping_has_no_growth_pathway_proxy(self):
         cfg = _small_native_config()
         spec = build_run_spec(cfg)

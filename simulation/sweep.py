@@ -10,6 +10,25 @@ from simulation.config import set_nested
 from simulation.schema import normalize_config
 
 
+ENSEMBLE_RANKING_FALLBACKS = {
+    "comparison.efficiency.seeding_efficiency_score": (
+        "ensemble.member_metrics.seeding_efficiency_score.mean"
+    ),
+    "comparison.efficiency.accumulated_rain_enhancement": (
+        "ensemble.member_metrics.accumulated_rain_enhancement.mean"
+    ),
+    "comparison.efficiency.rain_enhancement_final": (
+        "ensemble.member_metrics.rain_enhancement_final.mean"
+    ),
+    "comparison.efficiency.rain_onset_time_shift_s": (
+        "ensemble.member_metrics.rain_onset_time_shift_s.mean"
+    ),
+    "comparison.efficiency.cloud_to_rain_conversion_delta": (
+        "ensemble.member_metrics.cloud_to_rain_conversion_delta.mean"
+    ),
+}
+
+
 @dataclass(frozen=True)
 class SweepCase:
     """One generated parameter-sweep case."""
@@ -158,13 +177,20 @@ def build_sweep_row(
 ) -> Dict[str, Any]:
     """Build a table row for sweep_summary.csv."""
     flat_summary = flatten_nested_dict(summary)
+    ranking_value = flat_summary.get(ranking_metric)
+    ranking_source = ranking_metric
+    if ranking_value is None and ranking_metric in ENSEMBLE_RANKING_FALLBACKS:
+        ranking_source = ENSEMBLE_RANKING_FALLBACKS[ranking_metric]
+        ranking_value = flat_summary.get(ranking_source)
+
     row: Dict[str, Any] = {
         "case_index": case.case_index,
         "case_name": case.case_name,
         "result_dir": result_dir,
         "parameter_values_json": json.dumps(case.parameter_values, ensure_ascii=False),
         "ranking_metric": ranking_metric,
-        "ranking_value": flat_summary.get(ranking_metric),
+        "ranking_source": ranking_source,
+        "ranking_value": ranking_value,
     }
 
     for key, value in case.parameter_values.items():
@@ -176,6 +202,12 @@ def build_sweep_row(
         "ensemble.metrics.rain_water_mixing_ratio_diff_integral_mean",
         "ensemble.n_success",
         "ensemble.n_failed",
+        "ensemble.member_metrics.seeding_efficiency_score.mean",
+        "ensemble.member_metrics.seeding_efficiency_score.std",
+        "ensemble.member_metrics.accumulated_rain_enhancement.mean",
+        "ensemble.member_metrics.rain_enhancement_final.mean",
+        "ensemble.member_metrics.rain_onset_time_shift_s.mean",
+        "ensemble.member_metrics.cloud_to_rain_conversion_delta.mean",
         "comparison.efficiency.seeding_efficiency_score",
         "comparison.efficiency.accumulated_rain_enhancement",
         "comparison.efficiency.accumulated_rain_enhancement_percent",

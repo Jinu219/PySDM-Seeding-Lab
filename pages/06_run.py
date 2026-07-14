@@ -6,7 +6,7 @@ import streamlit as st
 
 from simulation.config import load_config
 from simulation.experiment_manager import apply_scenario_identity, list_scenarios, load_scenario_config, read_scenario
-from simulation.runner import run_experiment
+from simulation.runner import ExperimentExecutionError, run_experiment
 from simulation.run_plan import estimate_run_plan, run_plan_rows
 from simulation.run_timing import format_seconds
 from simulation.schema import diagnostic_radius_thresholds
@@ -19,7 +19,7 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "native-diagnostic-run-plan-20260714"
+UI_BUILD_ID = "execution-health-run-plan-20260714"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
@@ -257,6 +257,11 @@ if st.button("Run Experiment", disabled=run_disabled, width="stretch"):
 
         st.success(f"Experiment finished. Result directory: {result_path}")
         st.info("Open 07. Results Dashboard and select the result folder with this scenario name.")
+    except ExperimentExecutionError as exc:
+        st.error("Simulation failed, but diagnostic artifacts were preserved.")
+        st.warning(f"Failure result directory: {exc.result_dir}")
+        st.info("Open 07. Results Dashboard to inspect failed case/member details before rerunning.")
+        st.exception(exc)
     except Exception as exc:
         st.error("Simulation failed.")
         st.exception(exc)

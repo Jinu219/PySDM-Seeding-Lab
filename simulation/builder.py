@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from simulation.schema import normalize_config
+from simulation.path_policy import filesystem_token
 from simulation.types import SimulationRunSpec
 
 
@@ -45,7 +46,10 @@ def build_run_spec(config: Dict[str, Any]) -> SimulationRunSpec:
 
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
-    run_id = f"{timestamp}_{experiment_name}_{case_name}"
+    run_id = (
+        f"{timestamp}_{filesystem_token(experiment_name)}_"
+        f"{filesystem_token(case_name, max_length=32)}"
+    )
 
     metadata = {
         "run_id": run_id,

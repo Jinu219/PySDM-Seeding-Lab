@@ -24,6 +24,7 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_difference",
     "plot_sweep_ranking",
     "sweep_base_variables",
+    "sweep_execution_status_table",
     "build_sweep_overlay_dataframe",
     "plot_sweep_overlay",
     "compute_overlay_spread",
@@ -230,6 +231,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "ui_helpers.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "path_policy.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "native_parcel_simulation.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "pysdm_parcel_adapter.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "wet_radius_spectrum.py"), doraise=True)

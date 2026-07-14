@@ -4,7 +4,28 @@ Last updated: 2026-07-14
 
 Active branch: `develop`
 
-Current milestone: Portable reporting and numerical-qualification workflow completed
+Current milestone: Nested sweep execution robustness and failure diagnostics completed
+
+## Latest execution-robustness update
+
+Completed:
+- Nested sweep and ensemble outputs now use compact stable directories such as
+  `cases/case_001/members/member_001/comparison`, while full experiment and
+  parameter metadata remain in the saved configuration and summary files.
+- Filesystem components are sanitized and length-bounded, preventing the Windows
+  legacy path-limit failure reproduced by the 281-character member output path.
+- Ensemble and sweep summaries now distinguish `success`, `partial`, and `failed`.
+  Complete failure is raised only after durable member/case error artifacts are saved.
+- Results Dashboard diagnoses both new and older failed sweeps. The reproduced
+  `20260714_190022_727349_0714_18_58_parameter_sweep` result is now identified as
+  24 failed cases and 240 failed members instead of being described as an empty or
+  incorrectly configured sensitivity experiment.
+- Ensemble sweeps retain member-level scalar metrics and can rank successful cases
+  from ensemble means when a direct comparison summary is not present.
+
+Operational note: the reproduced result contains no successful physical time series,
+so it cannot be repaired in place and must be rerun with the updated runner. Its
+configuration and failure evidence remain useful for audit and regression testing.
 
 ## Latest portable report and qualification update
 

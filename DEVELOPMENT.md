@@ -1,5 +1,47 @@
 # Development Notes
 
+## Nested sweep path safety and execution-health propagation
+
+Incident reproduced:
+- `20260714_190022_727349_0714_18_58_parameter_sweep` requested 24 parameter
+  cases and 10 ensemble members per case.
+- All 240 members failed with Windows `FileNotFoundError` / path-too-long errors.
+  A representative nested diagnostic destination was 281 characters long.
+- The old runner caught the member exceptions and still returned an apparently
+  completed sweep containing no comparison time series, so Results showed generic
+  empty-data and misleading dry-radius/kappa messages.
+
+Changes:
+- Added `simulation/path_policy.py` for safe, length-bounded filesystem tokens and
+  explicit nested result directory names.
+- Replaced repeated timestamp/experiment-name nesting with compact `case_###`,
+  `member_###`, and `comparison`/`single` directories.
+- Added durable execution-health payloads to ensemble and sweep metadata/summary,
+  including exception type, message, errno, member counts, and case status.
+- Added `ExperimentExecutionError`, raised after failure artifacts are written when
+  every ensemble member or every sweep case fails.
+- Excluded failed cases from convergence and best-case selection, and added
+  ensemble-member metric aggregation as a sweep-ranking fallback.
+- Added Results execution-health inference for older results and precise messages
+  for failed sensitivity, collapse-variable, and plot-data states.
+- Added Run-page handling that links a failed execution back to its preserved result
+  directory instead of reporting an opaque exception only.
+
+Validation performed:
+- 21 unit/integration tests passed in 213 seconds, including two real PySDM tests.
+- New regression tests cover compact nested paths below the Windows legacy limit,
+  all-member failure preservation, sweep-level failure propagation, older-result
+  health inference, and ensemble-aware ranking.
+- Aerosol, Run, and Results AppTests rendered with zero exceptions. The reproduced
+  failed result now reports 24 failed cases and 240 failed members in Results.
+- Project integrity validation passed.
+
+Recommended commit message:
+
+```bash
+git commit -m "Harden nested sweep execution failures"
+```
+
 ## Portable PDF reports, sampled RSS, and numerical qualification
 
 Changes:

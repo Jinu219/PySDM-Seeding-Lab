@@ -87,6 +87,9 @@ def _quality_rows(summary: Dict[str, Any]) -> list[tuple[str, Any]]:
         "spectrum_transition.threshold_shift_direction_consistent",
         "aggregation.elapsed_seconds",
         "aggregation.python_peak_traced_bytes",
+        "execution.status",
+        "execution.failed_members",
+        "execution.failed_cases",
         "growth_pathway_diagnostics_enabled",
     )
     return [

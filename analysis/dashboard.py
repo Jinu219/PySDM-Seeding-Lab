@@ -50,7 +50,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "portable-pdf-rss-qualification-20260714"
+DASHBOARD_BUILD_ID = "execution-health-compact-paths-20260714"
 
 
 @dataclass(frozen=True)
@@ -922,6 +922,82 @@ def load_sweep_case_publication_data(
         return "ensemble", safe_read_csv(ensemble_path)
 
     return "unavailable", pd.DataFrame()
+
+
+def sweep_execution_status_table(
+    sweep_dir: Path,
+    sweep_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build case-level execution health, including inference for older sweep results."""
+    columns = [
+        "case_index",
+        "case_name",
+        "execution_status",
+        "member_success",
+        "member_failed",
+        "data_available",
+        "error",
+        "result_dir",
+    ]
+    if sweep_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows: list[dict[str, Any]] = []
+    for _, row in sweep_df.iterrows():
+        case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+        member_success = pd.to_numeric(
+            pd.Series([row.get("ensemble.n_success")]), errors="coerce"
+        ).iloc[0]
+        member_failed = pd.to_numeric(
+            pd.Series([row.get("ensemble.n_failed")]), errors="coerce"
+        ).iloc[0]
+        success_count = int(member_success) if pd.notna(member_success) else 0
+        failed_count = int(member_failed) if pd.notna(member_failed) else 0
+
+        case_data = _read_sweep_case_dataframe(case_dir, "comparison")
+        data_available = not case_data.empty and "time_s" in case_data.columns
+        explicit_status = str(row.get("case_status", "")).strip().lower()
+        if explicit_status in {"success", "partial", "failed"}:
+            status = explicit_status
+        elif success_count + failed_count > 0:
+            status = (
+                "failed"
+                if success_count == 0
+                else "partial"
+                if failed_count > 0
+                else "success"
+            )
+        else:
+            status = "success" if data_available else "unknown"
+
+        error = str(row.get("case_error", "") or "").strip()
+        if not error or error.lower() == "nan":
+            member_summary = safe_read_csv(case_dir / "member_summary.csv")
+            if not member_summary.empty and "success" in member_summary.columns:
+                success_values = member_summary["success"].astype(str).str.lower()
+                failed_members = member_summary[~success_values.isin({"true", "1", "yes"})]
+                if not failed_members.empty:
+                    for error_column in ("error_message", "error"):
+                        if error_column in failed_members.columns:
+                            values = failed_members[error_column].dropna().astype(str)
+                            if len(values):
+                                error = values.iloc[0]
+                                break
+
+        rows.append(
+            {
+                "case_index": row.get("case_index"),
+                "case_name": row.get("case_name", ""),
+                "execution_status": status,
+                "member_success": success_count,
+                "member_failed": failed_count,
+                "data_available": data_available,
+                "error": error,
+                "result_dir": str(row.get("result_dir", "")),
+            }
+        )
+
+    return pd.DataFrame(rows, columns=columns)
 
 
 def sweep_base_variables(

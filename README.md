@@ -130,6 +130,21 @@ actual estimated model-run count after ensemble and control/seeding factors.
 Physical parameters and numerical-convergence parameters are labelled
 separately so they are not accidentally interpreted as the same question.
 
+### Sweep and ensemble execution health
+
+Nested results use compact directories (`cases/case_001`,
+`members/member_001/comparison`) to remain safe under the Windows legacy path
+limit. Full experiment names and swept parameter values are still stored in the
+configuration, metadata, and sweep summary; directory shortening does not remove
+scientific provenance.
+
+Ensemble and sweep summaries record `success`, `partial`, or `failed` execution
+status together with member/case counts and preserved error details. If every
+member or case fails, the runner saves these artifacts first and then reports the
+execution as failed. Open that result in Results Dashboard to inspect the failure
+table. A result with zero successful members contains no physical time series and
+must be rerun after correcting the reported cause before sensitivity analysis.
+
 ## Current Status
 
 For the current milestone, completed work, and next acceptance gates, see
