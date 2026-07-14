@@ -54,6 +54,10 @@ microphysics:
   condensation: true
   collision: false
   sedimentation: false
+diagnostics:
+  growth_pathway_mode: true
+  activation_radius_threshold: 5.0e-07
+  rain_radius_threshold: 2.5e-05
 output:
   base_dir: results
   save_config: true

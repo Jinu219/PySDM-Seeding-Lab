@@ -811,3 +811,37 @@ Recommended commit message:
 ```bash
 git commit -m "Expand warm-cloud sweep design and refresh onboarding UI"
 ```
+
+## Step 13 completion. Native PySDM scalar diagnostics
+
+Completed the first native-product pass against PySDM / PySDM-examples 2.131.
+
+Changes:
+- Added `simulation/native_parcel_simulation.py`, a project-owned parcel builder
+  that leaves site-packages untouched while expanding the PySDM product list.
+- Added native temperature, pressure, water-vapour mixing ratio, relative
+  humidity, wet-radius-partitioned water, cloud/rain concentration, and
+  cloud/rain/all-activated effective-radius products.
+- Added configurable activation/rain wet-radius thresholds to the schema,
+  validation, YAML presets, Aerosol page, Run page, and result metadata.
+- Preserved older dashboard column aliases while upgrading Growth Pathway
+  provenance to recognize the exact native columns.
+- Added total/unactivated/cloud/rain liquid-water products and records the
+  maximum partition-closure error in the adapter summary.
+- Pinned the tested optional environment to PySDM 2.131 and
+  PySDM-examples 2.131.
+- Added `tests/test_native_diagnostics.py` with synthetic mapping, threshold
+  validation, real PySDM, liquid partition, and runner result-file coverage.
+- Added the fast native diagnostic contract to `check_project_integrity.py`.
+
+Validation performed:
+- Real 45-second PySDM smoke run: 20 raw columns, native 11 / derived 2 /
+  proxy 0, maximum liquid partition error 0.
+- `python -m unittest -v tests.test_native_diagnostics`
+- `python scripts/check_project_integrity.py`
+
+Recommended commit message:
+
+```bash
+git commit -m "Add native PySDM growth-pathway diagnostics"
+```

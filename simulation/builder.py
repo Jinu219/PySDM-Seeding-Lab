@@ -23,6 +23,7 @@ def build_simulation_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         "seeding": deepcopy(cfg.get("seeding", {})),
         "dynamics": deepcopy(cfg.get("dynamics", {})),
         "microphysics": deepcopy(cfg.get("microphysics", {})),
+        "diagnostics": deepcopy(cfg.get("diagnostics", {})),
         "simulation": deepcopy(cfg.get("simulation", {})),
     }
 

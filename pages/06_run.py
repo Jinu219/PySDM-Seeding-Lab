@@ -9,6 +9,7 @@ from simulation.experiment_manager import apply_scenario_identity, list_scenario
 from simulation.runner import run_experiment
 from simulation.run_plan import estimate_run_plan, run_plan_rows
 from simulation.run_timing import format_seconds
+from simulation.schema import diagnostic_radius_thresholds
 from simulation.validation import (
     validate_config,
     validation_report_rows,
@@ -18,7 +19,7 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "runtime-estimate-20260713"
+UI_BUILD_ID = "native-diagnostic-run-plan-20260714"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
@@ -92,6 +93,17 @@ elif plan.total_model_runs >= 100:
 
 with st.expander("Run plan details"):
     st.dataframe(pd.DataFrame(run_plan_rows(cfg)), use_container_width=True)
+
+activation_radius_m, rain_radius_m = diagnostic_radius_thresholds(cfg)
+with st.expander("Native diagnostic definitions", expanded=False):
+    diagnostic_cols = st.columns(3)
+    diagnostic_cols[0].metric("Activation cutoff", f"{activation_radius_m * 1.0e6:g} µm")
+    diagnostic_cols[1].metric("Rain cutoff", f"{rain_radius_m * 1.0e6:g} µm")
+    diagnostic_cols[2].metric("Range convention", "lower ≤ r < upper")
+    st.caption(
+        "pysdm_parcel은 이 wet-radius 경계로 unactivated/cloud/rain water, concentration, "
+        "effective radius를 native product로 분리합니다. 경계값은 result metadata에도 저장됩니다."
+    )
 
 st.subheader("Configuration Validation")
 

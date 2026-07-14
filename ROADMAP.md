@@ -8,7 +8,7 @@
 
 `DEVELOPMENT.md` Step 0~12에서 스캐폴딩, config schema, validation, 첫 PySDM 연결,
 control vs seeding, efficiency metric, parameter sweep, Growth Pathway Diagnostics,
-ensemble statistics까지 구축되었다. Step 13은 이 문서에서 정의한다.
+ensemble statistics까지 구축되었다. Step 13 native scalar diagnostic의 첫 구현도 완료되었다.
 
 ## 우선순위를 재정렬한 이유
 
@@ -51,32 +51,48 @@ Step 19. result dashboard old/new result 호환성 강화        (구 10번)
 
 ### Step 13. PySDM native diagnostic extraction 개선 (최우선)
 
+**Status: first native scalar-product implementation completed (PySDM 2.131).**
+
+프로젝트 내부 `simulation/native_parcel_simulation.py`가 PySDM parcel builder와
+product collection을 소유한다. 설치된 `PySDM_examples` 파일을 수정하지 않고 다음을
+직접 출력한다.
+
+- ambient temperature, pressure, water-vapour mixing ratio, relative humidity
+- wet-radius 구간별 unactivated/cloud/rain/total liquid-water mixing ratio
+- cloud/rain particle concentration
+- cloud/rain/all-activated effective radius
+
+기본 wet-radius 구간은 `[0, 0.5 µm)`, `[0.5, 25 µm)`, `[25 µm, ∞)`이며 config와
+result metadata에 경계와 half-open convention을 기록한다. 현재 Growth Pathway
+contract는 실제 smoke run에서 native 11 / derived 2 / proxy 0이다. 여기서 cloud/rain은
+activation history가 아니라 **설정된 wet-radius bin 정의**라는 점을 유지해야 한다.
+
 목표: `diagnostic_provenance.json`에서 `proxy`로 분류되는 변수를 하나씩 `native`로
-옮긴다. 이번 업데이트로 마련된 기반:
+옮긴다. 마련된 기반:
 
 - `analysis/growth_pathway_diagnostics.classify_diagnostic_provenance()` —
   현재 proxy로 분류되는 변수와 그 이유를 코드 차원에서 명시.
 - Results Dashboard → Files & Metadata 탭 → "Growth Pathway Diagnostic Provenance"
   표에서 native/derived/proxy 개수를 바로 확인 가능.
 
-현재 proxy로 분류되는 항목과 필요한 작업 (`simulation/pysdm_parcel_adapter.py`
-`_output_to_dataframe()` / `product_mapping` 확장 필요):
+Step 13 대상 변수의 현재 구현 상태:
 
-| 변수 | 현재 상태 | 필요한 작업 |
+| 변수 | 현재 상태 | 구현 |
 |---|---|---|
-| `cloud_water_mixing_ratio` | proxy (0으로 기본값) | PySDM 쪽 product 이름 확인 후 `product_mapping`에 추가 |
-| `temperature_K` | proxy (liquid water 비례 휴리스틱) | PySDM_examples seeding Simulation의 온도 product 확인 |
-| `water_vapour_mixing_ratio` | proxy (qv0 - liquid 역산) | PySDM 쪽 수증기 혼합비 product 확인 |
-| `rain_droplet_concentration` | proxy (0/1 지시값) | 강우 방울 수농도 product 확인 |
-| `effective_radius_cloud_um` / `effective_radius_rain_um` | proxy/derived (전체 유효반경 재사용) | cloud-only / rain-only 유효반경 product 분리 |
+| `cloud_water_mixing_ratio` | native | radius-filtered `WaterMixingRatio` |
+| `temperature_K` | native | `AmbientTemperature` |
+| `water_vapour_mixing_ratio` | native | `AmbientWaterVapourMixingRatio` |
+| `rain_droplet_concentration` | native | radius-filtered `ParticleConcentration` |
+| `effective_radius_cloud_um` / `effective_radius_rain_um` | native | 구간별 `EffectiveRadius` |
 
-`scripts/diagnose_pysdm_api.py`로 현재 설치된 PySDM/PySDM_examples 버전에서
-실제로 사용 가능한 product 이름 목록을 먼저 확인하고 진행할 것.
+`scripts/diagnose_pysdm_api.py`와 설치된 PySDM 2.131 소스를 확인해 product API를
+확정했다. 버전 변경 시 이 진단과 native integration test를 먼저 다시 실행한다.
 
 ### Step 14. Growth Pathway Diagnostics 물리적 정교화
 
-Step 13에서 native 데이터가 늘어난 뒤에 진행한다. proxy 근사 공식(예: 온도 추정,
-rain 유효반경 재사용)을 실제 물리 계산으로 교체.
+다음 우선순위. native scalar product가 확보되었으므로 radius-bin 정의 검증, threshold
+민감도, water partition closure, control/seeding 보존성 검사를 강화한다. 이후 Step 16의
+wet-radius spectrum으로 scalar bin 정의가 실제 분포를 충분히 설명하는지 확인한다.
 
 ### Step 15. Publication-style diagnostic plots (구 Step 13)
 

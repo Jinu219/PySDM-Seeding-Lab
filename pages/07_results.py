@@ -849,6 +849,8 @@ if tab_publication is not None:
                 f"이 결과에는 proxy diagnostic {provenance_counts['proxy']}개가 포함되어 있습니다. "
                 "그림의 [P] 표시는 근사값이며, 정량적 논문 결론 전에 native extraction을 확인하세요."
             )
+        elif diagnostic_provenance_rows:
+            st.success("이 결과의 Growth Pathway diagnostic에는 proxy가 없습니다. [N]은 native, [D]는 직접 계산값입니다.")
         elif not diagnostic_provenance_rows:
             st.info("이 결과에는 provenance 파일이 없어 그림에 [?]로 표시됩니다. 최신 코드로 다시 실행하면 기록됩니다.")
 
@@ -1606,6 +1608,8 @@ with tab_files:
         pc3.metric("Proxy", provenance_counts.get("proxy", 0))
         if provenance_counts.get("proxy", 0) > 0:
             st.caption("Proxy 변수가 있는 결과는 정성적 경향 파악용으로만 사용하고, 정량적 결론에는 주의하세요.")
+        else:
+            st.success("Proxy diagnostic 0개 · native/derived product contract를 충족합니다.")
         st.dataframe(
             dash.diagnostic_provenance_dataframe(diagnostic_provenance_rows_loaded),
             use_container_width=True,

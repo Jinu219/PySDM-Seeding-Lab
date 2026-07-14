@@ -97,6 +97,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "collision": False,
         "sedimentation": False,
     },
+    "diagnostics": {
+        "growth_pathway_mode": True,
+        "activation_radius_threshold": 0.5e-6,
+        "rain_radius_threshold": 25.0e-6,
+    },
     "sweep": {
         "run_mode": "control_vs_seeding",
         "max_runs": 100,
@@ -162,6 +167,10 @@ FIELD_UNITS: Dict[str, Dict[str, str]] = {
         "cape": "J/kg",
         "cin": "J/kg",
     },
+    "diagnostics": {
+        "activation_radius_threshold": "m",
+        "rain_radius_threshold": "m",
+    },
 }
 
 
@@ -186,6 +195,16 @@ def deep_merge(default: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, A
 def normalize_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
     """Fill missing fields using the canonical schema."""
     return deep_merge(DEFAULT_CONFIG, config or {})
+
+
+def diagnostic_radius_thresholds(config: Dict[str, Any] | None) -> tuple[float, float]:
+    """Return activation and rain wet-radius thresholds in metres."""
+    cfg = normalize_config(config)
+    diagnostics = cfg.get("diagnostics", {})
+    return (
+        float(diagnostics.get("activation_radius_threshold", 0.5e-6)),
+        float(diagnostics.get("rain_radius_threshold", 25.0e-6)),
+    )
 
 
 def schema_summary() -> List[Dict[str, str]]:

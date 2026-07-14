@@ -154,14 +154,71 @@ def check_sweep_catalog() -> None:
         )
 
 
+def check_native_diagnostic_contract() -> None:
+    import numpy as np
+
+    from analysis.growth_pathway_diagnostics import diagnostic_provenance_rows
+    from simulation.builder import build_run_spec
+    from simulation.pysdm_parcel_adapter import _output_to_dataframe
+    from simulation.schema import default_config, diagnostic_radius_thresholds
+    from simulation.validation import validate_config_detailed
+
+    cfg = default_config()
+    activation_radius, rain_radius = diagnostic_radius_thresholds(cfg)
+    if not 0 < activation_radius < rain_radius:
+        raise RuntimeError("Default diagnostic radius thresholds are invalid.")
+
+    products = {"time": np.array([0.0, 15.0])}
+    for index, name in enumerate(
+        (
+            "temperature_K",
+            "pressure_Pa",
+            "water_vapour_mixing_ratio",
+            "relative_humidity",
+            "unactivated_water_mixing_ratio",
+            "cloud_water_mixing_ratio",
+            "rain_water_mixing_ratio",
+            "total_liquid_water_mixing_ratio",
+            "cloud_droplet_concentration",
+            "rain_droplet_concentration",
+            "effective_radius_cloud_um",
+            "effective_radius_rain_um",
+            "effective_radius_all_um",
+            "superdroplet_count",
+        ),
+        start=1,
+    ):
+        products[name] = np.full(2, index * 0.01)
+
+    df = _output_to_dataframe({"products": products}, build_run_spec(cfg))
+    provenance = diagnostic_provenance_rows(list(df.columns), cfg)
+    proxies = [row["variable"] for row in provenance if row["provenance"] == "proxy"]
+    if proxies:
+        raise RuntimeError(f"Native diagnostic contract regressed to proxy: {proxies}")
+
+    invalid = default_config()
+    invalid["diagnostics"]["activation_radius_threshold"] = 30.0e-6
+    invalid["diagnostics"]["rain_radius_threshold"] = 25.0e-6
+    errors = [
+        issue
+        for issue in validate_config_detailed(invalid)
+        if issue.severity == "error"
+    ]
+    if not any(issue.field == "diagnostics.rain_radius_threshold" for issue in errors):
+        raise RuntimeError("Invalid diagnostic threshold ordering is not rejected.")
+
+
 def main() -> None:
     check_page_files()
     check_safe_read_csv_no_recursion()
     check_sweep_catalog()
+    check_native_diagnostic_contract()
     py_compile.compile(str(PROJECT_ROOT / "app.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "ui_helpers.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "native_parcel_simulation.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "pysdm_parcel_adapter.py"), doraise=True)
     for page_path in sorted((PROJECT_ROOT / "pages").glob("*.py")):
         py_compile.compile(str(page_path), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "publication_plots.py"), doraise=True)
@@ -178,6 +235,7 @@ def main() -> None:
 
     print("Project integrity check passed.")
     print("Dashboard exports are complete.")
+    print("Native diagnostic contract is complete (proxy-free synthetic mapping).")
     print(f"Dashboard build: {getattr(dashboard, 'DASHBOARD_BUILD_ID', 'unknown')}")
 
 

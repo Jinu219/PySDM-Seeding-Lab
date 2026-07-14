@@ -123,13 +123,32 @@ diagnostic provenance, and publication-oriented result panels. The
 `pysdm_parcel` for physics-based experiments and review each diagnostic's
 native/derived/proxy provenance before drawing conclusions.
 
+### Native PySDM diagnostics
+
+The `pysdm_parcel` adapter uses a project-owned product builder instead of
+patching the installed PySDM examples. With the tested PySDM 2.131 environment
+it emits native thermodynamic state, radius-partitioned liquid water, cloud/rain
+number concentration, and cloud/rain/all-activated effective radius. Default
+wet-radius definitions are:
+
+```text
+unactivated: 0 ≤ r < 0.5 µm
+cloud:       0.5 µm ≤ r < 25 µm
+rain:        25 µm ≤ r
+```
+
+The thresholds are editable under `02. Background Aerosol Settings → Diagnostic
+radius definitions` and are stored in every result's configuration and metadata.
+These are radius-bin definitions, not a record of each particle's activation
+history. Run `python -m unittest -v tests.test_native_diagnostics` for the real
+adapter regression check.
+
 ## Development Roadmap
 
-Steps 0-12 (scaffold through ensemble statistics) are complete; see `DEVELOPMENT.md`
-for the full changelog. The prioritized plan for what comes next (and why it is
-ordered this way) lives in `ROADMAP.md` -- the short version: native PySDM
-diagnostic extraction (Step 13) comes before publication-style plots, so plots
-are not rebuilt after diagnostic calculations change.
+Steps 0-12 and the first Step 13 native scalar-product pass are complete; see
+`DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
+`ROADMAP.md`: physically refine the radius-bin diagnostics, add wet-radius
+spectra, then optimize large ensembles and reporting.
 
 ## Research Direction
 

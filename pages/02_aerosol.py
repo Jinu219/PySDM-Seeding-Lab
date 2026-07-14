@@ -20,6 +20,7 @@ page_header(
 cfg = load_working_config()
 st.info("아래 Save target에서 Current working config 또는 저장된 scenario를 선택해 이 페이지의 설정을 저장할 수 있습니다.")
 aero = cfg.setdefault("background_aerosol", {})
+diagnostics = cfg.setdefault("diagnostics", {})
 
 col1, col2 = st.columns([1, 1.2])
 
@@ -97,6 +98,33 @@ with col2.container(border=True):
     st.pyplot(fig)
 
     st.caption("Preview는 단일 lognormal distribution을 기준으로 표시됩니다.")
+
+with st.expander("Diagnostic radius definitions", expanded=False):
+    st.caption(
+        "PySDM native products를 unactivated / cloud / rain 구간으로 나누는 wet-radius 기준입니다. "
+        "모든 결과 metadata에 함께 저장됩니다."
+    )
+    threshold_col1, threshold_col2 = st.columns(2)
+    with threshold_col1:
+        activation_um = st.number_input(
+            "Activation threshold [µm]",
+            min_value=0.01,
+            value=float(diagnostics.get("activation_radius_threshold", 0.5e-6)) * 1.0e6,
+            step=0.1,
+            format="%.2f",
+        )
+    with threshold_col2:
+        rain_um = st.number_input(
+            "Rain threshold [µm]",
+            min_value=0.1,
+            value=float(diagnostics.get("rain_radius_threshold", 25.0e-6)) * 1.0e6,
+            step=1.0,
+            format="%.1f",
+        )
+    diagnostics["activation_radius_threshold"] = float(activation_um) * 1.0e-6
+    diagnostics["rain_radius_threshold"] = float(rain_um) * 1.0e-6
+    if activation_um >= rain_um:
+        st.error("Rain threshold must be larger than the activation threshold.")
 
 config_actions(cfg, "Save Aerosol Settings")
 schema_expander()

@@ -46,6 +46,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
     seed = cfg.get("seeding", {})
     dyn = cfg.get("dynamics", {})
     microphysics = cfg.get("microphysics", {})
+    diagnostics = cfg.get("diagnostics", {})
     output = cfg.get("output", {})
 
     # -------------------------------------------------------------------------
@@ -612,6 +613,36 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 "microphysics.condensation",
                 "condensation is disabled.",
                 "Warm-cloud seeding tests usually require condensation growth.",
+            )
+        )
+
+    activation_radius = diagnostics.get("activation_radius_threshold", 0)
+    rain_radius = diagnostics.get("rain_radius_threshold", 0)
+    if activation_radius <= 0:
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.activation_radius_threshold",
+                "activation_radius_threshold must be positive.",
+                "Use a wet-radius threshold such as 0.5e-6 m.",
+            )
+        )
+    if rain_radius <= 0:
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.rain_radius_threshold",
+                "rain_radius_threshold must be positive.",
+                "Use a wet-radius threshold such as 25e-6 m.",
+            )
+        )
+    if activation_radius > 0 and rain_radius > 0 and activation_radius >= rain_radius:
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.rain_radius_threshold",
+                "rain_radius_threshold must exceed activation_radius_threshold.",
+                "Keep cloud and rain radius ranges ordered and non-overlapping.",
             )
         )
 

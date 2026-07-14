@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from inspect import signature
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,28 @@ def main() -> None:
             print(" -", name)
     except Exception as exc:
         print("ConstantMultiplicity inspection failed:", repr(exc))
+
+    try:
+        from PySDM import products
+
+        required_products = (
+            "AmbientTemperature",
+            "AmbientPressure",
+            "AmbientWaterVapourMixingRatio",
+            "AmbientRelativeHumidity",
+            "WaterMixingRatio",
+            "ParticleConcentration",
+            "EffectiveRadius",
+        )
+        print("Native diagnostic product contract:")
+        for name in required_products:
+            product = getattr(products, name, None)
+            if product is None:
+                print(f" - MISSING {name}")
+            else:
+                print(f" - OK {name}{signature(product)}")
+    except Exception as exc:
+        print("Native product inspection failed:", repr(exc))
 
 
 if __name__ == "__main__":
