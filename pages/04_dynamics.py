@@ -29,7 +29,8 @@ st.warning(
 
 col1, col2 = st.columns(2)
 
-with col1:
+with col1.container(border=True):
+    st.markdown("#### Primary dynamics")
     dyn["updraft_strength"] = st.number_input(
         "Updraft strength" + unit_label("dynamics", "updraft_strength"),
         value=float(dyn.get("updraft_strength", env.get("updraft_velocity", 1.0))),
@@ -54,7 +55,8 @@ with col1:
         format="%.2e",
     )
 
-with col2:
+with col2.container(border=True):
+    st.markdown("#### Stored / future parameterizations")
     dyn["detrainment_rate"] = st.number_input(
         "Detrainment rate" + unit_label("dynamics", "detrainment_rate"),
         min_value=0.0,

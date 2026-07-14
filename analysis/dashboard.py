@@ -673,11 +673,11 @@ def _format_sweep_case_label(row: pd.Series) -> str:
 
     conc_key = "param.seeding.number_concentration"
     if conc_key in row and pd.notna(row[conc_key]):
-        parts.append(f"Nseed={row[conc_key]}")
+        parts.append(f"Nseed={format_sweep_param_value(conc_key, row[conc_key])}")
 
     updraft_key = "param.environment.updraft_velocity"
     if updraft_key in row and pd.notna(row[updraft_key]):
-        parts.append(f"w={row[updraft_key]}")
+        parts.append(f"w={float(row[updraft_key]):g}m/s")
 
     collision_key = "param.microphysics.collision"
     if collision_key in row and pd.notna(row[collision_key]):
@@ -687,6 +687,21 @@ def _format_sweep_case_label(row: pd.Series) -> str:
         else:
             collision_value = bool(raw_collision)
         parts.append("coll=ON" if collision_value else "coll=OFF")
+
+    handled_parameters = {
+        radius_key,
+        kappa_key,
+        injection_key,
+        conc_key,
+        updraft_key,
+        collision_key,
+    }
+    for parameter in [key for key in row.index if str(key).startswith("param.")]:
+        if parameter in handled_parameters or pd.isna(row[parameter]):
+            continue
+        parts.append(
+            f"{short_sweep_param_name(parameter)}={format_sweep_param_value(parameter, row[parameter])}"
+        )
 
     if parts:
         return ", ".join(parts)
@@ -870,7 +885,27 @@ def _limit_sweep_cases_for_display(work_df: pd.DataFrame, max_cases: int) -> pd.
 
 def short_sweep_param_name(column: str) -> str:
     """Human-friendly sweep parameter name."""
-    return column.replace("param.", "")
+    aliases = {
+        "param.seeding.dry_radius": "rseed",
+        "param.seeding.kappa": "κseed",
+        "param.seeding.geometric_sigma": "σg,seed",
+        "param.seeding.number_concentration": "Nseed",
+        "param.seeding.number_superdroplets": "NSD,seed",
+        "param.seeding.injection_start": "tinj",
+        "param.seeding.injection_duration": "Δtinj",
+        "param.environment.updraft_velocity": "w",
+        "param.environment.temperature": "T0",
+        "param.environment.pressure": "p0",
+        "param.environment.water_vapour_mixing_ratio": "qv0",
+        "param.environment.timestep": "Δt",
+        "param.background_aerosol.number_concentration": "Nbg",
+        "param.background_aerosol.number_superdroplets": "NSD,bg",
+        "param.background_aerosol.dry_radius": "rbg",
+        "param.background_aerosol.kappa": "κbg",
+        "param.background_aerosol.geometric_sigma": "σg,bg",
+        "param.microphysics.collision": "collision",
+    }
+    return aliases.get(column, column.replace("param.", ""))
 
 
 def format_sweep_param_value(column: str, value: Any) -> str:
@@ -887,6 +922,48 @@ def format_sweep_param_value(column: str, value: Any) -> str:
     if column.endswith("injection_start") or column.endswith("injection_end") or column.endswith("injection_duration"):
         try:
             return f"{float(value):g} s"
+        except Exception:
+            return str(value)
+
+    if column.endswith("timestep"):
+        try:
+            return f"{float(value):g} s"
+        except Exception:
+            return str(value)
+
+    if column.endswith("temperature"):
+        try:
+            return f"{float(value):g} K"
+        except Exception:
+            return str(value)
+
+    if column.endswith("pressure"):
+        try:
+            return f"{float(value):g} Pa"
+        except Exception:
+            return str(value)
+
+    if column.endswith("number_concentration"):
+        try:
+            return f"{float(value):g} cm⁻³"
+        except Exception:
+            return str(value)
+
+    if column.endswith("number_superdroplets"):
+        try:
+            return f"{int(value)}"
+        except Exception:
+            return str(value)
+
+    if column.endswith("water_vapour_mixing_ratio"):
+        try:
+            return f"{float(value):g} kg kg⁻¹"
+        except Exception:
+            return str(value)
+
+    if column.endswith("geometric_sigma"):
+        try:
+            return f"{float(value):g}"
         except Exception:
             return str(value)
 

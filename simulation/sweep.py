@@ -98,6 +98,16 @@ def generate_sweep_cases(config: Dict[str, Any]) -> List[SweepCase]:
         for name, value in parameter_values.items():
             set_nested(case_cfg, name, value)
 
+        # injection_duration is a sweep convenience rather than a direct
+        # adapter field. Resolve it after all parameters are applied so a joint
+        # injection_start × injection_duration sweep produces the correct end
+        # time for every Cartesian-product case.
+        if "seeding.injection_duration" in parameter_values:
+            seeding_cfg = case_cfg.setdefault("seeding", {})
+            injection_start = int(seeding_cfg.get("injection_start", 0))
+            injection_duration = int(parameter_values["seeding.injection_duration"])
+            seeding_cfg["injection_end"] = injection_start + injection_duration
+
         case_name = _format_case_name(idx, parameter_values)
 
         case_cfg.setdefault("simulation", {})["case_name"] = case_name

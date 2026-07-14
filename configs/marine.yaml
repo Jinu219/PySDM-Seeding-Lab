@@ -21,6 +21,7 @@ environment:
 background_aerosol:
   distribution_type: single_lognormal
   number_concentration: 80.0
+  number_superdroplets: 100
   dry_radius: 9.0e-08
   geometric_sigma: 1.5
   kappa: 0.7

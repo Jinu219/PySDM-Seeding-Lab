@@ -60,6 +60,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "background_aerosol": {
         "distribution_type": "single_lognormal",
         "number_concentration": 100.0,
+        "number_superdroplets": 100,
         "dry_radius": 7.5e-8,
         "geometric_sigma": 1.4,
         "kappa": 0.5,
@@ -133,6 +134,7 @@ FIELD_UNITS: Dict[str, Dict[str, str]] = {
     },
     "background_aerosol": {
         "number_concentration": "cm^-3",
+        "number_superdroplets": "count",
         "dry_radius": "m",
         "geometric_sigma": "-",
         "kappa": "-",

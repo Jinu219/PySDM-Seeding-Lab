@@ -93,12 +93,35 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+The home page is now the project onboarding page. It explains the recommended
+scenario → configuration → sensitivity → run → analysis workflow and provides
+direct links to the key pages.
+
+### Sensitivity-design workspace
+
+`05. Parameter Sweep` provides 18 commonly used warm-cloud seeding sweep
+parameters in four groups:
+
+- seeding material and dose;
+- delivery timing and cloud dynamics;
+- cloud state and background aerosol competition;
+- microphysics and numerical robustness.
+
+Seven presets cover activation/hygroscopicity, dose response, timing/updraft,
+background CCN competition, thermodynamic regime, collision transition, and
+numerical convergence. The preview reports the Cartesian case count and the
+actual estimated model-run count after ensemble and control/seeding factors.
+Physical parameters and numerical-convergence parameters are labelled
+separately so they are not accidentally interpreted as the same question.
+
 ## Current Status
 
-This project is currently in the clean scaffold stage.
-
-The current version focuses on organizing the project architecture before connecting the first real PySDM simulation.  
-The PySDM adapter currently acts as an interface placeholder and will later be connected to an actual warm-cloud hygroscopic seeding simulation.
+The project is an active research workbench with scenario management,
+configuration validation, parameter sweeps, ensembles, a PySDM parcel adapter,
+diagnostic provenance, and publication-oriented result panels. The
+`placeholder_warm_cloud` adapter remains available for fast UI testing; use
+`pysdm_parcel` for physics-based experiments and review each diagnostic's
+native/derived/proxy provenance before drawing conclusions.
 
 ## Development Roadmap
 
@@ -508,7 +531,7 @@ The Results Dashboard detects sweep results and shows a ranking chart and summar
 A Streamlit sweep setup page is available:
 
 ```text
-07. Parameter Sweep
+05. Parameter Sweep
 ```
 
 ## Sweep Time-Series Comparison
@@ -518,7 +541,7 @@ The sweep dashboard now emphasizes case-wise time-series comparison rather than 
 For a `[sweep]` result, open:
 
 ```text
-06. Results Dashboard → Sweep Time Series
+07. Results Dashboard → Sweep Time Series
 ```
 
 You can compare the same variable across multiple sweep cases:

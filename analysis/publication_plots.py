@@ -129,15 +129,34 @@ def publication_variable_label(variable: str, *, difference: bool = False) -> st
 def publication_parameter_label(parameter: str) -> str:
     short = parameter.replace("param.", "")
     if parameter.endswith("dry_radius"):
-        return "Seeding dry radius [µm]"
+        prefix = "Background aerosol" if "background_aerosol" in parameter else "Seeding"
+        return f"{prefix} dry radius [µm]"
     if parameter.endswith("kappa"):
-        return "Hygroscopicity κ [–]"
+        prefix = "Background aerosol" if "background_aerosol" in parameter else "Seeding"
+        return f"{prefix} hygroscopicity κ [–]"
     if parameter.endswith("injection_start"):
         return "Injection start [s]"
     if parameter.endswith("injection_duration"):
         return "Injection duration [s]"
     if parameter.endswith("updraft_velocity"):
         return "Updraft velocity [m s⁻¹]"
+    if parameter.endswith("temperature"):
+        return "Initial temperature [K]"
+    if parameter.endswith("pressure"):
+        return "Initial pressure [Pa]"
+    if parameter.endswith("water_vapour_mixing_ratio"):
+        return "Initial water-vapour mixing ratio [kg kg⁻¹]"
+    if parameter.endswith("timestep"):
+        return "Model timestep [s]"
+    if parameter.endswith("number_concentration"):
+        prefix = "Background" if "background_aerosol" in parameter else "Seeding"
+        return f"{prefix} number concentration [cm⁻³]"
+    if parameter.endswith("number_superdroplets"):
+        prefix = "Background" if "background_aerosol" in parameter else "Seeding"
+        return f"{prefix} super-droplet count [–]"
+    if parameter.endswith("geometric_sigma"):
+        prefix = "Background" if "background_aerosol" in parameter else "Seeding"
+        return f"{prefix} geometric σ [–]"
     if parameter.endswith("collision"):
         return "Collision–coalescence"
     return short

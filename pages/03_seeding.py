@@ -24,9 +24,10 @@ duration = int(env.get("duration", 1500))
 
 seed["enabled"] = st.toggle("Enable seeding", value=bool(seed.get("enabled", True)))
 
-col1, col2 = st.columns(2)
+material_col, dose_col, injection_col = st.columns([1, 0.9, 1.15])
 
-with col1:
+with material_col.container(border=True):
+    st.markdown("#### Material properties")
     material_type = seed.get("material_type", "hygroscopic")
     seed["material_type"] = st.selectbox(
         "Seeding material type",
@@ -54,6 +55,9 @@ with col1:
         value=float(seed.get("kappa", 0.8)),
         step=0.1,
     )
+
+with dose_col.container(border=True):
+    st.markdown("#### Dose & resolution")
     seed["particle_density"] = st.number_input(
         "Particle density" + unit_label("seeding", "particle_density"),
         min_value=1.0,
@@ -72,8 +76,10 @@ with col1:
         value=int(seed.get("number_superdroplets", 100)),
         step=10,
     )
+    st.caption("Super-droplet count는 물리적 dose가 아니라 수치 해상도입니다. 별도 convergence sweep으로 확인하세요.")
 
-with col2:
+with injection_col.container(border=True):
+    st.markdown("#### Injection design")
     current_start = min(int(seed.get("injection_start", 900)), duration - 1 if duration > 1 else 0)
     current_end = min(int(seed.get("injection_end", 1200)), duration)
 

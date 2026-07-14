@@ -114,8 +114,56 @@ def check_safe_read_csv_no_recursion() -> None:
         raise RuntimeError("safe_read_csv does not call pd.read_csv(path).")
 
 
+def check_sweep_catalog() -> None:
+    from simulation.schema import default_config
+    from simulation.sweep import generate_sweep_cases
+    from simulation.sweep_catalog import COMMON_SWEEP_PARAMETERS, SENSITIVITY_PRESETS
+
+    names = [spec.name for spec in COMMON_SWEEP_PARAMETERS]
+    if len(names) != len(set(names)):
+        raise RuntimeError("Common sweep catalog contains duplicate parameter names.")
+    if len(names) < 15:
+        raise RuntimeError("Common sweep catalog unexpectedly lost parameter coverage.")
+
+    for preset_name, preset in SENSITIVITY_PRESETS.items():
+        parameters = preset.get("parameters", {})
+        if preset_name == "Custom":
+            continue
+        unknown = sorted(set(parameters) - set(names))
+        if unknown:
+            raise RuntimeError(f"Preset {preset_name!r} uses unknown parameters: {unknown}")
+        case_count = 1
+        for raw_values in parameters.values():
+            case_count *= len([item for item in str(raw_values).split(",") if item.strip()])
+        if case_count > 100:
+            raise RuntimeError(f"Preset {preset_name!r} exceeds the default 100-case safety limit.")
+
+    cfg = default_config()
+    cfg["experiment"]["mode"] = "parameter_sweep"
+    cfg["sweep"]["max_runs"] = 10
+    cfg["sweep"]["parameters"] = [
+        {"name": "seeding.injection_start", "values": [100, 200]},
+        {"name": "seeding.injection_duration", "values": [30]},
+    ]
+    cases = generate_sweep_cases(cfg)
+    expected_ends = [130, 230]
+    actual_ends = [case.config["seeding"]["injection_end"] for case in cases]
+    if actual_ends != expected_ends:
+        raise RuntimeError(
+            f"Derived injection_end values are wrong: expected {expected_ends}, got {actual_ends}"
+        )
+
+
 def main() -> None:
+    check_page_files()
     check_safe_read_csv_no_recursion()
+    check_sweep_catalog()
+    py_compile.compile(str(PROJECT_ROOT / "app.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "ui_helpers.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep.py"), doraise=True)
+    for page_path in sorted((PROJECT_ROOT / "pages").glob("*.py")):
+        py_compile.compile(str(page_path), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "publication_plots.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)

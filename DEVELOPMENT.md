@@ -774,3 +774,40 @@ Recommended commit message:
 ```bash
 git commit -m "Add publication-style warm-cloud seeding diagnostic panels"
 ```
+
+## Cross-cutting UX update. Expanded sensitivity design and onboarding
+
+Improved experiment design without taking the Step 16 number reserved by
+`ROADMAP.md` for wet-radius and size-bin diagnostics.
+
+Changes:
+- Replaced the small fixed common-sweep form with an 18-parameter catalog,
+  grouped by scientific purpose and accompanied by short interpretation notes.
+- Added seven ready-to-use experiment presets and a preview of sweep cases,
+  ensemble members, and actual model-run count.
+- Separated physical-sensitivity variables from timestep/super-droplet
+  numerical-convergence variables and warns when they are mixed in one grid.
+- Made `seeding.injection_duration` an effective sweep variable by deriving
+  `injection_end` after every Cartesian-product case is assembled.
+- Added background-aerosol super-droplet resolution to the schema, validation,
+  configuration pages, and common sweep catalog.
+- Rebuilt `app.py` as a Welcome / Start page with the recommended workflow,
+  quick navigation, configuration health, scenario loading, and a warm-seeding
+  interpretation checklist.
+- Added a shared compact visual system and grouped Environment, Aerosol,
+  Seeding, and Dynamics controls into bounded cards. Seeding settings now use
+  three balanced cards instead of two full-width input stacks.
+- Extended dashboard/publication parameter labels for the new sweep variables
+  and added sweep-catalog integrity checks.
+
+Validation performed:
+- `python scripts/check_project_integrity.py`
+- Streamlit AppTest rendering for the Welcome page and pages 01–05
+- AppTest interaction with the Activation & hygroscopicity preset (48 cases,
+  96 control/seeding model runs)
+
+Recommended commit message:
+
+```bash
+git commit -m "Expand warm-cloud sweep design and refresh onboarding UI"
+```

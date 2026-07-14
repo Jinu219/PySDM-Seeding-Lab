@@ -23,7 +23,8 @@ st.subheader("Thermodynamic Settings")
 
 col1, col2 = st.columns(2)
 
-with col1:
+with col1.container(border=True):
+    st.markdown("#### Thermodynamic state")
     env["temperature"] = st.number_input(
         "Initial temperature" + unit_label("environment", "temperature"),
         min_value=1.0,
@@ -51,7 +52,8 @@ with col1:
         step=1.0,
     )
 
-with col2:
+with col2.container(border=True):
+    st.markdown("#### Parcel & integration")
     env["initial_altitude"] = st.number_input(
         "Initial altitude" + unit_label("environment", "initial_altitude"),
         value=float(env.get("initial_altitude", 0.0)),

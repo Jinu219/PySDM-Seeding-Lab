@@ -23,7 +23,8 @@ aero = cfg.setdefault("background_aerosol", {})
 
 col1, col2 = st.columns([1, 1.2])
 
-with col1:
+with col1.container(border=True):
+    st.markdown("#### Aerosol properties")
     distribution_type = aero.get("distribution_type", "single_lognormal")
     aero["distribution_type"] = st.selectbox(
         "Distribution type",
@@ -37,6 +38,13 @@ with col1:
         min_value=0.0,
         value=float(aero.get("number_concentration", 100.0)),
         step=10.0,
+    )
+    aero["number_superdroplets"] = st.number_input(
+        "Number of background super-droplets" + unit_label("background_aerosol", "number_superdroplets"),
+        min_value=1,
+        value=int(aero.get("number_superdroplets", 100)),
+        step=10,
+        help="Numerical representation count. Verify convergence before quantitative interpretation.",
     )
     aero["dry_radius"] = st.number_input(
         "Geometric mean dry radius" + unit_label("background_aerosol", "dry_radius"),
@@ -68,7 +76,7 @@ with col1:
         value=str(aero.get("chemical_composition", "ammonium_sulfate_like")),
     )
 
-with col2:
+with col2.container(border=True):
     st.subheader("Aerosol Distribution Preview")
 
     r = np.logspace(-9, -5, 300)

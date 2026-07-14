@@ -291,6 +291,25 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
             )
         )
 
+    if int(aero.get("number_superdroplets", 0)) <= 0:
+        issues.append(
+            _issue(
+                "error",
+                "background_aerosol.number_superdroplets",
+                "number_superdroplets must be positive.",
+                "Use at least 1 super-droplet; run a convergence sweep before quantitative analysis.",
+            )
+        )
+    elif int(aero.get("number_superdroplets", 0)) < 20:
+        issues.append(
+            _issue(
+                "warning",
+                "background_aerosol.number_superdroplets",
+                "The background aerosol spectrum is represented by very few super-droplets.",
+                "Increase the count or demonstrate numerical convergence.",
+            )
+        )
+
     if aero.get("dry_radius", 0) <= 0:
         issues.append(
             _issue(
