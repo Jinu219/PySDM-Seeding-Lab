@@ -8,7 +8,44 @@ import numpy as np
 import pandas as pd
 
 
-PUBLICATION_PLOTS_BUILD_ID = "publication-diagnostic-panels-20260714"
+PUBLICATION_PLOTS_BUILD_ID = "vector-publication-presets-20260714"
+
+PUBLICATION_STYLE_PRESETS: Dict[str, Dict[str, float | None]] = {
+    "screen": {"width_in": None, "font_size": 9.0, "line_width": 1.6},
+    "journal_single_column": {"width_in": 3.54, "font_size": 7.0, "line_width": 1.1},
+    "journal_double_column": {"width_in": 7.2, "font_size": 8.0, "line_width": 1.3},
+}
+
+
+def apply_publication_style(fig, preset: str = "journal_double_column"):
+    """Apply a deterministic screen/single-column/double-column figure preset."""
+    style = PUBLICATION_STYLE_PRESETS.get(preset, PUBLICATION_STYLE_PRESETS["journal_double_column"])
+    width = style["width_in"]
+    if width is not None:
+        current_width, current_height = fig.get_size_inches()
+        aspect = current_width / max(current_height, 1.0e-9)
+        target_height = float(width) / max(aspect, 0.25)
+        if len(fig.axes) >= 4:
+            target_height = max(target_height, float(width) * 0.85)
+        fig.set_size_inches(float(width), target_height, forward=True)
+
+    font_size = float(style["font_size"] or 8.0)
+    line_width = float(style["line_width"] or 1.2)
+    for axis in fig.axes:
+        axis.title.set_fontsize(font_size + 1.0)
+        axis.xaxis.label.set_fontsize(font_size)
+        axis.yaxis.label.set_fontsize(font_size)
+        axis.tick_params(labelsize=max(font_size - 1.0, 5.0), width=0.7)
+        for spine in axis.spines.values():
+            spine.set_linewidth(0.7)
+        for line in axis.lines:
+            line.set_linewidth(min(max(line.get_linewidth(), line_width), line_width * 1.6))
+        legend = axis.get_legend()
+        if legend is not None:
+            for text in legend.get_texts():
+                text.set_fontsize(max(font_size - 1.0, 5.0))
+    fig.tight_layout()
+    return fig
 
 
 VARIABLE_METADATA: Dict[str, Dict[str, str]] = {

@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 Active branch: `develop`
 
-Current milestone: Step 14 physical robustness + Step 16 wet-radius spectrum, first implementation
+Current milestone: Steps 14-19 first integrated implementation completed
 
 이 문서는 프로젝트의 현재 상태를 한 화면에서 확인하는 운영 문서다. 세부 변경 이력은
 `DEVELOPMENT.md`, 우선순위와 완료 조건은 `ROADMAP.md`, 설치와 사용법은 `README.md`를
@@ -16,12 +16,12 @@ Current milestone: Step 14 physical robustness + Step 16 wet-radius spectrum, fi
 |---|---|---|---|
 | Step 0-12 | 완료 | 앱 골격, 설정/검증, PySDM adapter, control vs seeding, sweep, ensemble, Growth Pathway | 회귀 테스트 유지 |
 | Step 13 | 완료 | PySDM 2.131 native scalar diagnostics, native 11 / derived 2 / proxy 0 | PySDM 버전 변경 시 product API 재검증 |
-| Step 14 | 진행 중 | liquid-water partition closure와 wet-radius threshold robustness 구현 | control/seeding 보존성 검사와 수치 수렴 기준 확정 |
-| Step 15 | 1차 완료 | Growth Pathway, OFAT, collision, ensemble publication panels | PDF/SVG export와 journal style preset |
-| Step 16 | 1차 완료 | wet-radius number/volume spectrum, cloud/rain bin 재분할, Results UI | spectrum 기반 seeding-minus-control 정량 지표 확정 |
-| Step 17 | 대기 | large ensemble 성능 최적화 | Step 14/16 검증 후 착수 |
-| Step 18 | 대기 | 자동 report export | Step 17 이후 |
-| Step 19 | 대기 | old/new result 호환성 강화 | schema migration 정책과 함께 진행 |
+| Step 14 | 1차 완료 | source-aware water budget, threshold robustness, numerical convergence gate | 장기/고해상도 실험으로 tolerance 근거 축적 |
+| Step 15 | 1차 완료 | publication panels, PNG/SVG/PDF export, journal width presets | 저널별 세부 typography preset은 실제 투고 시 확장 |
+| Step 16 | 1차 완료 | wet-radius spectrum과 control–seeding/threshold 차이 진단 | transition/onset 지표의 관측 비교 기준 확정 |
+| Step 17 | 1차 완료 | member CSV column-streaming ensemble aggregation | 대형 실행 benchmark 후 병렬화·I/O 절충 확정 |
+| Step 18 | 1차 완료 | 모든 result type의 자동 `report.md`와 Results preview/download | 향후 PDF report 및 figure embedding |
+| Step 19 | 1차 완료 | versioned `result_manifest.json`, legacy inference, Results compatibility status | 실제 schema 변경 시 migration fixture 추가 |
 
 ## 현재 동작하는 연구 흐름
 
@@ -50,6 +50,18 @@ Current milestone: Step 14 physical robustness + Step 16 wet-radius spectrum, fi
 | `wet_radius_spectrum.csv` | checkpoint별 wet-radius bin, number concentration, liquid-volume fraction, regime |
 | `threshold_robustness.csv` | activation/rain threshold 조합별 unactivated/cloud/rain partition과 비율 |
 
+이번 연구 품질 묶음에서 다음 산출물이 추가됐다.
+
+| 파일 | 내용 |
+|---|---|
+| `water_budget.csv` | vapour/liquid/total water와 closed-window 보존성 drift |
+| `water_budget_comparison.csv` | control–seeding 수분 예산 정렬 비교 |
+| `wet_radius_spectrum_comparison.csv` | wet-radius bin별 seeding-minus-control number/volume 차이 |
+| `threshold_robustness_comparison.csv` | threshold 조합별 seeding response 차이 |
+| `numerical_convergence.csv` | finest reference 대비 timestep/NSD OFAT 수렴 오차 |
+| `report.md` | 품질 판정, 핵심 지표, validation, artifact, 재현 절차 자동 요약 |
+| `result_manifest.json` | result schema version, result type, primary data, artifact map |
+
 ## 현재 해석 범위
 
 - `unactivated`, `cloud`, `rain`은 입자의 과거 activation event가 아니라 설정된 시점의
@@ -58,13 +70,17 @@ Current milestone: Step 14 physical robustness + Step 16 wet-radius spectrum, fi
 - volume spectrum은 `dV_liquid / V_air / dln(r)`이고, 결과 파일은 bin 적분값도 함께 저장한다.
 - threshold robustness는 진단 정의의 안정성을 검사한다. 모델 입력 민감도나 관측 불확실성을
   대신하지 않는다.
+- water-budget pass/fail은 injection source window를 제외한 닫힌 구간에만 적용한다.
+- numerical convergence 기본 판정은 rank 1과 finest rank 0의 상대 차이 5%다. 기준 metric이
+  0에 매우 가까우면 상대오차가 과대해질 수 있으므로 absolute difference도 함께 확인한다.
 
 ## 다음 개발 우선순위
 
-1. Step 14 완료: control/seeding 각각의 water partition closure와 총수분 변화 검사를 자동 판정한다.
-2. Step 14 완료: background/seed super-droplet 수에 대한 numerical convergence 기준과 경고를 만든다.
-3. Step 16 강화: spectrum 기반 seeding-minus-control difference와 onset/transition 지표를 추가한다.
-4. Step 17 착수: checkpoint 결과를 유지하면서 sweep/ensemble 메모리와 실행 시간을 줄인다.
+1. Step 17 검증: 대형 ensemble benchmark로 peak memory와 CSV 재읽기 비용을 계측한다.
+2. numerical convergence preset을 full PySDM으로 실행해 5% 기본 tolerance의 경험적 근거를 축적한다.
+3. spectrum 기반 onset/transition 지표를 정의하고 관측 또는 문헌 기준과 비교한다.
+4. Step 18 report를 PDF/HTML로 확장하고 선택한 publication figure를 포함한다.
+5. 실제 구버전 결과 fixture를 보존하고 schema 변경 때 migration 회귀 테스트를 추가한다.
 
 ## 검증 명령
 

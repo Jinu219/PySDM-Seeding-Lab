@@ -54,8 +54,16 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_collision_off_on_panel",
     "plot_wet_radius_spectrum",
     "plot_threshold_robustness",
+    "plot_wet_radius_spectrum_difference",
+    "plot_threshold_robustness_difference",
     "spectrum_checkpoint_times",
     "threshold_robustness_metrics",
+    "plot_water_budget",
+    "plot_numerical_convergence",
+    "convergence_metrics",
+    "figure_to_svg_bytes",
+    "figure_to_pdf_bytes",
+    "apply_publication_style",
     "publication_parameter_label",
     "publication_variable_label",
     "comparison_seeding_intervals",
@@ -227,7 +235,13 @@ def main() -> None:
     for page_path in sorted((PROJECT_ROOT / "pages").glob("*.py")):
         py_compile.compile(str(page_path), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "publication_plots.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "ensemble_statistics.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "wet_radius_plots.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "water_budget.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "numerical_convergence.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "case_diagnostic_comparison.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "reporting.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
 

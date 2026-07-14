@@ -92,7 +92,10 @@ elif plan.total_model_runs >= 100:
     st.warning("This run is large. Consider testing with fewer sweep cases or ensemble members first.")
 
 with st.expander("Run plan details"):
-    st.dataframe(pd.DataFrame(run_plan_rows(cfg)), use_container_width=True)
+    run_plan_df = pd.DataFrame(run_plan_rows(cfg)).astype(
+        {"item": "string", "value": "string"}
+    )
+    st.dataframe(run_plan_df, width="stretch")
 
 activation_radius_m, rain_radius_m = diagnostic_radius_thresholds(cfg)
 with st.expander("Native diagnostic definitions", expanded=False):
@@ -133,7 +136,7 @@ if report_rows:
     )
     if severity_filter:
         report_df = report_df[report_df["severity"].isin(severity_filter)]
-    st.dataframe(report_df, use_container_width=True)
+    st.dataframe(report_df, width="stretch")
 else:
     st.info("No validation issues found.")
 
@@ -142,7 +145,7 @@ with st.expander("Current configuration"):
 
 run_disabled = summary["error"] > 0
 
-if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
+if st.button("Run Experiment", disabled=run_disabled, width="stretch"):
     plan = estimate_run_plan(cfg)
 
     st.subheader("Live Progress")
@@ -203,7 +206,7 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
         if progress_state["events"]:
             event_box.dataframe(
                 pd.DataFrame({"Recent events": progress_state["events"][-8:][::-1]}),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 

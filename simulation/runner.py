@@ -11,15 +11,33 @@ import pandas as pd
 import yaml
 
 from analysis.comparison import build_difference_dataframe, summarize_comparison
+from analysis.case_diagnostic_comparison import (
+    build_threshold_robustness_comparison,
+    build_water_budget_comparison,
+    build_wet_radius_spectrum_comparison,
+    summarize_spectrum_comparison,
+)
 from analysis.growth_pathway_diagnostics import (
     add_growth_pathway_diagnostics,
     diagnostic_health_rows,
     diagnostic_provenance_rows,
 )
 from analysis.metrics import summarize_timeseries
+from analysis.numerical_convergence import (
+    build_numerical_convergence_table,
+    summarize_numerical_convergence,
+)
 from analysis.result_files import describe_result_files
+from analysis.reporting import build_markdown_report
+from analysis.result_manifest import build_result_manifest
+from analysis.water_budget import (
+    WATER_BUDGET_TABLE_NAME,
+    build_water_budget_table,
+    summarize_water_budget,
+)
 from analysis.ensemble_statistics import (
-    build_ensemble_statistics,
+    ENSEMBLE_BUILD_ID,
+    build_ensemble_statistics_from_paths,
     ensemble_summary_metrics,
     member_seed_list,
     member_summary_rows,
@@ -148,6 +166,35 @@ def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: D
         tables=result.tables,
     )
 
+
+def _apply_water_budget_diagnostics_to_result(
+    result: AdapterResult,
+    config: Dict[str, Any],
+) -> AdapterResult:
+    """Attach total-water conservation diagnostics when native water columns exist."""
+    budget_cfg = config.get("diagnostics", {}).get("water_budget", {})
+    if not bool(budget_cfg.get("enabled", True)):
+        return result
+
+    budget_table = build_water_budget_table(result.require_timeseries(), config)
+    budget_summary = summarize_water_budget(budget_table, config)
+    tables = dict(result.tables)
+    if not budget_table.empty:
+        tables[WATER_BUDGET_TABLE_NAME] = budget_table
+
+    return AdapterResult(
+        timeseries=result.timeseries,
+        metadata={
+            **result.metadata,
+            "water_budget_diagnostics_enabled": True,
+        },
+        summary={
+            **result.summary,
+            "water_budget": budget_summary,
+        },
+        tables=tables,
+    )
+
 def run_experiment(
     config: Dict[str, Any],
     output_dir: Path,
@@ -208,6 +255,7 @@ def run_single_experiment(
     emit_progress(progress_callback, "runner", 3, total_stages, f"Running adapter: {spec.adapter_name}")
     result = _run_adapter_timed(spec, progress_callback=progress_callback)
     result = _apply_growth_pathway_diagnostics_to_result(result, spec.config)
+    result = _apply_water_budget_diagnostics_to_result(result, spec.config)
 
     emit_progress(progress_callback, "runner", 4, total_stages, "Writing result files")
     timeseries = result.require_timeseries()
@@ -274,6 +322,7 @@ def run_control_vs_seeding(
     control_spec = build_run_spec(control_cfg)
     control_result = _run_adapter_timed(control_spec, progress_callback=progress_callback)
     control_result = _apply_growth_pathway_diagnostics_to_result(control_result, control_spec.config)
+    control_result = _apply_water_budget_diagnostics_to_result(control_result, control_spec.config)
     _write_single_result_files(control_dir, control_spec, control_result)
     emit_progress(progress_callback, "model_run_complete", 1, 1, "Completed control run")
 
@@ -282,6 +331,7 @@ def run_control_vs_seeding(
     seeding_spec = build_run_spec(seeding_cfg)
     seeding_result = _run_adapter_timed(seeding_spec, progress_callback=progress_callback)
     seeding_result = _apply_growth_pathway_diagnostics_to_result(seeding_result, seeding_spec.config)
+    seeding_result = _apply_water_budget_diagnostics_to_result(seeding_result, seeding_spec.config)
     _write_single_result_files(seeding_dir, seeding_spec, seeding_result)
     emit_progress(progress_callback, "model_run_complete", 1, 1, "Completed seeding run")
 
@@ -290,13 +340,56 @@ def run_control_vs_seeding(
     seeding_df = seeding_result.require_timeseries()
     difference_df = build_difference_dataframe(control_df, seeding_df)
 
+    spectrum_comparison = build_wet_radius_spectrum_comparison(
+        control_result.tables.get("wet_radius_spectrum", pd.DataFrame()),
+        seeding_result.tables.get("wet_radius_spectrum", pd.DataFrame()),
+    )
+    threshold_comparison = build_threshold_robustness_comparison(
+        control_result.tables.get("threshold_robustness", pd.DataFrame()),
+        seeding_result.tables.get("threshold_robustness", pd.DataFrame()),
+    )
+    water_budget_comparison = build_water_budget_comparison(
+        control_result.tables.get(WATER_BUDGET_TABLE_NAME, pd.DataFrame()),
+        seeding_result.tables.get(WATER_BUDGET_TABLE_NAME, pd.DataFrame()),
+    )
+
     emit_progress(progress_callback, "comparison", 5, total_stages, "Computing comparison summary")
     comparison_summary = summarize_comparison(control_df, seeding_df, difference_df)
+    comparison_summary["research_quality"] = {
+        "water_budget": {
+            "control": control_result.summary.get("water_budget", {}),
+            "seeding": seeding_result.summary.get("water_budget", {}),
+        },
+        "wet_radius_spectrum": summarize_spectrum_comparison(spectrum_comparison),
+    }
 
     emit_progress(progress_callback, "comparison", 6, total_stages, "Writing comparison files")
     _write_yaml(run_dir / "config.yaml", cfg)
     difference_df.to_csv(run_dir / "comparison.csv", index=False)
     _write_json(run_dir / "validation_report.json", validation_report_rows(cfg))
+
+    diagnostic_comparison_files: Dict[str, str] = {}
+    for table_name, table, filename in (
+        (
+            "wet_radius_spectrum_comparison",
+            spectrum_comparison,
+            "wet_radius_spectrum_comparison.csv",
+        ),
+        (
+            "threshold_robustness_comparison",
+            threshold_comparison,
+            "threshold_robustness_comparison.csv",
+        ),
+        (
+            "water_budget_comparison",
+            water_budget_comparison,
+            "water_budget_comparison.csv",
+        ),
+    ):
+        if table.empty:
+            continue
+        table.to_csv(run_dir / filename, index=False)
+        diagnostic_comparison_files[table_name] = filename
 
     metadata_payload = {
         "run_id": run_id,
@@ -314,9 +407,21 @@ def run_control_vs_seeding(
             "validation_report": "validation_report.json",
             "control": "control/",
             "seeding": "seeding/",
+            "report": "report.md",
+            "result_manifest": "result_manifest.json",
+            **diagnostic_comparison_files,
         },
         "file_roles": describe_result_files(
-            ["config.yaml", "comparison.csv", "summary.json", "metadata.json", "validation_report.json"]
+            [
+                "config.yaml",
+                "comparison.csv",
+                "summary.json",
+                "metadata.json",
+                "validation_report.json",
+                "report.md",
+                "result_manifest.json",
+                *diagnostic_comparison_files.values(),
+            ]
         ),
     }
 
@@ -332,6 +437,24 @@ def run_control_vs_seeding(
 
     _write_json(run_dir / "metadata.json", metadata_payload)
     _write_json(run_dir / "summary.json", summary_payload)
+    (run_dir / "report.md").write_text(
+        build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    _write_json(
+        run_dir / "result_manifest.json",
+        build_result_manifest(
+            result_type="comparison",
+            primary_data="comparison.csv",
+            result_files=metadata_payload["result_files"],
+            run_id=run_id,
+        ),
+    )
 
     emit_progress(progress_callback, "comparison", 7, total_stages, "Comparison run files completed")
     emit_progress(progress_callback, "comparison", 8, total_stages, f"Finished: {run_dir}")
@@ -348,8 +471,8 @@ def _with_ensemble_disabled(config: Dict[str, Any]) -> Dict[str, Any]:
     return cfg
 
 
-def _read_primary_member_dataframe(member_dir: Path, mode: str) -> pd.DataFrame:
-    """Read the dataframe that should be aggregated for one ensemble member."""
+def _primary_member_data_path(member_dir: Path, mode: str) -> Path:
+    """Return the CSV that should be aggregated for one ensemble member."""
     if mode == "control_vs_seeding":
         path = member_dir / "comparison.csv"
     else:
@@ -358,7 +481,7 @@ def _read_primary_member_dataframe(member_dir: Path, mode: str) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"Missing ensemble aggregation source: {path}")
 
-    return pd.read_csv(path)
+    return path
 
 
 def run_ensemble_experiment(
@@ -403,7 +526,7 @@ def run_ensemble_experiment(
     emit_progress(progress_callback, "ensemble", 1, n_members + 2, f"Running ensemble with {n_members} members")
 
     member_records = []
-    member_dfs = []
+    member_data_paths: list[Path] = []
 
     for idx, seed in enumerate(seeds, start=1):
         emit_progress(progress_callback, "ensemble", idx + 1, n_members + 2, f"Running ensemble member {idx}/{n_members}")
@@ -421,8 +544,7 @@ def run_ensemble_experiment(
             else:
                 member_result_dir = run_single_experiment(member_cfg, member_parent, progress_callback=progress_callback)
 
-            member_df = _read_primary_member_dataframe(member_result_dir, mode)
-            member_dfs.append(member_df)
+            member_data_paths.append(_primary_member_data_path(member_result_dir, mode))
 
             member_records.append(
                 {
@@ -447,7 +569,7 @@ def run_ensemble_experiment(
     emit_progress(progress_callback, "ensemble", n_members + 2, n_members + 2, "Writing ensemble statistics")
 
     member_summary_df = member_summary_rows(member_records)
-    stats_df = build_ensemble_statistics(member_dfs)
+    stats_df = build_ensemble_statistics_from_paths(member_data_paths)
 
     _write_yaml(run_dir / "config.yaml", cfg)
     member_summary_df.to_csv(run_dir / "member_summary.csv", index=False)
@@ -468,6 +590,8 @@ def run_ensemble_experiment(
         "n_members_requested": n_members,
         "n_success": n_success,
         "n_failed": n_failed,
+        "ensemble_statistics_build_id": ENSEMBLE_BUILD_ID,
+        "ensemble_aggregation_method": "column_streaming_from_member_csv",
         "result_files": {
             "config": "config.yaml",
             "ensemble_statistics": "ensemble_statistics.csv",
@@ -476,6 +600,8 @@ def run_ensemble_experiment(
             "metadata": "metadata.json",
             "validation_report": "validation_report.json",
             "members": "members/",
+            "report": "report.md",
+            "result_manifest": "result_manifest.json",
         },
         "file_roles": describe_result_files(
             [
@@ -485,6 +611,8 @@ def run_ensemble_experiment(
                 "summary.json",
                 "metadata.json",
                 "validation_report.json",
+                "report.md",
+                "result_manifest.json",
             ]
         ),
     }
@@ -500,6 +628,7 @@ def run_ensemble_experiment(
             "n_members_requested": n_members,
             "n_success": n_success,
             "n_failed": n_failed,
+            "aggregation_method": "column_streaming_from_member_csv",
             "member_seeds": seeds,
             "metrics": ensemble_summary_metrics(stats_df),
         },
@@ -508,6 +637,24 @@ def run_ensemble_experiment(
 
     _write_json(run_dir / "metadata.json", metadata_payload)
     _write_json(run_dir / "summary.json", summary_payload)
+    (run_dir / "report.md").write_text(
+        build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    _write_json(
+        run_dir / "result_manifest.json",
+        build_result_manifest(
+            result_type="ensemble",
+            primary_data="ensemble_statistics.csv",
+            result_files=metadata_payload["result_files"],
+            run_id=run_id,
+        ),
+    )
 
     return run_dir
 
@@ -608,6 +755,9 @@ def run_parameter_sweep(
         ).reset_index(drop=True)
         sweep_df.insert(0, "rank", range(1, len(sweep_df) + 1))
 
+    convergence_table = build_numerical_convergence_table(sweep_df, cfg)
+    convergence_summary = summarize_numerical_convergence(convergence_table)
+
     emit_progress(
         progress_callback,
         "sweep",
@@ -617,6 +767,8 @@ def run_parameter_sweep(
     )
 
     sweep_df.to_csv(sweep_dir / "sweep_summary.csv", index=False)
+    if not convergence_table.empty:
+        convergence_table.to_csv(sweep_dir / "numerical_convergence.csv", index=False)
     _write_yaml(sweep_dir / "config.yaml", cfg)
     _write_json(sweep_dir / "validation_report.json", validation_report_rows(cfg))
 
@@ -641,9 +793,25 @@ def run_parameter_sweep(
             "metadata": "metadata.json",
             "validation_report": "validation_report.json",
             "cases": "cases/",
+            "report": "report.md",
+            "result_manifest": "result_manifest.json",
+            **(
+                {"numerical_convergence": "numerical_convergence.csv"}
+                if not convergence_table.empty
+                else {}
+            ),
         },
         "file_roles": describe_result_files(
-            ["config.yaml", "sweep_summary.csv", "summary.json", "metadata.json", "validation_report.json"]
+            [
+                "config.yaml",
+                "sweep_summary.csv",
+                "summary.json",
+                "metadata.json",
+                "validation_report.json",
+                "report.md",
+                "result_manifest.json",
+                *(["numerical_convergence.csv"] if not convergence_table.empty else []),
+            ]
         ),
     }
 
@@ -656,11 +824,30 @@ def run_parameter_sweep(
         "n_cases": total_cases,
         "ranking_metric": ranking_metric,
         "best_case": best_case,
+        "numerical_convergence": convergence_summary,
         "validation": validation_summary(cfg),
     }
 
     _write_json(sweep_dir / "metadata.json", metadata_payload)
     _write_json(sweep_dir / "summary.json", summary_payload)
+    (sweep_dir / "report.md").write_text(
+        build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    _write_json(
+        sweep_dir / "result_manifest.json",
+        build_result_manifest(
+            result_type="parameter_sweep",
+            primary_data="sweep_summary.csv",
+            result_files=metadata_payload["result_files"],
+            run_id=run_id,
+        ),
+    )
 
     return sweep_dir
 
@@ -681,6 +868,8 @@ def _write_single_result_files(
     validation_path = run_dir / "validation_report.json"
     diagnostic_health_path = run_dir / "diagnostic_health.json"
     diagnostic_provenance_path = run_dir / "diagnostic_provenance.json"
+    report_path = run_dir / "report.md"
+    manifest_path = run_dir / "result_manifest.json"
 
     _write_yaml(config_path, spec.config)
     timeseries.to_csv(timeseries_path, index=False)
@@ -710,11 +899,14 @@ def _write_single_result_files(
         "validation_report": str(validation_path.name),
         "diagnostic_health": str(diagnostic_health_path.name),
         "diagnostic_provenance": str(diagnostic_provenance_path.name),
+        "report": str(report_path.name),
+        "result_manifest": str(manifest_path.name),
     }
 
     table_file_names = {
         "wet_radius_spectrum": "wet_radius_spectrum.csv",
         "threshold_robustness": "threshold_robustness.csv",
+        "water_budget": "water_budget.csv",
     }
     for table_name, filename in table_file_names.items():
         table = result.tables.get(table_name)
@@ -740,3 +932,21 @@ def _write_single_result_files(
     _write_json(validation_path, validation_report_rows(spec.config))
     _write_json(diagnostic_health_path, diagnostic_health_rows(timeseries))
     _write_json(diagnostic_provenance_path, provenance_rows)
+    report_path.write_text(
+        build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(spec.config),
+            config=spec.config,
+        ),
+        encoding="utf-8",
+    )
+    _write_json(
+        manifest_path,
+        build_result_manifest(
+            result_type="single",
+            primary_data="timeseries.csv",
+            result_files=metadata_payload["result_files"],
+            run_id=spec.run_id,
+        ),
+    )

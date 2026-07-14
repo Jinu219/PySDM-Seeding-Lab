@@ -3,10 +3,13 @@
 ## Current milestone snapshot (2026-07-14)
 
 The canonical current-state view is [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
-Step 13 native scalar diagnostics are complete. This update delivers the first
-implementation of Step 14 threshold robustness and Step 16 wet-radius
-number/volume spectra. Step 14 remains active until conservation and numerical
-convergence acceptance checks are complete.
+Step 13 native scalar diagnostics, the first Step 14–16 research-quality
+bundle, Step 17 streaming aggregation, Step 18 Markdown reporting, and Step 19
+result manifests are complete.
+Source-aware conservation, numerical convergence, control–seeding spectrum
+differences, vector publication export, and legacy-result inference are now
+implemented. The next engineering priority is benchmarking the Step 17 memory/I/O
+tradeoff on large PySDM ensembles.
 
 `DEVELOPMENT.md`가 "무엇을 했는가"의 기록(changelog)이라면, 이 문서는 "다음에 무엇을,
 어떤 순서로 할 것인가"를 관리한다. README.md의 Development Roadmap 섹션은 Step 10까지만
@@ -98,10 +101,10 @@ Step 13 대상 변수의 현재 구현 상태:
 
 ### Step 14. Growth Pathway Diagnostics 물리적 정교화
 
-**Status: active; threshold robustness first implementation completed.** native scalar
-product와 wet-radius spectrum이 확보되었고, 설정 threshold의 0.8/1.0/1.2 배수에 대한
-재분할 결과를 저장한다. 남은 완료 조건은 control/seeding 보존성 자동 판정과
-super-droplet 수치 수렴 기준 확정이다.
+**Status: first implementation completed.** 설정 threshold의 0.8/1.0/1.2 배수에 대한
+재분할, seeding source window를 분리한 control/seeding total-water 보존성 판정,
+finest timestep/NSD reference 기반 OFAT numerical convergence audit을 저장한다.
+향후 과제는 장기·고해상도 PySDM 실험으로 기본 tolerance의 경험적 근거를 축적하는 것이다.
 
 ### Step 15. Publication-style diagnostic plots (구 Step 13)
 
@@ -115,7 +118,8 @@ super-droplet 수치 수렴 기준 확정이다.
 - [x] collision OFF vs ON matched-condition panel
 - [x] dry radius / κ / injection time별 OFAT separated plot
 - [x] Growth Pathway four-panel plot
-- [ ] vector export(PDF/SVG)와 journal-specific style preset
+- [x] vector export(PDF/SVG)
+- [x] screen / journal single-column / double-column style preset
 
 각 plot 하단에 `diagnostic_provenance.json` 기반으로 "이 변수는 native/proxy입니다"
 배지를 함께 표시하는 것을 권장 (완전히 native가 아닌 상태에서 발표해야 한다면, 최소한
@@ -126,12 +130,19 @@ proxy임을 명시).
 **Status: first implementation completed.** native wet-radius number spectrum과 liquid-volume
 spectrum을 start/injection start/injection end/run end checkpoint에 저장한다. Results
 Dashboard에서 single 및 control/seeding case를 확인할 수 있다. 다음 단계는
-seeding-minus-control spectrum difference와 growth-transition 지표다.
+seeding-minus-control spectrum/threshold difference까지 구현되었다. 다음 단계는
+growth-transition/onset 지표의 관측 비교 기준 확정이다.
 
 ### Step 17~19
 
-large ensemble 최적화, 자동 report export, old/new result 호환성 강화 순으로 진행한다.
-상세 완료 조건은 착수 시점에 이 문서를 갱신한다.
+- Step 17 large ensemble 최적화: member dataframe 전체를 동시에 보관하지 않고 member
+  CSV를 변수별로 streaming aggregation하는 첫 구현 완료. 통계 결과는 기존 방식과 동일하며,
+  peak aggregation memory는 members x timesteps x variables에서 members x timesteps로 줄었다.
+  다음은 실제 대형 PySDM ensemble의 peak memory와 추가 CSV I/O 시간을 benchmark하는 것이다.
+- Step 18 자동 report export: Markdown 첫 구현 완료. 다음은 PDF/HTML과 figure embedding.
+- Step 19 old/new result 호환성 강화: versioned `result_manifest.json`, current/legacy/future
+  compatibility inspection, legacy type inference, Results 상태 표시까지 첫 구현 완료.
+  다음은 실제 schema 변경 시 migration fixture와 변환기를 추가하는 것이다.
 
 ## 이번 업데이트에서 추가로 반영된 항목 (참고)
 

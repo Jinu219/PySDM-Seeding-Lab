@@ -881,3 +881,52 @@ Recommended commit message:
 ```bash
 git commit -m "Add wet-radius spectrum and threshold robustness"
 ```
+
+## Research-quality bundle. Conservation, convergence, comparison, and vector export
+
+Completed the first integrated Step 14–16 quality-gate pass without treating the
+roadmap steps as isolated UI features.
+
+Changes:
+- Added a source-aware total-water budget. Seeding injection is explicitly an
+  open source interval; pass/warning/fail uses only control, pre-injection, and
+  post-injection closed windows.
+- Added `water_budget.csv` for each native run and an aligned
+  `water_budget_comparison.csv` for control versus seeding.
+- Added aligned `wet_radius_spectrum_comparison.csv` and
+  `threshold_robustness_comparison.csv` with seeding-minus-control columns.
+- Added an automatic `numerical_convergence.csv` for sweeps containing timestep
+  or super-droplet parameters. The acceptance rule checks the next-finest OFAT
+  result against the finest available multi-axis reference.
+- Added Results tabs for Water Budget and Numerical Convergence, plus signed
+  wet-radius and threshold-difference plots.
+- Added PNG 300 dpi, editable SVG, and PDF publication downloads with screen,
+  journal single-column, and journal double-column style presets.
+- Added schema defaults, validation, Aerosol-page quality-gate controls, file-role
+  descriptions, summaries, and old-result-safe loading for every new output.
+- Added automatic `report.md` generation for single, comparison, sweep, and
+  ensemble results, with Results Dashboard preview and download.
+- Added schema-versioned `result_manifest.json` generation for every result
+  type, including the primary data file and complete artifact map.
+- Added current, older, future, invalid, and manifest-free legacy compatibility
+  inspection. Results Dashboard displays the detected schema state while still
+  loading known legacy directory layouts.
+- Reworked ensemble aggregation to retain member CSV paths instead of every full
+  dataframe. Variables are stacked one at a time, preserving mean/std/median/IQR
+  output while bounding peak aggregation memory independently of variable count.
+
+Validation performed:
+- 15 unit/integration tests passed, including a real PySDM control–seeding run.
+- The real native smoke run reported 0 closed-window water drift and 0 liquid
+  partition residual; injected water was recorded separately as a source change.
+- An 8-case placeholder numerical sweep generated and passed its convergence audit.
+- PDF/SVG serialization produced valid vector files at the requested journal size.
+- Project integrity passed and Aerosol, Run, Results AppTests reported 0 exceptions.
+- Manifest regression coverage verifies both current sweep/comparison outputs
+  and automatic inference of a manifest-free legacy single result.
+
+Recommended commit message:
+
+```bash
+git commit -m "Add integrated research quality diagnostics"
+```

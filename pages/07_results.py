@@ -36,6 +36,26 @@ def render_plot_grid(plot_items, *, n_cols: int = 2) -> None:
                 )
 
 
+def render_publication_downloads(fig, *, file_stem: str, key_prefix: str) -> None:
+    """Render raster and vector downloads for one publication figure."""
+    columns = st.columns(3)
+    downloads = (
+        ("PNG 300 dpi", dash.figure_to_png_bytes(fig, dpi=300), "png", "image/png"),
+        ("SVG vector", dash.figure_to_svg_bytes(fig), "svg", "image/svg+xml"),
+        ("PDF vector", dash.figure_to_pdf_bytes(fig), "pdf", "application/pdf"),
+    )
+    for column, (label, payload, extension, mime) in zip(columns, downloads):
+        with column:
+            st.download_button(
+                f"Download {label}",
+                data=payload,
+                file_name=f"{file_stem}.{extension}",
+                mime=mime,
+                use_container_width=True,
+                key=f"{key_prefix}_{extension}",
+            )
+
+
 def select_publication_pathway_variables(
     available_variables,
     *,
@@ -95,6 +115,9 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_ensemble_uncertainty",
     "ensemble_available_bases",
     "figure_to_png_bytes",
+    "figure_to_svg_bytes",
+    "figure_to_pdf_bytes",
+    "apply_publication_style",
     "growth_pathway_all_variables",
     "growth_pathway_variable_groups",
     "diagnostic_provenance_dataframe",
@@ -109,8 +132,13 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_collision_off_on_panel",
     "plot_wet_radius_spectrum",
     "plot_threshold_robustness",
+    "plot_wet_radius_spectrum_difference",
+    "plot_threshold_robustness_difference",
     "spectrum_checkpoint_times",
     "threshold_robustness_metrics",
+    "plot_water_budget",
+    "plot_numerical_convergence",
+    "convergence_metrics",
     "publication_parameter_label",
     "publication_variable_label",
     "comparison_seeding_intervals",
@@ -124,7 +152,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "publication-diagnostic-panels-20260714"
+RESULTS_UI_BUILD_ID = "research-quality-panels-20260714"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -182,12 +210,21 @@ control_spectrum_df = loaded.get("control_wet_radius_spectrum", pd.DataFrame())
 seeding_spectrum_df = loaded.get("seeding_wet_radius_spectrum", pd.DataFrame())
 control_robustness_df = loaded.get("control_threshold_robustness", pd.DataFrame())
 seeding_robustness_df = loaded.get("seeding_threshold_robustness", pd.DataFrame())
+wet_radius_spectrum_comparison_df = loaded.get("wet_radius_spectrum_comparison", pd.DataFrame())
+threshold_robustness_comparison_df = loaded.get("threshold_robustness_comparison", pd.DataFrame())
+water_budget_df = loaded.get("water_budget", pd.DataFrame())
+control_water_budget_df = loaded.get("control_water_budget", pd.DataFrame())
+seeding_water_budget_df = loaded.get("seeding_water_budget", pd.DataFrame())
+water_budget_comparison_df = loaded.get("water_budget_comparison", pd.DataFrame())
+numerical_convergence_df = loaded.get("numerical_convergence", pd.DataFrame())
 summary = loaded["summary"]
 metadata = loaded["metadata"]
 config = loaded["config"]
 validation = loaded["validation"]
 files = loaded["files"]
 diagnostic_provenance_rows = loaded.get("diagnostic_provenance", [])
+report_markdown = loaded.get("report_markdown", "")
+result_compatibility = loaded.get("result_compatibility", {})
 
 is_ensemble = selected_entry.result_type == "ensemble"
 is_sweep = selected_entry.result_type == "parameter_sweep"
@@ -206,7 +243,7 @@ is_placeholder = any(
 st.subheader("Run Overview")
 st.caption(f"Result folder name: `{selected_entry.path.name}`")
 
-overview_cols = st.columns(5)
+overview_cols = st.columns(6)
 overview_cols[0].metric("Rows", f"{len(df)}")
 overview_cols[1].metric(
     "End time",
@@ -223,6 +260,10 @@ overview_cols[3].metric(
 overview_cols[4].metric(
     "Scenario",
     config.get("experiment", {}).get("scenario_slug", config.get("experiment", {}).get("name", "-")),
+)
+overview_cols[5].metric(
+    "Result schema",
+    result_compatibility.get("result_schema_version", "unknown"),
 )
 
 if is_ensemble:
@@ -256,29 +297,34 @@ if is_ensemble:
     tab_exper2 = tab_growth
     tab_comparison = None
     tab_spectrum = None
+    tab_water_budget = None
+    tab_convergence = None
     tab_timeseries = None
     tab_ranking = None
 elif is_sweep:
-    tab_dashboard, tab_growth, tab_publication, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_growth, tab_publication, tab_convergence, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Numerical Convergence", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
     )
     tab_exper2 = tab_growth
     tab_comparison = None
     tab_spectrum = None
+    tab_water_budget = None
     tab_tables = tab_ranking
 elif is_comparison:
-    tab_dashboard, tab_exper2, tab_publication, tab_spectrum, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Wet-radius Spectrum", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_exper2, tab_publication, tab_spectrum, tab_water_budget, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Wet-radius Spectrum", "Water Budget", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
     )
+    tab_convergence = None
 else:
-    tab_dashboard, tab_spectrum, tab_tables, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Wet-radius Spectrum", "Timeseries Table", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_spectrum, tab_water_budget, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Wet-radius Spectrum", "Water Budget", "Timeseries Table", "Files & Metadata", "Config / Validation"]
     )
     tab_comparison = None
     tab_exper2 = None
     tab_timeseries = None
     tab_ranking = None
     tab_publication = None
+    tab_convergence = None
 
 with tab_dashboard:
     st.subheader("Summary Metrics")
@@ -850,8 +896,15 @@ if tab_publication is not None:
     with tab_publication:
         st.subheader("Publication-style Diagnostic Plots")
         build_badge("Publication plots build", getattr(dash, "PUBLICATION_PLOTS_BUILD_ID", "unknown"))
+        publication_style = st.selectbox(
+            "Figure style preset",
+            list(dash.PUBLICATION_STYLE_PRESETS),
+            index=list(dash.PUBLICATION_STYLE_PRESETS).index("journal_double_column"),
+            format_func=lambda value: value.replace("_", " ").title(),
+            key="publication_style_preset",
+        )
         st.caption(
-            "300 dpi PNG로 내보낼 수 있는 패널입니다. 축 단위와 diagnostic provenance를 그림 안에 기록하며, "
+            "PNG 300 dpi, SVG, PDF로 내보낼 수 있는 패널입니다. 축 단위와 diagnostic provenance를 그림 안에 기록하며, "
             "sweep 패널은 다른 조건을 고정하거나 정확히 짝지은 case만 비교합니다."
         )
 
@@ -888,14 +941,12 @@ if tab_publication is not None:
                     provenance_rows=diagnostic_provenance_rows,
                     seeding_intervals=dash.comparison_seeding_intervals(comparison_df),
                 )
+                dash.apply_publication_style(publication_fig, publication_style)
                 st.pyplot(publication_fig, use_container_width=True)
-                st.download_button(
-                    "Download four-panel PNG (300 dpi)",
-                    data=dash.figure_to_png_bytes(publication_fig, dpi=300),
-                    file_name=f"growth_pathway_four_panel_{publication_mode}.png",
-                    mime="image/png",
-                    use_container_width=True,
-                    key="publication_comparison_download",
+                render_publication_downloads(
+                    publication_fig,
+                    file_stem=f"growth_pathway_four_panel_{publication_mode}",
+                    key_prefix="publication_comparison_download",
                 )
             else:
                 st.info("Four-panel에 사용할 Growth Pathway 변수가 없습니다.")
@@ -937,14 +988,12 @@ if tab_publication is not None:
                     mode=ensemble_publication_mode,
                     provenance_rows=diagnostic_provenance_rows,
                 )
+                dash.apply_publication_style(ensemble_publication_fig, publication_style)
                 st.pyplot(ensemble_publication_fig, use_container_width=True)
-                st.download_button(
-                    "Download ensemble four-panel PNG (300 dpi)",
-                    data=dash.figure_to_png_bytes(ensemble_publication_fig, dpi=300),
-                    file_name=f"ensemble_four_panel_{ensemble_publication_mode}.png",
-                    mime="image/png",
-                    use_container_width=True,
-                    key="publication_ensemble_download",
+                render_publication_downloads(
+                    ensemble_publication_fig,
+                    file_stem=f"ensemble_four_panel_{ensemble_publication_mode}",
+                    key_prefix="publication_ensemble_download",
                 )
             else:
                 st.info("Ensemble publication panel에 사용할 변수가 없습니다.")
@@ -991,14 +1040,12 @@ if tab_publication is not None:
                             provenance_rows=diagnostic_provenance_rows,
                             seeding_intervals=dash.comparison_seeding_intervals(publication_case_data),
                         )
+                        dash.apply_publication_style(case_publication_fig, publication_style)
                         st.pyplot(case_publication_fig, use_container_width=True)
-                        st.download_button(
-                            "Download selected-case four-panel PNG (300 dpi)",
-                            data=dash.figure_to_png_bytes(case_publication_fig, dpi=300),
-                            file_name=f"sweep_case_growth_pathway_{case_mode}.png",
-                            mime="image/png",
-                            use_container_width=True,
-                            key="publication_sweep_case_download",
+                        render_publication_downloads(
+                            case_publication_fig,
+                            file_stem=f"sweep_case_growth_pathway_{case_mode}",
+                            key_prefix="publication_sweep_case_download",
                         )
                 elif publication_case_kind == "ensemble":
                     case_ensemble_bases = dash.ensemble_available_bases(publication_case_data)
@@ -1023,14 +1070,12 @@ if tab_publication is not None:
                             mode=case_ensemble_mode,
                             provenance_rows=diagnostic_provenance_rows,
                         )
+                        dash.apply_publication_style(case_publication_fig, publication_style)
                         st.pyplot(case_publication_fig, use_container_width=True)
-                        st.download_button(
-                            "Download selected-case ensemble panel PNG (300 dpi)",
-                            data=dash.figure_to_png_bytes(case_publication_fig, dpi=300),
-                            file_name=f"sweep_case_ensemble_{case_ensemble_mode}.png",
-                            mime="image/png",
-                            use_container_width=True,
-                            key="publication_sweep_case_ensemble_download",
+                        render_publication_downloads(
+                            case_publication_fig,
+                            file_stem=f"sweep_case_ensemble_{case_ensemble_mode}",
+                            key_prefix="publication_sweep_case_ensemble_download",
                         )
                 else:
                     st.info("선택한 sweep case에서 comparison.csv 또는 ensemble_statistics.csv를 찾지 못했습니다.")
@@ -1135,14 +1180,12 @@ if tab_publication is not None:
                         variable=display_ofat_variable,
                         provenance_rows=diagnostic_provenance_rows,
                     )
+                    dash.apply_publication_style(ofat_fig, publication_style)
                     st.pyplot(ofat_fig, use_container_width=True)
-                    st.download_button(
-                        "Download separated sensitivity panel PNG (300 dpi)",
-                        data=dash.figure_to_png_bytes(ofat_fig, dpi=300),
-                        file_name=f"ofat_sensitivity_{ofat_variable}_{ofat_statistic}.png",
-                        mime="image/png",
-                        use_container_width=True,
-                        key="publication_ofat_download",
+                    render_publication_downloads(
+                        ofat_fig,
+                        file_stem=f"ofat_sensitivity_{ofat_variable}_{ofat_statistic}",
+                        key_prefix="publication_ofat_download",
                     )
             else:
                 st.info("OFAT panel에 사용할 sweep 변수가 없습니다.")
@@ -1203,14 +1246,12 @@ if tab_publication is not None:
                         provenance_rows=diagnostic_provenance_rows,
                         shaded_intervals=dash.sweep_seeding_intervals(selected_entry.path, matched_collision_df),
                     )
+                    dash.apply_publication_style(collision_fig, publication_style)
                     st.pyplot(collision_fig, use_container_width=True)
-                    st.download_button(
-                        "Download collision panel PNG (300 dpi)",
-                        data=dash.figure_to_png_bytes(collision_fig, dpi=300),
-                        file_name=f"collision_off_on_{collision_variable}.png",
-                        mime="image/png",
-                        use_container_width=True,
-                        key="publication_collision_download",
+                    render_publication_downloads(
+                        collision_fig,
+                        file_stem=f"collision_off_on_{collision_variable}",
+                        key_prefix="publication_collision_download",
                     )
                 else:
                     st.info("동일 조건으로 짝지을 수 있는 collision OFF/ON case가 없습니다.")
@@ -1552,6 +1593,15 @@ if tab_spectrum is not None:
                         ),
                         use_container_width=True,
                     )
+                if not wet_radius_spectrum_comparison_df.empty:
+                    st.pyplot(
+                        dash.plot_wet_radius_spectrum_difference(
+                            wet_radius_spectrum_comparison_df,
+                            checkpoint_time_s=selected_checkpoint,
+                            value_column=selected_spectrum_value,
+                        ),
+                        use_container_width=True,
+                    )
             else:
                 st.pyplot(
                     dash.plot_wet_radius_spectrum(
@@ -1603,6 +1653,15 @@ if tab_spectrum is not None:
                             ),
                             use_container_width=True,
                         )
+                    if not threshold_robustness_comparison_df.empty:
+                        st.pyplot(
+                            dash.plot_threshold_robustness_difference(
+                                threshold_robustness_comparison_df,
+                                checkpoint_time_s=selected_checkpoint,
+                                metric=selected_robustness_metric,
+                            ),
+                            use_container_width=True,
+                        )
                 else:
                     st.pyplot(
                         dash.plot_threshold_robustness(
@@ -1623,9 +1682,126 @@ if tab_spectrum is not None:
                     st.dataframe(control_robustness_df, use_container_width=True)
                     st.markdown("**Seeding threshold robustness**")
                     st.dataframe(seeding_robustness_df, use_container_width=True)
+                    st.markdown("**Seeding − control spectrum**")
+                    st.dataframe(wet_radius_spectrum_comparison_df, use_container_width=True)
+                    st.markdown("**Seeding − control threshold robustness**")
+                    st.dataframe(threshold_robustness_comparison_df, use_container_width=True)
                 else:
                     st.dataframe(wet_radius_spectrum_df, use_container_width=True)
                     st.dataframe(threshold_robustness_df, use_container_width=True)
+
+if tab_water_budget is not None:
+    with tab_water_budget:
+        st.subheader("Total-water Budget Quality Gate")
+        st.caption(
+            "The injection interval is an external water source and is excluded from the "
+            "closed-system drift verdict. Control and post-injection intervals are evaluated "
+            "against their own references."
+        )
+
+        if is_comparison:
+            quality_summary = summary.get("comparison", {}).get("research_quality", {}).get(
+                "water_budget", {}
+            )
+            budget_columns = st.columns(2)
+            for column, case_name, budget_frame in zip(
+                budget_columns,
+                ("control", "seeding"),
+                (control_water_budget_df, seeding_water_budget_df),
+            ):
+                case_summary = quality_summary.get(case_name, {})
+                with column:
+                    st.markdown(f"#### {case_name.title()}")
+                    st.metric("Status", str(case_summary.get("status", "unavailable")).upper())
+                    st.metric(
+                        "Maximum closed-window drift",
+                        dash.format_metric_value(
+                            case_summary.get("max_abs_closed_window_relative_drift_percent")
+                        )
+                        + " %",
+                    )
+                    st.pyplot(
+                        dash.plot_water_budget(
+                            budget_frame,
+                            title=f"{case_name.title()} total-water budget",
+                        ),
+                        use_container_width=True,
+                    )
+            if not water_budget_comparison_df.empty:
+                with st.expander("Control–seeding aligned water-budget table"):
+                    st.dataframe(water_budget_comparison_df, use_container_width=True)
+        else:
+            budget_summary = summary.get("adapter_summary", {}).get("water_budget", {})
+            if water_budget_df.empty:
+                st.info("No native total-water budget is stored for this result.")
+            else:
+                metrics = st.columns(3)
+                metrics[0].metric("Status", str(budget_summary.get("status", "unavailable")).upper())
+                metrics[1].metric(
+                    "Maximum closed-window drift",
+                    dash.format_metric_value(
+                        budget_summary.get("max_abs_closed_window_relative_drift_percent")
+                    )
+                    + " %",
+                )
+                metrics[2].metric(
+                    "Liquid partition residual",
+                    dash.format_metric_value(
+                        budget_summary.get("max_abs_liquid_partition_residual")
+                    ),
+                )
+                st.pyplot(dash.plot_water_budget(water_budget_df), use_container_width=True)
+                st.dataframe(water_budget_df, use_container_width=True)
+
+if tab_convergence is not None:
+    with tab_convergence:
+        st.subheader("Numerical Convergence Quality Gate")
+        st.caption(
+            "Each timestep or super-droplet axis is varied one at a time while the other "
+            "numerical axes stay at their finest available values. The verdict compares "
+            "resolution rank 1 with the rank 0 reference."
+        )
+        convergence_summary = summary.get("numerical_convergence", {})
+        if numerical_convergence_df.empty:
+            st.info(
+                "This sweep does not contain a generated numerical_convergence.csv. Use the "
+                "Numerical convergence preset or include timestep/super-droplet parameters."
+            )
+        else:
+            convergence_cols = st.columns(4)
+            convergence_cols[0].metric(
+                "Status",
+                str(convergence_summary.get("status", "unavailable")).upper(),
+            )
+            convergence_cols[1].metric(
+                "Next-finest checks",
+                convergence_summary.get("n_next_finest_checks", 0),
+            )
+            convergence_cols[2].metric(
+                "Converged",
+                convergence_summary.get("n_converged", 0),
+            )
+            convergence_cols[3].metric(
+                "Maximum error",
+                dash.format_metric_value(
+                    convergence_summary.get("max_next_finest_relative_difference_percent")
+                )
+                + " %",
+            )
+            available_convergence_metrics = dash.convergence_metrics(numerical_convergence_df)
+            selected_convergence_metric = st.selectbox(
+                "Response metric",
+                available_convergence_metrics,
+                key="numerical_convergence_metric",
+            )
+            st.pyplot(
+                dash.plot_numerical_convergence(
+                    numerical_convergence_df,
+                    metric=selected_convergence_metric,
+                ),
+                use_container_width=True,
+            )
+            st.dataframe(numerical_convergence_df, use_container_width=True)
 
 with tab_tables:
     if is_ensemble:
@@ -1728,9 +1904,36 @@ with tab_tables:
 with tab_files:
     st.subheader("Files")
 
+    compatibility_status = str(result_compatibility.get("status", "unknown"))
+    compatibility_message = str(result_compatibility.get("message", ""))
+    if compatibility_status in {
+        "invalid_manifest",
+        "future_schema",
+        "requires_newer_reader",
+        "unsupported_older_schema",
+        "missing_primary_data",
+    }:
+        st.warning(compatibility_message)
+    elif compatibility_status == "legacy_without_manifest":
+        st.info(compatibility_message)
+    elif compatibility_message:
+        st.success(compatibility_message)
+
     for key, path in files.items():
         if path and Path(path).exists():
             st.write(f"- `{key}`: `{Path(path).name}`")
+
+    if report_markdown:
+        st.subheader("Automatic Research Report")
+        st.download_button(
+            "Download report.md",
+            data=report_markdown.encode("utf-8"),
+            file_name=f"{selected_entry.path.name}_report.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+        with st.expander("Preview report", expanded=False):
+            st.markdown(report_markdown)
 
     st.subheader("What is each file for?")
     st.caption(

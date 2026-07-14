@@ -68,6 +68,14 @@ diagnostics:
     - 0.8
     - 1.0
     - 1.2
+  water_budget:
+    enabled: true
+    warning_relative_drift_percent: 0.01
+    failure_relative_drift_percent: 0.1
+  numerical_convergence:
+    enabled: true
+    relative_tolerance_percent: 5.0
+    metrics: []
 output:
   base_dir: results
   save_config: true

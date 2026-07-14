@@ -109,6 +109,16 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "checkpoint_times": [],
             "threshold_factors": [0.8, 1.0, 1.2],
         },
+        "water_budget": {
+            "enabled": True,
+            "warning_relative_drift_percent": 0.01,
+            "failure_relative_drift_percent": 0.1,
+        },
+        "numerical_convergence": {
+            "enabled": True,
+            "relative_tolerance_percent": 5.0,
+            "metrics": [],
+        },
     },
     "sweep": {
         "run_mode": "control_vs_seeding",
@@ -181,6 +191,9 @@ FIELD_UNITS: Dict[str, Dict[str, str]] = {
         "min_radius": "m",
         "max_radius": "m",
         "checkpoint_times": "s",
+        "warning_relative_drift_percent": "%",
+        "failure_relative_drift_percent": "%",
+        "relative_tolerance_percent": "%",
     },
 }
 

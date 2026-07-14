@@ -17,9 +17,17 @@ from analysis.growth_pathway_diagnostics import (
     PROVENANCE_LABELS_KO,
 )
 from analysis.result_files import describe_result_files
+from analysis.result_manifest import inspect_result_compatibility
+from analysis.numerical_convergence import (
+    convergence_metrics,
+    plot_numerical_convergence,
+)
+from analysis.water_budget import plot_water_budget
 from analysis.publication_plots import (
     DEFAULT_PATHWAY_VARIABLES,
     PUBLICATION_PLOTS_BUILD_ID,
+    PUBLICATION_STYLE_PRESETS,
+    apply_publication_style,
     matched_collision_cases,
     one_factor_sensitivity_slices,
     plot_collision_off_on_panel,
@@ -34,12 +42,14 @@ from analysis.wet_radius_plots import (
     ROBUSTNESS_METRIC_LABELS,
     SPECTRUM_VALUE_LABELS,
     plot_threshold_robustness,
+    plot_threshold_robustness_difference,
     plot_wet_radius_spectrum,
+    plot_wet_radius_spectrum_difference,
     spectrum_checkpoint_times,
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "wet-radius-spectrum-panels-20260714"
+DASHBOARD_BUILD_ID = "research-quality-panels-20260714"
 
 
 @dataclass(frozen=True)
@@ -128,6 +138,7 @@ def discover_results(result_dir: Path) -> List[ResultEntry]:
 
 def load_result(entry: ResultEntry) -> Dict[str, Any]:
     """Load a result directory or legacy CSV into a common dictionary."""
+    compatibility = inspect_result_compatibility(entry.path)
     if entry.result_type == "ensemble":
         stats_path = entry.path / "ensemble_statistics.csv"
         member_summary_path = entry.path / "member_summary.csv"
@@ -135,6 +146,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
+        report_path = entry.path / "report.md"
         diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         stats_df = safe_read_csv(stats_path)
@@ -158,6 +170,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "diagnostic_provenance": (
                 _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
             ) or [],
+            "report_markdown": _read_text(report_path),
+            "result_compatibility": compatibility,
             "files": {
                 "ensemble_statistics": stats_path,
                 "member_summary": member_summary_path,
@@ -166,11 +180,14 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "config": config_path,
                 "validation": validation_path,
                 "diagnostic_provenance": diagnostic_provenance_path,
+                "report": report_path,
             },
         }
 
     if entry.result_type == "parameter_sweep":
         sweep_path = entry.path / "sweep_summary.csv"
+        convergence_path = entry.path / "numerical_convergence.csv"
+        report_path = entry.path / "report.md"
         summary_path = entry.path / "summary.json"
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
@@ -188,6 +205,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "seeding": pd.DataFrame(),
             "wet_radius_spectrum": pd.DataFrame(),
             "threshold_robustness": pd.DataFrame(),
+            "numerical_convergence": safe_read_csv(convergence_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -195,13 +213,17 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "diagnostic_provenance": (
                 _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
             ) or [],
+            "report_markdown": _read_text(report_path),
+            "result_compatibility": compatibility,
             "files": {
                 "sweep_summary": sweep_path,
+                "numerical_convergence": convergence_path,
                 "summary": summary_path,
                 "metadata": metadata_path,
                 "config": config_path,
                 "validation": validation_path,
                 "diagnostic_provenance": diagnostic_provenance_path,
+                "report": report_path,
             },
         }
 
@@ -217,6 +239,12 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         seeding_spectrum_path = entry.path / "seeding" / "wet_radius_spectrum.csv"
         control_robustness_path = entry.path / "control" / "threshold_robustness.csv"
         seeding_robustness_path = entry.path / "seeding" / "threshold_robustness.csv"
+        control_water_budget_path = entry.path / "control" / "water_budget.csv"
+        seeding_water_budget_path = entry.path / "seeding" / "water_budget.csv"
+        spectrum_comparison_path = entry.path / "wet_radius_spectrum_comparison.csv"
+        threshold_comparison_path = entry.path / "threshold_robustness_comparison.csv"
+        water_budget_comparison_path = entry.path / "water_budget_comparison.csv"
+        report_path = entry.path / "report.md"
         # Provenance is identical for control and seeding runs of the same
         # comparison (same adapter, same diagnostics config), so either
         # subdirectory's provenance file is representative; control is used
@@ -238,6 +266,11 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "seeding_wet_radius_spectrum": safe_read_csv(seeding_spectrum_path),
             "control_threshold_robustness": safe_read_csv(control_robustness_path),
             "seeding_threshold_robustness": safe_read_csv(seeding_robustness_path),
+            "control_water_budget": safe_read_csv(control_water_budget_path),
+            "seeding_water_budget": safe_read_csv(seeding_water_budget_path),
+            "wet_radius_spectrum_comparison": safe_read_csv(spectrum_comparison_path),
+            "threshold_robustness_comparison": safe_read_csv(threshold_comparison_path),
+            "water_budget_comparison": safe_read_csv(water_budget_comparison_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -245,6 +278,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "diagnostic_provenance": (
                 _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
             ) or [],
+            "report_markdown": _read_text(report_path),
+            "result_compatibility": compatibility,
             "files": {
                 "comparison": comparison_path,
                 "summary": summary_path,
@@ -257,7 +292,13 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "seeding_wet_radius_spectrum": seeding_spectrum_path,
                 "control_threshold_robustness": control_robustness_path,
                 "seeding_threshold_robustness": seeding_robustness_path,
+                "control_water_budget": control_water_budget_path,
+                "seeding_water_budget": seeding_water_budget_path,
+                "wet_radius_spectrum_comparison": spectrum_comparison_path,
+                "threshold_robustness_comparison": threshold_comparison_path,
+                "water_budget_comparison": water_budget_comparison_path,
                 "diagnostic_provenance": diagnostic_provenance_path,
+                "report": report_path,
             },
         }
 
@@ -270,6 +311,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         diagnostic_provenance_path = entry.path / "diagnostic_provenance.json"
         spectrum_path = entry.path / "wet_radius_spectrum.csv"
         robustness_path = entry.path / "threshold_robustness.csv"
+        water_budget_path = entry.path / "water_budget.csv"
+        report_path = entry.path / "report.md"
 
         df = safe_read_csv(timeseries_path)
 
@@ -284,11 +327,14 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "seeding": pd.DataFrame(),
             "wet_radius_spectrum": safe_read_csv(spectrum_path),
             "threshold_robustness": safe_read_csv(robustness_path),
+            "water_budget": safe_read_csv(water_budget_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
             "diagnostic_provenance": _read_json(diagnostic_provenance_path) or [],
+            "report_markdown": _read_text(report_path),
+            "result_compatibility": compatibility,
             "files": {
                 "timeseries": timeseries_path,
                 "summary": summary_path,
@@ -298,6 +344,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "diagnostic_provenance": diagnostic_provenance_path,
                 "wet_radius_spectrum": spectrum_path,
                 "threshold_robustness": robustness_path,
+                "water_budget": water_budget_path,
+                "report": report_path,
             },
         }
 
@@ -311,11 +359,15 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         "seeding": pd.DataFrame(),
         "wet_radius_spectrum": pd.DataFrame(),
         "threshold_robustness": pd.DataFrame(),
+        "water_budget": pd.DataFrame(),
+        "numerical_convergence": pd.DataFrame(),
         "summary": {},
         "metadata": {"source": "legacy_csv", "filename": entry.path.name},
         "config": {},
         "validation": [],
         "diagnostic_provenance": [],
+        "report_markdown": "",
+        "result_compatibility": compatibility,
         "files": {
             "timeseries": entry.path,
         },
@@ -334,6 +386,15 @@ def _read_yaml(path: Path) -> Any:
         return {}
     with path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _read_text(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
 
 
 def safe_read_csv(path: Path) -> pd.DataFrame:
@@ -1519,10 +1580,31 @@ def result_file_roles_dataframe(metadata: Dict[str, Any]) -> pd.DataFrame:
 
 def figure_to_png_bytes(fig, *, dpi: int = 300) -> bytes:
     """Serialize a matplotlib figure to a publication-ready PNG byte stream."""
+    return figure_to_bytes(fig, file_format="png", dpi=dpi)
+
+
+def figure_to_bytes(fig, *, file_format: str, dpi: int = 300) -> bytes:
+    """Serialize a matplotlib figure to PNG, SVG, or PDF."""
+    normalized = str(file_format).lower()
+    if normalized not in {"png", "svg", "pdf"}:
+        raise ValueError("file_format must be one of: png, svg, pdf")
     buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=dpi, bbox_inches="tight")
+    save_kwargs = {"format": normalized, "bbox_inches": "tight"}
+    if normalized == "png":
+        save_kwargs["dpi"] = dpi
+    fig.savefig(buffer, **save_kwargs)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def figure_to_svg_bytes(fig) -> bytes:
+    """Serialize a matplotlib figure to editable SVG vector bytes."""
+    return figure_to_bytes(fig, file_format="svg")
+
+
+def figure_to_pdf_bytes(fig) -> bytes:
+    """Serialize a matplotlib figure to publication-ready PDF vector bytes."""
+    return figure_to_bytes(fig, file_format="pdf")
 
 
 def ensemble_available_bases(stats_df: pd.DataFrame) -> List[str]:

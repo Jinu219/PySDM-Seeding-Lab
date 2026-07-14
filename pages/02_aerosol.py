@@ -197,5 +197,56 @@ with st.expander("Diagnostic radius definitions", expanded=False):
     if spectrum_max_um <= rain_um:
         st.error("Spectrum maximum must exceed the rain threshold.")
 
+with st.expander("Research quality gates", expanded=False):
+    st.caption(
+        "Water-budget gates evaluate only closed intervals; the seeding injection window is "
+        "treated as an external source. Numerical convergence compares the next-finest sweep "
+        "level with the finest available timestep/super-droplet reference."
+    )
+    water_budget_cfg = diagnostics.setdefault("water_budget", {})
+    convergence_cfg = diagnostics.setdefault("numerical_convergence", {})
+
+    quality_col1, quality_col2 = st.columns(2)
+    with quality_col1.container(border=True):
+        st.markdown("##### Total-water budget")
+        water_budget_cfg["enabled"] = st.toggle(
+            "Enable water-budget diagnostic",
+            value=bool(water_budget_cfg.get("enabled", True)),
+        )
+        water_budget_cfg["warning_relative_drift_percent"] = st.number_input(
+            "Warning drift [%]",
+            min_value=1.0e-6,
+            value=float(water_budget_cfg.get("warning_relative_drift_percent", 0.01)),
+            format="%.6f",
+        )
+        water_budget_cfg["failure_relative_drift_percent"] = st.number_input(
+            "Failure drift [%]",
+            min_value=1.0e-6,
+            value=float(water_budget_cfg.get("failure_relative_drift_percent", 0.1)),
+            format="%.6f",
+        )
+        if (
+            water_budget_cfg["warning_relative_drift_percent"]
+            >= water_budget_cfg["failure_relative_drift_percent"]
+        ):
+            st.error("Failure drift must be larger than warning drift.")
+
+    with quality_col2.container(border=True):
+        st.markdown("##### Numerical convergence")
+        convergence_cfg["enabled"] = st.toggle(
+            "Analyze numerical convergence sweeps",
+            value=bool(convergence_cfg.get("enabled", True)),
+        )
+        convergence_cfg["relative_tolerance_percent"] = st.number_input(
+            "Next-finest tolerance [%]",
+            min_value=0.001,
+            value=float(convergence_cfg.get("relative_tolerance_percent", 5.0)),
+            step=0.5,
+        )
+        st.caption(
+            "Leave diagnostics.numerical_convergence.metrics empty to analyze the available "
+            "default rain-response metrics."
+        )
+
 config_actions(cfg, "Save Aerosol Settings")
 schema_expander()

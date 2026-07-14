@@ -761,6 +761,90 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 )
             )
 
+    water_budget_cfg = diagnostics.get("water_budget", {})
+    if not isinstance(water_budget_cfg, dict):
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.water_budget",
+                "water_budget must be a mapping.",
+                "Reset this section to the default quality-gate configuration.",
+            )
+        )
+    else:
+        warning_drift = water_budget_cfg.get("warning_relative_drift_percent", 0.01)
+        failure_drift = water_budget_cfg.get("failure_relative_drift_percent", 0.1)
+        if not isinstance(water_budget_cfg.get("enabled", True), bool):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.water_budget.enabled",
+                    "enabled must be true or false.",
+                    "Use a YAML boolean value.",
+                )
+            )
+        valid_budget_limits = all(
+            isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+            for value in (warning_drift, failure_drift)
+        )
+        if not valid_budget_limits or warning_drift >= failure_drift:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.water_budget.failure_relative_drift_percent",
+                    "Water-budget limits must satisfy 0 < warning < failure.",
+                    "Use 0.01% warning and 0.1% failure for the default quality gate.",
+                )
+            )
+
+    convergence_cfg = diagnostics.get("numerical_convergence", {})
+    if not isinstance(convergence_cfg, dict):
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.numerical_convergence",
+                "numerical_convergence must be a mapping.",
+                "Reset this section to the default convergence configuration.",
+            )
+        )
+    else:
+        convergence_enabled = convergence_cfg.get("enabled", True)
+        tolerance = convergence_cfg.get("relative_tolerance_percent", 5.0)
+        convergence_metrics = convergence_cfg.get("metrics", [])
+        if not isinstance(convergence_enabled, bool):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.numerical_convergence.enabled",
+                    "enabled must be true or false.",
+                    "Use a YAML boolean value.",
+                )
+            )
+        if (
+            not isinstance(tolerance, (int, float))
+            or isinstance(tolerance, bool)
+            or tolerance <= 0
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.numerical_convergence.relative_tolerance_percent",
+                    "relative_tolerance_percent must be positive.",
+                    "Use 5.0 for a 5% next-finest resolution criterion.",
+                )
+            )
+        if not isinstance(convergence_metrics, list) or not all(
+            isinstance(metric, str) for metric in convergence_metrics
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.numerical_convergence.metrics",
+                    "metrics must be a list of summary-column names.",
+                    "Use [] to select the available default metrics automatically.",
+                )
+            )
+
     if microphysics.get("collision", False):
         issues.append(
             _issue(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
@@ -7,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 
-ENSEMBLE_BUILD_ID = "ensemble-statistics-20260713"
+ENSEMBLE_BUILD_ID = "streaming-ensemble-statistics-20260714"
 
 
 def member_seed_list(config: Dict[str, Any]) -> List[int]:
@@ -46,6 +47,36 @@ def align_member_dataframes(member_dfs: List[pd.DataFrame]) -> List[pd.DataFrame
     ]
 
 
+def _column_statistics(
+    column: str,
+    stack: np.ndarray,
+) -> Dict[str, np.ndarray]:
+    """Return the canonical ensemble statistics for one stacked variable."""
+    finite = np.isfinite(stack)
+    with warnings.catch_warnings():
+        # All-NaN timesteps are represented by NaN statistics plus n_finite=0;
+        # this is expected diagnostic output rather than a runtime fault.
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        mean = np.nanmean(stack, axis=0)
+        std = (
+            np.nanstd(stack, axis=0, ddof=1)
+            if stack.shape[0] > 1
+            else np.zeros(stack.shape[1], dtype=float)
+        )
+        median = np.nanmedian(stack, axis=0)
+        q25 = np.nanpercentile(stack, 25, axis=0)
+        q75 = np.nanpercentile(stack, 75, axis=0)
+    return {
+        f"{column}_mean": mean,
+        f"{column}_std": std,
+        f"{column}_median": median,
+        f"{column}_q25": q25,
+        f"{column}_q75": q75,
+        f"{column}_n_finite": finite.sum(axis=0),
+        f"{column}_finite_fraction": finite.mean(axis=0),
+    }
+
+
 def build_ensemble_statistics(member_dfs: List[pd.DataFrame]) -> pd.DataFrame:
     """
     Build ensemble statistics over time.
@@ -72,7 +103,9 @@ def build_ensemble_statistics(member_dfs: List[pd.DataFrame]) -> pd.DataFrame:
         common_columns = common_columns.intersection(set(numeric_columns_for_ensemble(df)))
 
     columns = sorted(common_columns)
-    out = pd.DataFrame({"time_s": aligned[0]["time_s"].to_numpy()})
+    output_columns: Dict[str, np.ndarray] = {
+        "time_s": aligned[0]["time_s"].to_numpy()
+    }
 
     for column in columns:
         stack = np.vstack([
@@ -80,17 +113,64 @@ def build_ensemble_statistics(member_dfs: List[pd.DataFrame]) -> pd.DataFrame:
             for df in aligned
         ])
 
-        finite = np.isfinite(stack)
+        output_columns.update(_column_statistics(column, stack))
 
-        out[f"{column}_mean"] = np.nanmean(stack, axis=0)
-        out[f"{column}_std"] = np.nanstd(stack, axis=0, ddof=1) if len(aligned) > 1 else 0.0
-        out[f"{column}_median"] = np.nanmedian(stack, axis=0)
-        out[f"{column}_q25"] = np.nanpercentile(stack, 25, axis=0)
-        out[f"{column}_q75"] = np.nanpercentile(stack, 75, axis=0)
-        out[f"{column}_n_finite"] = finite.sum(axis=0)
-        out[f"{column}_finite_fraction"] = finite.mean(axis=0)
+    return pd.DataFrame(output_columns)
 
-    return out
+
+def build_ensemble_statistics_from_paths(member_paths: List[Path]) -> pd.DataFrame:
+    """Aggregate member CSVs one variable at a time to bound peak memory use.
+
+    The legacy in-memory implementation retains every member dataframe. This
+    implementation first discovers common time/columns, then reads only one
+    variable from all members at a time. Peak aggregation memory therefore
+    scales with members x timesteps instead of members x timesteps x variables.
+    """
+    paths = [Path(path) for path in member_paths]
+    if not paths:
+        return pd.DataFrame()
+
+    common_time: set[float] | None = None
+    common_columns: set[str] | None = None
+    for path in paths:
+        member = pd.read_csv(path)
+        if "time_s" not in member:
+            raise ValueError(f"Ensemble member file has no time_s column: {path}")
+        member_time = set(
+            pd.to_numeric(member["time_s"], errors="coerce").dropna().astype(float)
+        )
+        member_columns = set(numeric_columns_for_ensemble(member))
+        common_time = member_time if common_time is None else common_time.intersection(member_time)
+        common_columns = (
+            member_columns
+            if common_columns is None
+            else common_columns.intersection(member_columns)
+        )
+
+    times = sorted(common_time or set())
+    columns = sorted(common_columns or set())
+    if not times:
+        return pd.DataFrame()
+
+    output_columns: Dict[str, np.ndarray] = {
+        "time_s": np.asarray(times, dtype=float)
+    }
+    for column in columns:
+        member_values = []
+        for path in paths:
+            member = pd.read_csv(path, usecols=["time_s", column])
+            member["time_s"] = pd.to_numeric(member["time_s"], errors="coerce")
+            member[column] = pd.to_numeric(member[column], errors="coerce")
+            aligned = (
+                member.dropna(subset=["time_s"])
+                .drop_duplicates(subset=["time_s"], keep="last")
+                .set_index("time_s")[column]
+                .reindex(times)
+            )
+            member_values.append(aligned.to_numpy(dtype=float))
+        output_columns.update(_column_statistics(column, np.vstack(member_values)))
+
+    return pd.DataFrame(output_columns)
 
 
 def final_stat(stats_df: pd.DataFrame, base_column: str, stat: str = "mean") -> float | None:

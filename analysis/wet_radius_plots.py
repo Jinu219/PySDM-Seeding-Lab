@@ -134,3 +134,77 @@ def plot_threshold_robustness(
     ax.legend(frameon=False, fontsize=8)
     fig.tight_layout()
     return fig
+
+
+def plot_wet_radius_spectrum_difference(
+    comparison_df: pd.DataFrame,
+    *,
+    checkpoint_time_s: float | None = None,
+    value_column: str = "number_concentration_cm3",
+    title: str = "Seeding − control wet-radius spectrum",
+):
+    """Plot the signed seeding-minus-control spectrum at one checkpoint."""
+    fig, ax = plt.subplots(figsize=(7.2, 4.6))
+    difference_column = f"{value_column}_diff"
+    if comparison_df.empty or difference_column not in comparison_df:
+        ax.set_title("Wet-radius spectrum difference unavailable")
+        ax.text(0.5, 0.5, "Run a new control-versus-seeding experiment.", ha="center", va="center")
+        fig.tight_layout()
+        return fig
+
+    work = _checkpoint_slice(comparison_df, checkpoint_time_s)
+    for time_s, checkpoint in work.groupby("time_s", sort=True):
+        x = checkpoint["radius_mid_um"].to_numpy(dtype=float)
+        y = checkpoint[difference_column].to_numpy(dtype=float)
+        finite = np.isfinite(x) & np.isfinite(y) & (x > 0)
+        ax.plot(x[finite], y[finite], marker="o", markersize=3.0, linewidth=1.6, label=f"t = {time_s:g} s")
+
+    values = work[difference_column].to_numpy(dtype=float)
+    finite_abs = np.abs(values[np.isfinite(values)])
+    if finite_abs.size and float(finite_abs.max()) > 0:
+        ax.set_yscale("symlog", linthresh=max(float(finite_abs.max()) * 1.0e-4, 1.0e-18))
+    ax.axhline(0.0, color="#334155", linewidth=0.8)
+    ax.set_xscale("log")
+    ax.set_xlabel("Wet radius [µm]")
+    ax.set_ylabel(f"Δ {SPECTRUM_VALUE_LABELS.get(value_column, value_column)}")
+    ax.set_title(title)
+    ax.grid(alpha=0.2, which="both")
+    ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def plot_threshold_robustness_difference(
+    comparison_df: pd.DataFrame,
+    *,
+    checkpoint_time_s: float | None = None,
+    metric: str = "rain_volume_fraction_of_activated",
+    title: str = "Seeding − control threshold robustness",
+):
+    """Plot the signed response difference over tested diagnostic thresholds."""
+    fig, ax = plt.subplots(figsize=(7.2, 4.6))
+    difference_column = f"{metric}_diff"
+    if comparison_df.empty or difference_column not in comparison_df:
+        ax.set_title("Threshold robustness difference unavailable")
+        ax.text(0.5, 0.5, "No aligned threshold comparison table was stored.", ha="center", va="center")
+        fig.tight_layout()
+        return fig
+
+    work = _checkpoint_slice(comparison_df, checkpoint_time_s)
+    for activation_factor, group in work.groupby("activation_factor", sort=True):
+        group = group.sort_values("rain_threshold_um")
+        ax.plot(
+            group["rain_threshold_um"],
+            group[difference_column],
+            marker="o",
+            linewidth=1.7,
+            label=f"activation × {activation_factor:g}",
+        )
+    ax.axhline(0.0, color="#334155", linewidth=0.8)
+    ax.set_xlabel("Tested rain wet-radius threshold [µm]")
+    ax.set_ylabel(f"Δ {ROBUSTNESS_METRIC_LABELS.get(metric, metric)}")
+    ax.set_title(title)
+    ax.grid(alpha=0.22)
+    ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    return fig

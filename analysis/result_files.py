@@ -7,6 +7,22 @@ from typing import Any, Dict, List
 # and dashboard.py / pages (reader) never drift apart. Keys match the filenames
 # actually written by simulation/runner.py.
 RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
+    "report.md": {
+        "when": "After all result files are finalized",
+        "answers": "What happened, did quality gates pass, and how can this result be reproduced?",
+        "description": (
+            "Human-readable research summary generated from summary, metadata, validation, and "
+            "the result-file manifest. CSV/JSON/YAML files remain the source of truth."
+        ),
+    },
+    "result_manifest.json": {
+        "when": "After all result files are finalized",
+        "answers": "Which result schema and primary data file should a reader use?",
+        "description": (
+            "Versioned machine-readable manifest for current results. Older results without it "
+            "remain readable through known-file inference."
+        ),
+    },
     "config.yaml": {
         "when": "실행 직전",
         "answers": "이 run을 만든 정확한 설정은 무엇인가",
@@ -84,10 +100,41 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
             "factors without rerunning PySDM."
         ),
     },
+    "water_budget.csv": {
+        "when": "After native water diagnostics",
+        "answers": "Is total water conserved outside the seeding source window?",
+        "description": (
+            "Time-resolved vapour, liquid, total water, liquid partition closure, and "
+            "closed-window drift. The active injection interval is not classified as closed."
+        ),
+    },
+    "wet_radius_spectrum_comparison.csv": {
+        "when": "After a control-versus-seeding run",
+        "answers": "Where in wet-radius space does seeding change number or liquid volume?",
+        "description": "Aligned control, seeding, and seeding-minus-control checkpoint spectra.",
+    },
+    "threshold_robustness_comparison.csv": {
+        "when": "After a control-versus-seeding run",
+        "answers": "Is the diagnosed seeding response stable to cloud/rain threshold choices?",
+        "description": "Aligned control, seeding, and difference metrics for every threshold pair.",
+    },
+    "water_budget_comparison.csv": {
+        "when": "After a control-versus-seeding run",
+        "answers": "Do control and seeding satisfy their own closed-window water budgets?",
+        "description": "Aligned control/seeding water-budget series and their differences.",
+    },
     "comparison.csv": {
         "when": "실행 완료 직후",
         "answers": "control 대비 seeding이 무엇을 바꿨는가",
         "description": "control/seeding 쌍에 대한 <var>_control/_seeding/_diff/_relative_change_percent 컬럼.",
+    },
+    "numerical_convergence.csv": {
+        "when": "After a numerical-resolution parameter sweep",
+        "answers": "Does the response change by less than the tolerance near the finest resolution?",
+        "description": (
+            "OFAT timestep and super-droplet convergence against the finest available reference; "
+            "resolution_rank=1 is the acceptance check."
+        ),
     },
     "sweep_summary.csv": {
         "when": "sweep 종료 직후",

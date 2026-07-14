@@ -153,12 +153,27 @@ checkpoints and a 0.8/1.0/1.2 activation/rain threshold robustness analysis.
 The underlying files are `wet_radius_spectrum.csv` and
 `threshold_robustness.csv`.
 
+Research-quality outputs now include source-aware total-water conservation,
+control–seeding spectrum differences, and an automatic numerical-convergence
+audit for timestep/super-droplet sweeps. Publication panels support 300 dpi PNG,
+editable SVG, and PDF with screen, single-column, and double-column presets.
+Every new single, comparison, sweep, and ensemble result also includes an
+automatic `report.md` summarizing quality gates, outcome metrics, validation,
+artifacts, reproduction steps, and interpretation constraints.
+The same result directories include a versioned `result_manifest.json` that
+declares the result type, primary data file, and artifact map. The Results
+Dashboard also infers older directories that predate the manifest and labels
+their compatibility explicitly.
+Large ensembles are aggregated from stored member CSVs one variable at a time,
+so the runner no longer retains every full member dataframe simultaneously.
+
 ## Development Roadmap
 
 Steps 0-12 and the first Step 13 native scalar-product pass are complete; see
 `DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: complete conservation and numerical-convergence checks, extend
-spectrum comparison metrics, then optimize large ensembles and reporting.
+`ROADMAP.md`: benchmark the new streaming ensemble aggregation next; Markdown
+reporting and the first result-schema compatibility layer are already connected
+to every result type.
 
 ## Research Direction
 
