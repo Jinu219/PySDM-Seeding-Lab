@@ -517,6 +517,13 @@ def run_pysdm_parcel_simulation(
             "actual_bins_after_threshold_insertion": max(0, int(len(spectrum_edges) - 1)),
             "radius_bin_edges_um": (spectrum_edges * 1.0e6).tolist(),
             "checkpoint_times_s": spectrum_checkpoints,
+            "checkpoint_interval_seconds": float(
+                spectrum_cfg.get("checkpoint_interval_seconds", 10.0)
+            ),
+            "checkpoint_policy": (
+                "Explicit checkpoint_times when provided; otherwise regular cadence plus "
+                "start, injection boundaries, and run end, snapped to the model timestep."
+            ),
             "threshold_factors": [
                 float(value)
                 for value in spectrum_cfg.get("threshold_factors", [0.8, 1.0, 1.2])

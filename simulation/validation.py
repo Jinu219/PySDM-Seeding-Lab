@@ -673,6 +673,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
         n_bins = spectrum_cfg.get("n_bins", 32)
         factors = spectrum_cfg.get("threshold_factors", [0.8, 1.0, 1.2])
         checkpoints = spectrum_cfg.get("checkpoint_times", [])
+        checkpoint_interval = spectrum_cfg.get("checkpoint_interval_seconds", 10.0)
 
         if not isinstance(n_bins, int) or isinstance(n_bins, bool) or not 8 <= n_bins <= 256:
             issues.append(
@@ -761,6 +762,20 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 )
             )
 
+        if (
+            not isinstance(checkpoint_interval, (int, float))
+            or isinstance(checkpoint_interval, bool)
+            or checkpoint_interval <= 0
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.checkpoint_interval_seconds",
+                    "checkpoint_interval_seconds must be positive.",
+                    "Use 10 seconds for the observation-informed onset-timing cadence.",
+                )
+            )
+
     water_budget_cfg = diagnostics.get("water_budget", {})
     if not isinstance(water_budget_cfg, dict):
         issues.append(
@@ -810,6 +825,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
     else:
         convergence_enabled = convergence_cfg.get("enabled", True)
         tolerance = convergence_cfg.get("relative_tolerance_percent", 5.0)
+        reference_floor = convergence_cfg.get("relative_reference_floor", 1.0e-12)
         convergence_metrics = convergence_cfg.get("metrics", [])
         if not isinstance(convergence_enabled, bool):
             issues.append(
@@ -831,6 +847,19 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                     "diagnostics.numerical_convergence.relative_tolerance_percent",
                     "relative_tolerance_percent must be positive.",
                     "Use 5.0 for a 5% next-finest resolution criterion.",
+                )
+            )
+        if (
+            not isinstance(reference_floor, (int, float))
+            or isinstance(reference_floor, bool)
+            or reference_floor <= 0
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.numerical_convergence.relative_reference_floor",
+                    "relative_reference_floor must be positive.",
+                    "Use 1e-12 unless the selected metric has a justified absolute scale.",
                 )
             )
         if not isinstance(convergence_metrics, list) or not all(
@@ -858,6 +887,9 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
     else:
         transition_enabled = transition_cfg.get("enabled", True)
         transition_threshold = transition_cfg.get("rain_volume_fraction_threshold", 0.01)
+        transition_thresholds = transition_cfg.get(
+            "rain_volume_fraction_thresholds", [0.005, 0.01, 0.02]
+        )
         if not isinstance(transition_enabled, bool):
             issues.append(
                 _issue(
@@ -867,11 +899,12 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                     "Use a YAML boolean value.",
                 )
             )
-        if (
-            not isinstance(transition_threshold, (int, float))
-            or isinstance(transition_threshold, bool)
-            or not 0 < float(transition_threshold) < 1
-        ):
+        valid_transition_threshold = (
+            isinstance(transition_threshold, (int, float))
+            and not isinstance(transition_threshold, bool)
+            and 0 < float(transition_threshold) < 1
+        )
+        if not valid_transition_threshold:
             issues.append(
                 _issue(
                     "error",
@@ -880,7 +913,37 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                     "Use 0.01 for a 1% activated-liquid transition threshold.",
                 )
             )
-
+        valid_transition_thresholds = (
+            isinstance(transition_thresholds, list)
+            and bool(transition_thresholds)
+            and all(
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and 0 < float(value) < 1
+                for value in transition_thresholds
+            )
+        )
+        if not valid_transition_thresholds:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.spectrum_transition.rain_volume_fraction_thresholds",
+                    "rain_volume_fraction_thresholds must be a non-empty list between 0 and 1.",
+                    "Use [0.005, 0.01, 0.02] to bracket the operational 1% baseline.",
+                )
+            )
+        elif valid_transition_threshold and not any(
+            abs(float(value) - float(transition_threshold)) < 1.0e-12
+            for value in transition_thresholds
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.spectrum_transition.rain_volume_fraction_thresholds",
+                    "The sensitivity thresholds must include rain_volume_fraction_threshold.",
+                    "Include the operational baseline so the audit can identify it explicitly.",
+                )
+            )
     if microphysics.get("collision", False):
         issues.append(
             _issue(

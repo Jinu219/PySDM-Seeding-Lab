@@ -11,6 +11,28 @@ RESULT_SCHEMA_VERSION = 2
 MINIMUM_READER_VERSION = 1
 RESULT_READER_VERSION = 2
 MINIMUM_SUPPORTED_SCHEMA_VERSION = 1
+RESULT_MIGRATION_BUILD_ID = "result-manifest-migrations-v1-20260714"
+
+
+def migrate_result_manifest_payload(manifest: Dict[str, Any]) -> tuple[Dict[str, Any], list[str]]:
+    """Migrate known older manifest keys in memory without changing stored evidence."""
+    migrated = dict(manifest)
+    applied: list[str] = []
+    version = migrated.get("result_schema_version")
+    if version == 1:
+        aliases = {
+            "type": "result_type",
+            "primary_file": "primary_data",
+            "artifacts": "files",
+        }
+        for old_key, current_key in aliases.items():
+            if current_key not in migrated and old_key in migrated:
+                migrated[current_key] = migrated[old_key]
+                applied.append(f"v1:{old_key}->{current_key}")
+        if "minimum_reader_version" not in migrated:
+            migrated["minimum_reader_version"] = 1
+            applied.append("v1:add_minimum_reader_version")
+    return migrated, applied
 
 
 def build_result_manifest(
@@ -74,7 +96,7 @@ def inspect_result_compatibility(path: Path) -> Dict[str, Any]:
         }
 
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        stored_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {
             "status": "invalid_manifest",
@@ -85,6 +107,17 @@ def inspect_result_compatibility(path: Path) -> Dict[str, Any]:
             "message": f"Could not parse result_manifest.json: {exc}",
         }
 
+    if not isinstance(stored_manifest, dict):
+        return {
+            "status": "invalid_manifest",
+            "readable": False,
+            "result_schema_version": None,
+            "result_type": "unknown",
+            "primary_data": "",
+            "message": "result_manifest.json must contain a JSON object.",
+        }
+
+    manifest, migrations = migrate_result_manifest_payload(stored_manifest)
     version = manifest.get("result_schema_version")
     minimum_reader = manifest.get("minimum_reader_version", 1)
     if not isinstance(version, int) or isinstance(version, bool):
@@ -154,4 +187,7 @@ def inspect_result_compatibility(path: Path) -> Dict[str, Any]:
         "primary_data": primary,
         "message": message,
         "manifest": manifest,
+        "stored_manifest": stored_manifest,
+        "migration_build_id": RESULT_MIGRATION_BUILD_ID,
+        "migrations_applied": migrations,
     }

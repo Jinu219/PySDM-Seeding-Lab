@@ -160,6 +160,14 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
             "resolution_rank=1 is the acceptance check."
         ),
     },
+    "qualification_evidence.json": {
+        "when": "After a numerical-qualification sweep",
+        "answers": "Does this physical profile empirically support the configured tolerance?",
+        "description": (
+            "Next-finest evidence summary with near-zero references excluded from percentage-based "
+            "support, plus median, p95, maximum, and per-axis relative differences."
+        ),
+    },
     "spectrum_transition.csv": {
         "when": "After a control-versus-seeding spectrum comparison",
         "answers": "When does activated liquid move into rain-size bins for control and seeding?",
@@ -170,10 +178,10 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
     },
     "spectrum_transition_onset_robustness.csv": {
         "when": "After a control-versus-seeding threshold comparison",
-        "answers": "Is the inferred spectrum-transition timing stable across radius thresholds?",
+        "answers": "Is inferred transition timing stable across radius and fraction thresholds?",
         "description": (
             "Interpolated control/seeding onset and onset shift for every configured activation "
-            "and rain threshold pair."
+            "and rain radius pair at every configured rain-volume fraction level."
         ),
     },
     "ensemble_aggregation_diagnostics.json": {
@@ -182,6 +190,14 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
         "description": (
             "Aggregation benchmark metadata including member bytes, elapsed time, output shape, "
             "tracemalloc-visible peak allocation, and sampled whole-process RSS."
+        ),
+    },
+    "ensemble_benchmark.json": {
+        "when": "After a reproducible PySDM ensemble benchmark",
+        "answers": "What were end-to-end process RSS, wall time, and streaming CSV costs?",
+        "description": (
+            "Workload contract plus full-run sampled process RSS and the aggregation-only "
+            "CSV scan, throughput, allocation, and RSS diagnostics."
         ),
     },
     "sweep_summary.csv": {

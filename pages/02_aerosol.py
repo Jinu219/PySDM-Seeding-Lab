@@ -141,7 +141,7 @@ with st.expander("Diagnostic radius definitions", expanded=False):
     st.markdown("##### Wet-radius spectrum checkpoints")
     st.caption(
         "Stores compact wet-radius number/volume spectra at selected times. "
-        "An empty checkpoint list automatically uses start, injection start/end, and run end."
+        "An empty checkpoint list uses a regular cadence plus start, injection start/end, and run end."
     )
     spectrum_cfg = diagnostics.setdefault("wet_radius_spectrum", {})
     spectrum_cfg["enabled"] = st.toggle(
@@ -185,6 +185,16 @@ with st.expander("Diagnostic radius definitions", expanded=False):
         "Checkpoint times [s] (optional)",
         value=_comma_separated_numbers(spectrum_cfg.get("checkpoint_times", [])),
         placeholder="blank = automatic",
+    )
+    spectrum_cfg["checkpoint_interval_seconds"] = st.number_input(
+        "Automatic checkpoint interval [s]",
+        min_value=0.1,
+        value=float(spectrum_cfg.get("checkpoint_interval_seconds", 10.0)),
+        step=5.0,
+        help=(
+            "Used only when the explicit checkpoint list is blank. The default 10 s cadence "
+            "follows drizzle-onset radar integration studies and is snapped to the model timestep."
+        ),
     )
     try:
         spectrum_cfg["threshold_factors"] = _parse_number_list(factors_text)
@@ -267,6 +277,24 @@ with st.expander("Research quality gates", expanded=False):
                 "exceeds this fraction of activated liquid volume."
             ),
         )
+        transition_thresholds_text = st.text_input(
+            "Transition fraction sensitivity levels",
+            value=_comma_separated_numbers(
+                transition_cfg.get(
+                    "rain_volume_fraction_thresholds", [0.005, 0.01, 0.02]
+                )
+            ),
+            help=(
+                "The 1% value is an operational baseline rather than an observational standard. "
+                "These levels test whether onset direction is stable around that choice."
+            ),
+        )
+        try:
+            transition_cfg["rain_volume_fraction_thresholds"] = _parse_number_list(
+                transition_thresholds_text
+            )
+        except ValueError:
+            st.error("Transition fraction levels must be comma-separated numbers.")
 
 config_actions(cfg, "Save Aerosol Settings")
 schema_expander()

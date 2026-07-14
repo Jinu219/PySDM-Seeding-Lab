@@ -58,6 +58,7 @@ from scripts.run_numerical_qualification import (
     build_qualification_config,
     qualification_plan,
 )
+from scripts.run_ensemble_benchmark import build_benchmark_config
 
 
 PYSDM_AVAILABLE = (
@@ -330,7 +331,13 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         pd.testing.assert_frame_equal(benchmarked, expected)
         self.assertEqual(benchmark["n_member_files"], 3)
         self.assertEqual(benchmark["aggregated_variables"], 2)
+        self.assertEqual(benchmark["csv_read_passes_per_member"], 3)
         self.assertGreater(benchmark["total_input_bytes"], 0)
+        self.assertGreaterEqual(
+            benchmark["estimated_csv_bytes_scanned"],
+            benchmark["total_input_bytes"],
+        )
+        self.assertGreaterEqual(benchmark["column_streaming_seconds"], 0.0)
         self.assertGreaterEqual(benchmark["python_peak_traced_bytes"], 0)
         process_rss = benchmark["process_rss"]
         self.assertTrue(process_rss["available"])
@@ -392,7 +399,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         )
         self.assertTrue(report.startswith(b"%PDF"))
         self.assertGreater(len(report), 2_000)
-        self.assertIn("research-report-v3", REPORT_BUILD_ID)
+        self.assertIn("research-report-v4", REPORT_BUILD_ID)
 
         pilot = build_qualification_config(
             cfg,
@@ -405,6 +412,13 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertEqual(pilot["environment"]["duration"], 60)
         self.assertEqual(pilot["seeding"]["injection_start"], 20)
         self.assertTrue(pilot["diagnostics"]["numerical_convergence"]["enabled"])
+        self.assertFalse(pilot["ensemble"]["enabled"])
+        self.assertFalse(plan["ensemble_enabled"])
+
+        benchmark = build_benchmark_config(cfg, profile="large")
+        self.assertEqual(benchmark["simulation"]["adapter"], "pysdm_parcel")
+        self.assertEqual(benchmark["ensemble"]["n_members"], 24)
+        self.assertEqual(benchmark["environment"]["duration"], 600)
 
         pilot_with_duration = build_qualification_config(
             cfg,
@@ -453,6 +467,9 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertAlmostEqual(summary["seeding_transition_onset_s"], 5.0)
         self.assertAlmostEqual(summary["transition_onset_shift_s"], -8.3333333333)
         self.assertTrue(summary["threshold_shift_direction_consistent"])
+        self.assertEqual(summary["n_transition_fraction_thresholds"], 3)
+        self.assertEqual(summary["maximum_checkpoint_interval_s"], 10.0)
+        self.assertEqual(len(robustness), 3)
         self.assertEqual(summary["status"], "resolved")
 
     def test_diagnostic_comparison_tables_are_aligned(self):
@@ -581,6 +598,9 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             stored_plan = json.loads(
                 (sweep_dir / "qualification_plan.json").read_text(encoding="utf-8")
             )
+            stored_evidence = json.loads(
+                (sweep_dir / "qualification_evidence.json").read_text(encoding="utf-8")
+            )
 
         self.assertFalse(convergence.empty)
         self.assertTrue(summary["numerical_convergence"]["available"])
@@ -594,6 +614,8 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertTrue(compatibility["readable"])
         self.assertEqual(len(case_directories), 8)
         self.assertEqual(stored_plan["build_id"], "qualification-test")
+        self.assertTrue(stored_evidence["available"])
+        self.assertIn(stored_evidence["status"], {"supported_for_profile", "not_supported_for_profile"})
         self.assertEqual(
             manifest["files"]["qualification_plan"],
             "qualification_plan.json",
@@ -612,6 +634,33 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertEqual(compatibility["result_type"], "single")
         self.assertEqual(compatibility["primary_data"], "timeseries.csv")
         self.assertTrue(compatibility["readable"])
+
+    def test_actual_legacy_sweep_fixture_remains_readable(self):
+        fixture = Path(__file__).parent / "fixtures" / "results" / "legacy_actual_sweep"
+        compatibility = inspect_result_compatibility(fixture)
+        sweep = pd.read_csv(fixture / "sweep_summary.csv")
+
+        self.assertEqual(compatibility["status"], "legacy_without_manifest")
+        self.assertEqual(compatibility["result_type"], "parameter_sweep")
+        self.assertTrue(compatibility["readable"])
+        self.assertEqual(len(sweep), 3)
+        self.assertEqual(int(sweep["ensemble.n_success"].sum()), 15)
+
+    def test_schema_v1_manifest_aliases_are_migrated_in_memory(self):
+        fixture = (
+            Path(__file__).parent
+            / "fixtures"
+            / "results"
+            / "schema_v1_alias_manifest"
+        )
+        compatibility = inspect_result_compatibility(fixture)
+
+        self.assertEqual(compatibility["status"], "supported_older_schema")
+        self.assertTrue(compatibility["readable"])
+        self.assertEqual(compatibility["result_type"], "single")
+        self.assertEqual(compatibility["primary_data"], "timeseries.csv")
+        self.assertIn("v1:type->result_type", compatibility["migrations_applied"])
+        self.assertEqual(compatibility["stored_manifest"]["type"], "single")
 
     def test_manifest_blocks_incompatible_or_incomplete_results(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

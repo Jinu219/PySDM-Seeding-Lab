@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Sequence
 
 
-REPORT_BUILD_ID = "research-report-v3-20260714"
+REPORT_BUILD_ID = "research-report-v4-publication-figure-20260714"
 
 
 def _flatten(payload: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
@@ -82,9 +82,15 @@ def _quality_rows(summary: Dict[str, Any]) -> list[tuple[str, Any]]:
         "wet_radius_spectrum.final_number_l1_difference_cm3",
         "numerical_convergence.status",
         "numerical_convergence.max_next_finest_relative_difference_percent",
+        "numerical_convergence_evidence.status",
+        "numerical_convergence_evidence.p95_relative_difference_percent",
+        "numerical_convergence_evidence.max_relative_difference_percent",
         "spectrum_transition.status",
         "spectrum_transition.transition_onset_shift_s",
         "spectrum_transition.threshold_shift_direction_consistent",
+        "spectrum_transition.baseline_radius_shift_direction_consistent",
+        "spectrum_transition.n_transition_fraction_thresholds",
+        "spectrum_transition.maximum_checkpoint_interval_s",
         "aggregation.elapsed_seconds",
         "aggregation.python_peak_traced_bytes",
         "execution.status",

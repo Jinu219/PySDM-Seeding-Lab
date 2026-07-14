@@ -2,6 +2,28 @@
 
 ## Current milestone snapshot (2026-07-14)
 
+Research-evidence gate completed:
+- The standard full-PySDM qualification completed 27 cases / 54 model executions.
+  All 12 non-zero next-finest comparisons passed 5%; the maximum was 1.731%.
+  The decision is deliberately scoped to the marine collision-OFF profile.
+- Spectrum transition now combines radius sensitivity (20/25/30 micrometres),
+  operational fraction sensitivity (0.5/1/2%), and a configurable 10-second
+  checkpoint target. The 1% baseline is not presented as an observational standard.
+- The 24-member real-PySDM benchmark separated end-to-end RSS from aggregation I/O:
+  peak RSS increased by 999.64 MiB, while streaming aggregation added 0.27 MiB RSS
+  and took 3.772 seconds.
+- Step 18 now supports an on-demand PDF containing the publication figure selected
+  in Results. Step 19 now has actual legacy-result and schema-migration fixtures.
+
+Next ordered gates:
+1. Collision-ON, rain-producing convergence qualification.
+2. Retained-memory ownership profiling across ensemble members.
+3. Columnar internal-cache prototype with CSV equality regression.
+4. Observational validation or revision of the operational 1% transition floor.
+
+See the numerical, performance, and threshold-basis records under `docs/` for the
+measured evidence and interpretation boundaries.
+
 Execution-robustness status:
 - The 24-case, 240-member failed sweep incident was traced to a 281-character
   Windows nested output path rather than to the selected sweep parameters.
@@ -18,8 +40,8 @@ Portable-report and qualification status:
 - Ensemble aggregation records both tracemalloc allocation and sampled process RSS.
 - The numerical-qualification CLI provides dry-run, `pilot`, and `standard` profiles
   plus a stored `qualification_plan.json`.
-- The placeholder pilot is complete. The next scientific gate is a standard
-  `pysdm_parcel` qualification and evidence-based tolerance review.
+- The placeholder pilot and standard `pysdm_parcel` qualification are complete.
+  Collision-ON rain-producing qualification is the next scientific gate.
 
 The canonical current-state view is [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 Step 13 native scalar diagnostics, the first Step 14–16 research-quality
@@ -28,8 +50,8 @@ reporting, and Step 19 result manifests are complete.
 Source-aware conservation, numerical convergence, control–seeding spectrum
 differences, vector publication export, and legacy-result inference are now
 implemented. Spectrum transition onset and threshold-pair timing audits are also
-connected to real comparison results. The next priority is full PySDM convergence
-evidence and large-ensemble RSS/I/O benchmarking.
+connected to real comparison results. Full PySDM convergence evidence and the
+large-ensemble RSS/I/O benchmark are now complete for their documented profiles.
 
 `DEVELOPMENT.md`가 "무엇을 했는가"의 기록(changelog)이라면, 이 문서는 "다음에 무엇을,
 어떤 순서로 할 것인가"를 관리한다. README.md의 Development Roadmap 섹션은 Step 10까지만

@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 import analysis.dashboard as dash
+from analysis.reporting import build_pdf_report, figure_to_png_bytes as report_figure_to_png_bytes
 from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
@@ -36,9 +37,15 @@ def render_plot_grid(plot_items, *, n_cols: int = 2) -> None:
                 )
 
 
-def render_publication_downloads(fig, *, file_stem: str, key_prefix: str) -> None:
-    """Render raster and vector downloads for one publication figure."""
-    columns = st.columns(3)
+def render_publication_downloads(
+    fig,
+    *,
+    file_stem: str,
+    key_prefix: str,
+    report_context=None,
+) -> None:
+    """Render figure files and an optional full research PDF containing the figure."""
+    columns = st.columns(4 if report_context else 3)
     downloads = (
         ("PNG 300 dpi", dash.figure_to_png_bytes(fig, dpi=300), "png", "image/png"),
         ("SVG vector", dash.figure_to_svg_bytes(fig), "svg", "image/svg+xml"),
@@ -54,6 +61,38 @@ def render_publication_downloads(fig, *, file_stem: str, key_prefix: str) -> Non
                 use_container_width=True,
                 key=f"{key_prefix}_{extension}",
             )
+    if report_context:
+        state_key = f"{key_prefix}_prepared_report_pdf"
+        with columns[-1]:
+            if st.button(
+                "Prepare report PDF",
+                use_container_width=True,
+                key=f"{key_prefix}_prepare_report_pdf",
+            ):
+                st.session_state[state_key] = build_pdf_report(
+                    summary=report_context["summary"],
+                    metadata={
+                        **report_context["metadata"],
+                        "selected_publication_figure": file_stem,
+                    },
+                    validation_rows=report_context["validation_rows"],
+                    config=report_context["config"],
+                    figures=[
+                        (
+                            f"Selected publication figure: {file_stem.replace('_', ' ')}",
+                            report_figure_to_png_bytes(fig, dpi=300),
+                        )
+                    ],
+                )
+            if state_key in st.session_state:
+                st.download_button(
+                    "Download report + figure",
+                    data=st.session_state[state_key],
+                    file_name=f"{file_stem}_research_report.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key=f"{key_prefix}_report_pdf",
+                )
 
 
 def select_publication_pathway_variables(
@@ -224,6 +263,7 @@ spectrum_transition_robustness_df = loaded.get(
     "spectrum_transition_onset_robustness", pd.DataFrame()
 )
 ensemble_aggregation_diagnostics = loaded.get("ensemble_aggregation_diagnostics", {})
+ensemble_benchmark = loaded.get("ensemble_benchmark", {})
 summary = loaded["summary"]
 metadata = loaded["metadata"]
 config = loaded["config"]
@@ -922,7 +962,7 @@ if is_ensemble:
 
         if ensemble_aggregation_diagnostics:
             st.markdown("#### Streaming aggregation benchmark")
-            benchmark_cols = st.columns(5)
+            benchmark_cols = st.columns(6)
             benchmark_cols[0].metric(
                 "Member input",
                 f"{ensemble_aggregation_diagnostics.get('total_input_bytes', 0) / 1.0e6:.3f} MB",
@@ -943,10 +983,49 @@ if is_ensemble:
                 "Variables",
                 ensemble_aggregation_diagnostics.get("aggregated_variables", 0),
             )
+            benchmark_cols[5].metric(
+                "CSV scan rate",
+                f"{(ensemble_aggregation_diagnostics.get('estimated_scan_mib_per_second') or 0):.2f} MiB/s",
+            )
+            phase_cols = st.columns(3)
+            phase_cols[0].metric(
+                "Schema discovery",
+                f"{ensemble_aggregation_diagnostics.get('schema_discovery_seconds', 0.0):.3f} s",
+            )
+            phase_cols[1].metric(
+                "Column streaming",
+                f"{ensemble_aggregation_diagnostics.get('column_streaming_seconds', 0.0):.3f} s",
+            )
+            phase_cols[2].metric(
+                "Estimated CSV scanned",
+                f"{ensemble_aggregation_diagnostics.get('estimated_csv_bytes_scanned', 0) / (1024.0**2):.2f} MiB",
+            )
             st.caption(str(ensemble_aggregation_diagnostics.get("memory_scope", "")))
             process_rss_scope = ensemble_aggregation_diagnostics.get("process_rss", {}).get("scope", "")
             if process_rss_scope:
                 st.caption(str(process_rss_scope))
+
+        if ensemble_benchmark:
+            st.markdown("#### End-to-end PySDM benchmark")
+            full_rss = ensemble_benchmark.get("full_process_rss", {})
+            full_cols = st.columns(4)
+            full_cols[0].metric(
+                "Profile",
+                ensemble_benchmark.get("profile", "unknown"),
+            )
+            full_cols[1].metric(
+                "Full wall time",
+                f"{ensemble_benchmark.get('full_run_elapsed_seconds', 0.0):.1f} s",
+            )
+            full_cols[2].metric(
+                "Full-process peak RSS",
+                f"{(full_rss.get('peak_rss_bytes') or 0) / (1024.0**2):.1f} MiB",
+            )
+            full_cols[3].metric(
+                "Peak RSS increase",
+                f"{(full_rss.get('peak_rss_increase_bytes') or 0) / (1024.0**2):.1f} MiB",
+            )
+            st.caption(str(ensemble_benchmark.get("interpretation", "")))
 
         bases = dash.ensemble_available_bases(ensemble_df)
         if not bases:
@@ -1000,6 +1079,12 @@ if tab_publication is not None:
             "PNG 300 dpi, SVG, PDF로 내보낼 수 있는 패널입니다. 축 단위와 diagnostic provenance를 그림 안에 기록하며, "
             "sweep 패널은 다른 조건을 고정하거나 정확히 짝지은 case만 비교합니다."
         )
+        publication_report_context = {
+            "summary": summary,
+            "metadata": metadata,
+            "validation_rows": validation if isinstance(validation, list) else [],
+            "config": config,
+        }
 
         provenance_counts = dash.diagnostic_provenance_summary_counts(diagnostic_provenance_rows)
         if provenance_counts.get("proxy", 0) > 0:
@@ -1040,6 +1125,7 @@ if tab_publication is not None:
                     publication_fig,
                     file_stem=f"growth_pathway_four_panel_{publication_mode}",
                     key_prefix="publication_comparison_download",
+                    report_context=publication_report_context,
                 )
             else:
                 st.info("Four-panel에 사용할 Growth Pathway 변수가 없습니다.")
@@ -1087,6 +1173,7 @@ if tab_publication is not None:
                     ensemble_publication_fig,
                     file_stem=f"ensemble_four_panel_{ensemble_publication_mode}",
                     key_prefix="publication_ensemble_download",
+                    report_context=publication_report_context,
                 )
             else:
                 st.info("Ensemble publication panel에 사용할 변수가 없습니다.")
@@ -1139,6 +1226,7 @@ if tab_publication is not None:
                             case_publication_fig,
                             file_stem=f"sweep_case_growth_pathway_{case_mode}",
                             key_prefix="publication_sweep_case_download",
+                            report_context=publication_report_context,
                         )
                 elif publication_case_kind == "ensemble":
                     case_ensemble_bases = dash.ensemble_available_bases(publication_case_data)
@@ -1169,6 +1257,7 @@ if tab_publication is not None:
                             case_publication_fig,
                             file_stem=f"sweep_case_ensemble_{case_ensemble_mode}",
                             key_prefix="publication_sweep_case_ensemble_download",
+                            report_context=publication_report_context,
                         )
                 else:
                     st.info("선택한 sweep case에서 comparison.csv 또는 ensemble_statistics.csv를 찾지 못했습니다.")
@@ -1279,6 +1368,7 @@ if tab_publication is not None:
                         ofat_fig,
                         file_stem=f"ofat_sensitivity_{ofat_variable}_{ofat_statistic}",
                         key_prefix="publication_ofat_download",
+                        report_context=publication_report_context,
                     )
             else:
                 st.info("OFAT panel에 사용할 sweep 변수가 없습니다.")
@@ -1345,6 +1435,7 @@ if tab_publication is not None:
                         collision_fig,
                         file_stem=f"collision_off_on_{collision_variable}",
                         key_prefix="publication_collision_download",
+                        report_context=publication_report_context,
                     )
                 else:
                     st.info("동일 조건으로 짝지을 수 있는 collision OFF/ON case가 없습니다.")
@@ -1898,6 +1989,7 @@ if tab_convergence is not None:
             "resolution rank 1 with the rank 0 reference."
         )
         convergence_summary = summary.get("numerical_convergence", {})
+        convergence_evidence = summary.get("numerical_convergence_evidence", {})
         if numerical_convergence_df.empty:
             st.info(
                 "This sweep does not contain a generated numerical_convergence.csv. Use the "
@@ -1924,6 +2016,28 @@ if tab_convergence is not None:
                 )
                 + " %",
             )
+            if convergence_evidence.get("available"):
+                st.markdown("#### Empirical tolerance evidence")
+                evidence_cols = st.columns(4)
+                evidence_cols[0].metric(
+                    "5% support",
+                    str(convergence_evidence.get("status", "unknown")).replace("_", " ").upper(),
+                )
+                evidence_cols[1].metric(
+                    "Relative checks",
+                    convergence_evidence.get("n_relative_evidence_checks", 0),
+                )
+                evidence_cols[2].metric(
+                    "P95 difference",
+                    dash.format_metric_value(
+                        convergence_evidence.get("p95_relative_difference_percent")
+                    ) + " %",
+                )
+                evidence_cols[3].metric(
+                    "Near-zero exclusions",
+                    convergence_evidence.get("n_near_zero_reference_checks", 0),
+                )
+                st.caption(str(convergence_evidence.get("interpretation", "")))
             available_convergence_metrics = dash.convergence_metrics(numerical_convergence_df)
             selected_convergence_metric = st.selectbox(
                 "Response metric",

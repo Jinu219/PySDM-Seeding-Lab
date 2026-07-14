@@ -83,7 +83,7 @@ class ProcessRSSMonitor:
                 int(self._peak_rss - self._rss_before) if available else None
             ),
             "scope": (
-                "Sampled resident set size for the whole Python process during aggregation. "
+                "Sampled resident set size for the whole Python process during the monitored context. "
                 "The peak may fall between samples."
             ),
         }

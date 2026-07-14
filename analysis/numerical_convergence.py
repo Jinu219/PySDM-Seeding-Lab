@@ -17,6 +17,10 @@ NUMERICAL_PARAMETERS = {
 }
 
 DEFAULT_CONVERGENCE_METRICS = (
+    "comparison.efficiency.effective_radius_final_delta_um",
+    "comparison.efficiency.droplet_number_final_delta_cm3",
+    "comparison.delta_final_all_activated_water_mixing_ratio",
+    "comparison.delta_final_supersaturation_percent",
     "comparison.efficiency.accumulated_rain_enhancement",
     "comparison.efficiency.rain_enhancement_final",
     "comparison.efficiency.cloud_to_rain_conversion_delta",

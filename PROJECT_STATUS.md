@@ -4,7 +4,40 @@ Last updated: 2026-07-14
 
 Active branch: `develop`
 
-Current milestone: Nested sweep execution robustness and failure diagnostics completed
+Current milestone: Full PySDM qualification and large-ensemble evidence completed
+
+## Latest research-evidence update
+
+Completed:
+- A 27-case `pysdm_parcel` standard qualification completed 54 physical model
+  executions without failure. All 12 non-zero next-finest checks passed the 5%
+  tolerance; the median, P95, and maximum relative differences were 0.187%,
+  1.140%, and 1.731%. This supports 5% for the tested marine, collision-OFF
+  profile, but does not yet support rain-producing or collision-ON claims.
+- The spectrum-transition diagnostic now audits 20/25/30 micrometre radius
+  boundaries and 0.5/1/2% activated-liquid fractions. The 25 micrometre boundary
+  is literature-bounded; 1% remains an explicit project-owned operational floor.
+  Automatic checkpoints target 10 seconds, snap to model timesteps, and preserve
+  injection boundaries and endpoints.
+- A 24-member large real-PySDM ensemble benchmark measured the complete process
+  and the streaming aggregation phase separately. Peak RSS rose by 999.64 MiB
+  over baseline, while aggregation itself added only 0.27 MiB RSS and took 3.772 s.
+  Repeated PySDM/JIT/object lifetime is therefore the next memory-profiling target.
+- Results can prepare an on-demand PDF containing the publication figure currently
+  selected in the dashboard, in addition to the automatic report artifacts.
+- A preserved pre-manifest sweep fixture and a schema-v1 alias fixture now exercise
+  legacy inference and in-memory manifest migration regression paths.
+
+Evidence:
+- [`docs/evidence/NUMERICAL_QUALIFICATION_20260714.md`](docs/evidence/NUMERICAL_QUALIFICATION_20260714.md)
+- [`docs/evidence/ENSEMBLE_BENCHMARK_20260714.md`](docs/evidence/ENSEMBLE_BENCHMARK_20260714.md)
+- [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
+
+Next scientific and performance priorities:
+1. Repeat qualification with collision enabled and a rain-producing configuration.
+2. Profile retained RSS ownership across ensemble members and backend/JIT lifetimes.
+3. Compare a columnar internal cache with CSV using numerical-equality regressions.
+4. Validate the operational 1% transition floor against an observational dataset.
 
 ## Latest execution-robustness update
 

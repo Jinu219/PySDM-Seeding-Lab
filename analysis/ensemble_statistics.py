@@ -12,7 +12,7 @@ import pandas as pd
 from analysis.resource_monitor import ProcessRSSMonitor
 
 
-ENSEMBLE_BUILD_ID = "streaming-ensemble-statistics-rss-20260714"
+ENSEMBLE_BUILD_ID = "streaming-ensemble-statistics-rss-io-v2-20260714"
 
 
 def member_seed_list(config: Dict[str, Any]) -> List[int]:
@@ -122,7 +122,11 @@ def build_ensemble_statistics(member_dfs: List[pd.DataFrame]) -> pd.DataFrame:
     return pd.DataFrame(output_columns)
 
 
-def build_ensemble_statistics_from_paths(member_paths: List[Path]) -> pd.DataFrame:
+def build_ensemble_statistics_from_paths(
+    member_paths: List[Path],
+    *,
+    phase_diagnostics: Dict[str, Any] | None = None,
+) -> pd.DataFrame:
     """Aggregate member CSVs one variable at a time to bound peak memory use.
 
     The legacy in-memory implementation retains every member dataframe. This
@@ -136,6 +140,7 @@ def build_ensemble_statistics_from_paths(member_paths: List[Path]) -> pd.DataFra
 
     common_time: set[float] | None = None
     common_columns: set[str] | None = None
+    discovery_started = time.perf_counter()
     for path in paths:
         member = pd.read_csv(path)
         if "time_s" not in member:
@@ -150,6 +155,7 @@ def build_ensemble_statistics_from_paths(member_paths: List[Path]) -> pd.DataFra
             if common_columns is None
             else common_columns.intersection(member_columns)
         )
+    discovery_elapsed = time.perf_counter() - discovery_started
 
     times = sorted(common_time or set())
     columns = sorted(common_columns or set())
@@ -159,6 +165,7 @@ def build_ensemble_statistics_from_paths(member_paths: List[Path]) -> pd.DataFra
     output_columns: Dict[str, np.ndarray] = {
         "time_s": np.asarray(times, dtype=float)
     }
+    streaming_started = time.perf_counter()
     for column in columns:
         member_values = []
         for path in paths:
@@ -174,6 +181,16 @@ def build_ensemble_statistics_from_paths(member_paths: List[Path]) -> pd.DataFra
             member_values.append(aligned.to_numpy(dtype=float))
         output_columns.update(_column_statistics(column, np.vstack(member_values)))
 
+    streaming_elapsed = time.perf_counter() - streaming_started
+    if phase_diagnostics is not None:
+        phase_diagnostics.update(
+            {
+                "schema_discovery_seconds": float(discovery_elapsed),
+                "column_streaming_seconds": float(streaming_elapsed),
+                "csv_read_passes_per_member": int(1 + len(columns)),
+            }
+        )
+
     return pd.DataFrame(output_columns)
 
 
@@ -188,10 +205,14 @@ def benchmark_ensemble_statistics_from_paths(
         tracemalloc.start()
         tracemalloc.reset_peak()
     rss_monitor = ProcessRSSMonitor()
+    phase_diagnostics: Dict[str, Any] = {}
     with rss_monitor:
         started = time.perf_counter()
         try:
-            statistics = build_ensemble_statistics_from_paths(paths)
+            statistics = build_ensemble_statistics_from_paths(
+                paths,
+                phase_diagnostics=phase_diagnostics,
+            )
             elapsed_seconds = time.perf_counter() - started
             _, peak_traced_bytes = tracemalloc.get_traced_memory()
         finally:
@@ -200,6 +221,8 @@ def benchmark_ensemble_statistics_from_paths(
 
     n_statistic_columns = max(0, len(statistics.columns) - 1)
     n_variables = n_statistic_columns // 7
+    estimated_csv_bytes_scanned = total_input_bytes * int(1 + n_variables)
+    scan_mib = estimated_csv_bytes_scanned / (1024.0**2)
     diagnostics = {
         "build_id": ENSEMBLE_BUILD_ID,
         "method": "column_streaming_from_member_csv",
@@ -210,6 +233,16 @@ def benchmark_ensemble_statistics_from_paths(
         "output_rows": int(len(statistics)),
         "output_columns": int(len(statistics.columns)),
         "aggregated_variables": int(n_variables),
+        **phase_diagnostics,
+        "estimated_csv_bytes_scanned": int(estimated_csv_bytes_scanned),
+        "estimated_scan_mib_per_second": (
+            float(scan_mib / elapsed_seconds) if elapsed_seconds > 0 else None
+        ),
+        "source_input_mib_per_second": (
+            float((total_input_bytes / (1024.0**2)) / elapsed_seconds)
+            if elapsed_seconds > 0
+            else None
+        ),
         "process_rss": rss_monitor.summary(),
         "memory_scope": (
             "Python and NumPy allocations visible to tracemalloc during aggregation; "

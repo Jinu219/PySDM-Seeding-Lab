@@ -12,10 +12,21 @@ import pandas as pd
 TRANSITION_TABLE_NAME = "spectrum_transition"
 TRANSITION_ROBUSTNESS_TABLE_NAME = "spectrum_transition_onset_robustness"
 TRANSITION_METRIC = "rain_volume_fraction_of_activated"
+TRANSITION_DEFINITION_BUILD_ID = "literature-bounded-transition-v2-20260714"
 
 
 def spectrum_transition_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
     return dict((config or {}).get("diagnostics", {}).get("spectrum_transition", {}))
+
+
+def transition_fraction_thresholds(config: Dict[str, Any] | None) -> list[float]:
+    """Return the operational baseline plus configured fraction-sensitivity levels."""
+    transition_cfg = spectrum_transition_config(config)
+    baseline = float(transition_cfg.get("rain_volume_fraction_threshold", 0.01))
+    configured = transition_cfg.get(
+        "rain_volume_fraction_thresholds", [0.005, 0.01, 0.02]
+    )
+    return sorted({baseline, *(float(value) for value in configured)})
 
 
 def _finite_or_none(value: float) -> float | None:
@@ -109,7 +120,6 @@ def build_transition_onset_robustness(
     if not bool(transition_cfg.get("enabled", True)) or threshold_comparison.empty:
         return pd.DataFrame(columns=columns)
 
-    threshold = float(transition_cfg.get("rain_volume_fraction_threshold", 0.01))
     rows: list[dict[str, float | None]] = []
     group_columns = [
         "activation_factor",
@@ -122,30 +132,31 @@ def build_transition_onset_robustness(
     if not all(column in threshold_comparison for column in [*group_columns, control_column, seeding_column]):
         return pd.DataFrame(columns=columns)
 
-    for group_values, group in threshold_comparison.groupby(group_columns, sort=True):
-        group = group.sort_values("time_s")
-        times = group["time_s"].to_numpy(dtype=float)
-        control = group[control_column].to_numpy(dtype=float)
-        seeding = group[seeding_column].to_numpy(dtype=float)
-        control_onset = _crossing_time(times, control, threshold)
-        seeding_onset = _crossing_time(times, seeding, threshold)
-        onset_shift = (
-            float(seeding_onset - control_onset)
-            if control_onset is not None and seeding_onset is not None
-            else None
-        )
-        rows.append(
-            {
-                **dict(zip(group_columns, (float(value) for value in group_values))),
-                "rain_volume_fraction_threshold": threshold,
-                "control_transition_onset_s": control_onset,
-                "seeding_transition_onset_s": seeding_onset,
-                "transition_onset_shift_s": onset_shift,
-                "final_rain_volume_fraction_control": float(control[-1]),
-                "final_rain_volume_fraction_seeding": float(seeding[-1]),
-                "final_rain_volume_fraction_diff": float(seeding[-1] - control[-1]),
-            }
-        )
+    for threshold in transition_fraction_thresholds(config):
+        for group_values, group in threshold_comparison.groupby(group_columns, sort=True):
+            group = group.sort_values("time_s")
+            times = group["time_s"].to_numpy(dtype=float)
+            control = group[control_column].to_numpy(dtype=float)
+            seeding = group[seeding_column].to_numpy(dtype=float)
+            control_onset = _crossing_time(times, control, threshold)
+            seeding_onset = _crossing_time(times, seeding, threshold)
+            onset_shift = (
+                float(seeding_onset - control_onset)
+                if control_onset is not None and seeding_onset is not None
+                else None
+            )
+            rows.append(
+                {
+                    **dict(zip(group_columns, (float(value) for value in group_values))),
+                    "rain_volume_fraction_threshold": threshold,
+                    "control_transition_onset_s": control_onset,
+                    "seeding_transition_onset_s": seeding_onset,
+                    "transition_onset_shift_s": onset_shift,
+                    "final_rain_volume_fraction_control": float(control[-1]),
+                    "final_rain_volume_fraction_seeding": float(seeding[-1]),
+                    "final_rain_volume_fraction_diff": float(seeding[-1] - control[-1]),
+                }
+            )
     return pd.DataFrame(rows, columns=columns)
 
 
@@ -178,8 +189,26 @@ def summarize_spectrum_transition(
     if len(finite_shifts):
         sign_consistent = bool((finite_shifts <= 0).all() or (finite_shifts >= 0).all())
 
+    checkpoint_intervals = np.diff(np.sort(np.unique(time_s)))
+    baseline_robustness = robustness_table
+    if not robustness_table.empty and "rain_volume_fraction_threshold" in robustness_table:
+        baseline_robustness = robustness_table[
+            np.isclose(robustness_table["rain_volume_fraction_threshold"], threshold)
+        ]
+    baseline_finite_shifts = pd.to_numeric(
+        baseline_robustness.get("transition_onset_shift_s", pd.Series(dtype=float)),
+        errors="coerce",
+    ).dropna()
+    baseline_radius_sign_consistent = None
+    if len(baseline_finite_shifts):
+        baseline_radius_sign_consistent = bool(
+            (baseline_finite_shifts <= 0).all()
+            or (baseline_finite_shifts >= 0).all()
+        )
+
     return {
         "available": True,
+        "definition_build_id": TRANSITION_DEFINITION_BUILD_ID,
         "status": "resolved" if baseline_shift is not None else "onset_not_resolved",
         "rain_volume_fraction_threshold": threshold,
         "control_transition_onset_s": control_onset,
@@ -193,15 +222,30 @@ def summarize_spectrum_transition(
             if np.isfinite(seeding - control).any()
             else None
         ),
-        "n_threshold_pairs": int(len(robustness_table)),
+        "n_threshold_pairs": int(len(baseline_robustness)),
+        "n_transition_fraction_thresholds": int(
+            robustness_table["rain_volume_fraction_threshold"].nunique()
+        ) if not robustness_table.empty and "rain_volume_fraction_threshold" in robustness_table else 0,
         "n_threshold_pairs_with_resolved_shift": int(len(finite_shifts)),
         "threshold_shift_min_s": float(finite_shifts.min()) if len(finite_shifts) else None,
         "threshold_shift_max_s": float(finite_shifts.max()) if len(finite_shifts) else None,
         "threshold_shift_median_s": float(finite_shifts.median()) if len(finite_shifts) else None,
         "threshold_shift_direction_consistent": sign_consistent,
+        "baseline_radius_shift_direction_consistent": baseline_radius_sign_consistent,
+        "maximum_checkpoint_interval_s": (
+            float(checkpoint_intervals.max()) if checkpoint_intervals.size else 0.0
+        ),
+        "median_checkpoint_interval_s": (
+            float(np.median(checkpoint_intervals)) if checkpoint_intervals.size else 0.0
+        ),
         "onset_method": (
             "First crossing of the configured rain-size liquid-volume fraction among "
             "activated particles, linearly interpolated between stored spectrum checkpoints."
+        ),
+        "threshold_basis": (
+            "The 20-25 um rain-size boundary is literature-supported. The 1% activated-liquid "
+            "fraction is an operational baseline, not an observational standard, and is audited "
+            "against configured fraction and radius sensitivities."
         ),
         "interpretation": (
             "Negative onset shift means the seeding spectrum reached the transition threshold "

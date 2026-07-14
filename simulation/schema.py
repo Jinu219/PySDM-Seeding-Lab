@@ -107,6 +107,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "max_radius": 1000.0e-6,
             "n_bins": 32,
             "checkpoint_times": [],
+            "checkpoint_interval_seconds": 10.0,
             "threshold_factors": [0.8, 1.0, 1.2],
         },
         "water_budget": {
@@ -117,11 +118,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "numerical_convergence": {
             "enabled": True,
             "relative_tolerance_percent": 5.0,
+            "relative_reference_floor": 1.0e-12,
             "metrics": [],
         },
         "spectrum_transition": {
             "enabled": True,
             "rain_volume_fraction_threshold": 0.01,
+            "rain_volume_fraction_thresholds": [0.005, 0.01, 0.02],
         },
     },
     "sweep": {
@@ -195,10 +198,13 @@ FIELD_UNITS: Dict[str, Dict[str, str]] = {
         "min_radius": "m",
         "max_radius": "m",
         "checkpoint_times": "s",
+        "checkpoint_interval_seconds": "s",
         "warning_relative_drift_percent": "%",
         "failure_relative_drift_percent": "%",
         "relative_tolerance_percent": "%",
+        "relative_reference_floor": "metric-dependent",
         "rain_volume_fraction_threshold": "-",
+        "rain_volume_fraction_thresholds": "-",
     },
 }
 

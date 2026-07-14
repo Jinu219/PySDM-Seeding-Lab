@@ -1,5 +1,44 @@
 # Development Notes
 
+## Full PySDM qualification, transition calibration, and benchmark evidence
+
+Changes:
+- Added qualification-evidence evaluation that separates finite non-zero relative
+  checks from near-zero references, reports median/P95/maximum errors by numerical
+  axis, and scopes the support decision to the tested physics profile.
+- Ran the standard 27-case Cartesian `pysdm_parcel` qualification: 54 model
+  executions completed without failure. All 12 non-zero next-finest checks were
+  below the 5% tolerance, with a 1.731% maximum relative difference.
+- Added a refresh mode to rebuild convergence evidence and reports from stored case
+  outputs without rerunning PySDM.
+- Calibrated spectrum-transition diagnostics around literature-bounded 20--30
+  micrometre radius thresholds, added mandatory 0.5/1/2% operational-fraction
+  sensitivity, and made automatic checkpoints use a configurable 10-second target.
+- Added a standalone real-PySDM ensemble benchmark that samples whole-process RSS
+  while separately recording CSV schema-discovery and column-streaming I/O phases.
+- Ran the 24-member large profile successfully. Peak process RSS increased by
+  999.64 MiB, whereas streaming aggregation increased RSS by only 0.27 MiB and
+  completed in 3.772 seconds.
+- Added on-demand report PDF generation with the publication figure selected in
+  Results, while retaining automatic Markdown, HTML, and PDF report artifacts.
+- Preserved an actual pre-manifest sweep fixture and added schema-v1 manifest alias
+  migration with regression tests for both paths.
+
+Validation performed:
+- 23 unit/integration tests passed in 228 seconds, including two real PySDM tests.
+- Project integrity validation passed.
+- Aerosol and Run AppTests rendered with zero exceptions. Results rendered with no
+  Streamlit exceptions; the four displayed execution errors are the expected
+  diagnostics for the intentionally preserved 24-case/240-member failed result.
+- Qualification and benchmark evidence summaries are stored under `docs/evidence/`;
+  large raw artifacts remain local and are intentionally ignored by Git.
+
+Scientific limitation:
+- The completed qualification used the marine collision-OFF profile and produced
+  zero rain-response metrics. It supports the current 5% default only for the
+  non-zero condensation/seeding response metrics in that profile. A collision-ON,
+  rain-producing qualification remains required.
+
 ## Nested sweep path safety and execution-health propagation
 
 Incident reproduced:

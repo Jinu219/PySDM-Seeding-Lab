@@ -30,6 +30,7 @@ from analysis.numerical_convergence import (
     plot_numerical_convergence,
     summarize_numerical_convergence,
 )
+from analysis.qualification_evidence import build_qualification_evidence
 from analysis.result_files import describe_result_files
 from analysis.reporting import (
     build_html_report,
@@ -1048,6 +1049,7 @@ def run_parameter_sweep(
     )
     convergence_table = build_numerical_convergence_table(convergence_input, cfg)
     convergence_summary = summarize_numerical_convergence(convergence_table)
+    qualification_evidence = build_qualification_evidence(convergence_table, cfg)
 
     emit_progress(
         progress_callback,
@@ -1065,6 +1067,7 @@ def run_parameter_sweep(
     qualification_payload = cfg.get("qualification")
     if isinstance(qualification_payload, dict) and qualification_payload:
         _write_json(sweep_dir / "qualification_plan.json", qualification_payload)
+        _write_json(sweep_dir / "qualification_evidence.json", qualification_evidence)
 
     best_case = None
     usable_cases = (
@@ -1104,6 +1107,11 @@ def run_parameter_sweep(
                 else {}
             ),
             **(
+                {"qualification_evidence": "qualification_evidence.json"}
+                if isinstance(qualification_payload, dict) and qualification_payload
+                else {}
+            ),
+            **(
                 {"numerical_convergence": "numerical_convergence.csv"}
                 if not convergence_table.empty
                 else {}
@@ -1125,6 +1133,11 @@ def run_parameter_sweep(
                     if isinstance(qualification_payload, dict) and qualification_payload
                     else []
                 ),
+                *(
+                    ["qualification_evidence.json"]
+                    if isinstance(qualification_payload, dict) and qualification_payload
+                    else []
+                ),
                 *(["numerical_convergence.csv"] if not convergence_table.empty else []),
             ]
         ),
@@ -1141,6 +1154,7 @@ def run_parameter_sweep(
         "ranking_metric": ranking_metric,
         "best_case": best_case,
         "numerical_convergence": convergence_summary,
+        "numerical_convergence_evidence": qualification_evidence,
         "validation": validation_summary(cfg),
     }
 

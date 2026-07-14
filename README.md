@@ -3,9 +3,10 @@
 PySDM Seeding Lab is a research-oriented simulation platform for designing, running, and visualizing cloud seeding experiments based on PySDM.
 
 New results include Markdown, self-contained HTML, and paginated PDF research
-reports. The PDF embeds the most relevant available water-budget,
-spectrum-transition, or numerical-convergence figure. Results Dashboard downloads
-all three formats.
+reports. The automatic PDF embeds the most relevant available water-budget,
+spectrum-transition, or numerical-convergence figure. Results Dashboard also
+prepares an on-demand PDF containing the publication figure currently selected by
+the user.
 
 Run a reproducible numerical qualification plan from the CLI:
 
@@ -17,6 +18,22 @@ Run a reproducible numerical qualification plan from the CLI:
 `pilot` is a fast software-workflow check. Only the `pysdm_parcel` standard run
 can provide physical numerical-convergence evidence. Each completed workflow stores
 `qualification_plan.json` beside `numerical_convergence.csv` and the reports.
+
+The completed 2026-07-14 standard qualification supports the default 5% tolerance
+for the tested marine collision-OFF profile: all 12 non-zero next-finest checks
+passed, with a 1.731% maximum difference. It is not yet rain-producing evidence.
+See [`docs/evidence/NUMERICAL_QUALIFICATION_20260714.md`](docs/evidence/NUMERICAL_QUALIFICATION_20260714.md).
+
+Run an instrumented real-PySDM ensemble benchmark with:
+
+```powershell
+& .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile large --output-dir artifacts\ensemble_benchmark
+```
+
+The latest measured RSS and streaming-I/O record is in
+[`docs/evidence/ENSEMBLE_BENCHMARK_20260714.md`](docs/evidence/ENSEMBLE_BENCHMARK_20260714.md).
+The spectrum-transition threshold and checkpoint rationale is documented in
+[`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md).
 
 This project starts from a clean scaffold and does not depend on previous experiment folders or legacy experiment names.  
 The goal is to build a reusable platform where cloud environment settings, background aerosol properties, seeding particle parameters, and microphysical options can be configured through YAML files and an interactive Streamlit interface.
@@ -210,11 +227,11 @@ a particle-history activation event.
 
 ## Development Roadmap
 
-Steps 0-12 and the first Step 13 native scalar-product pass are complete; see
+Steps 0-19 and the current research-evidence pass are complete; see
 `DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: build full PySDM convergence evidence and large-run RSS/I/O
-benchmarks next; Markdown/HTML reporting and result-schema compatibility are
-already connected to every result type.
+`ROADMAP.md`: collision-ON convergence qualification, retained-memory ownership
+profiling, a columnar internal cache comparison, and observational calibration of
+the operational transition floor are the next gates.
 
 ## Research Direction
 

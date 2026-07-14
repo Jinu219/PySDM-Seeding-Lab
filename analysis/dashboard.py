@@ -50,7 +50,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "execution-health-compact-paths-20260714"
+DASHBOARD_BUILD_ID = "qualification-benchmark-report-migration-20260714"
 
 
 @dataclass(frozen=True)
@@ -151,6 +151,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         html_report_path = entry.path / "report.html"
         pdf_report_path = entry.path / "report.pdf"
         aggregation_diagnostics_path = entry.path / "ensemble_aggregation_diagnostics.json"
+        ensemble_benchmark_path = entry.path / "ensemble_benchmark.json"
         diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         stats_df = safe_read_csv(stats_path)
@@ -178,6 +179,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "report_html": _read_text(html_report_path),
             "report_pdf": _read_bytes(pdf_report_path),
             "ensemble_aggregation_diagnostics": _read_json(aggregation_diagnostics_path),
+            "ensemble_benchmark": _read_json(ensemble_benchmark_path),
             "result_compatibility": compatibility,
             "files": {
                 "ensemble_statistics": stats_path,
@@ -191,6 +193,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "report_html": html_report_path,
                 "report_pdf": pdf_report_path,
                 "ensemble_aggregation_diagnostics": aggregation_diagnostics_path,
+                "ensemble_benchmark": ensemble_benchmark_path,
             },
         }
 

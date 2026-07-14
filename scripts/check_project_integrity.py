@@ -245,11 +245,13 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "numerical_convergence.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "case_diagnostic_comparison.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "spectrum_transition.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "qualification_evidence.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "reporting.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_numerical_qualification.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_ensemble_benchmark.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 

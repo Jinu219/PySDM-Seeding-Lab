@@ -31,7 +31,12 @@ def resolve_spectrum_checkpoint_times(config: Dict[str, Any] | None) -> list[flo
     timestep = max(float(env.get("timestep", 15.0)), np.finfo(float).eps)
     requested = spectrum_cfg.get("checkpoint_times", [])
     if not requested:
+        interval = max(
+            float(spectrum_cfg.get("checkpoint_interval_seconds", 10.0)),
+            timestep,
+        )
         requested = [
+            *np.arange(0.0, duration + interval, interval).tolist(),
             0.0,
             float(seed.get("injection_start", 0.0)),
             float(seed.get("injection_end", duration)),
