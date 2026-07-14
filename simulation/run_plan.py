@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
 from operator import mul
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from simulation.run_timing import estimate_seconds_per_run, format_seconds
+
+# Above this many total model runs, an unmeasured (no history yet) runtime
+# estimate is treated as too uncertain to trust at face value, and the UI
+# should warn the user rather than show a falsely precise number.
+LARGE_RUN_WARNING_THRESHOLD = 50
 
 
 @dataclass(frozen=True)
@@ -16,6 +24,12 @@ class RunPlan:
     adapter: str
     run_label: str
     description: str
+    estimated_seconds_per_run: float
+    estimated_total_seconds: float
+    estimated_total_duration: str
+    runtime_basis: str
+    runtime_is_measured: bool
+    runtime_warning: Optional[str] = None
 
 
 def _sweep_case_count(config: Dict[str, Any]) -> int:
@@ -35,8 +49,11 @@ def _sweep_case_count(config: Dict[str, Any]) -> int:
     return min(total, max_runs)
 
 
-def estimate_run_plan(config: Dict[str, Any]) -> RunPlan:
-    """Estimate how many model runs will be executed."""
+def estimate_run_plan(config: Dict[str, Any], results_dir: Path | str = "results") -> RunPlan:
+    """
+    Estimate how many model runs will be executed, and how long that is
+    likely to take based on locally recorded run-duration history.
+    """
     experiment = config.get("experiment", {})
     simulation = config.get("simulation", {})
     sweep = config.get("sweep", {})
@@ -71,6 +88,22 @@ def estimate_run_plan(config: Dict[str, Any]) -> RunPlan:
     else:
         description = f"{control_factor} model run(s)"
 
+    timing = estimate_seconds_per_run(Path(results_dir), adapter)
+    estimated_total_seconds = timing.seconds_per_run * total_model_runs
+
+    runtime_warning = None
+    if total_model_runs >= LARGE_RUN_WARNING_THRESHOLD and not timing.is_measured:
+        runtime_warning = (
+            f"{total_model_runs}회 실행 예정이지만 '{adapter}' adapter의 실측 이력이 없어 "
+            "런타임 추정치의 신뢰도가 낮습니다. 먼저 소규모(예: 2~3 case)로 한 번 실행해 "
+            "이력을 쌓은 뒤 전체 sweep/ensemble을 돌리는 것을 권장합니다."
+        )
+    elif total_model_runs >= LARGE_RUN_WARNING_THRESHOLD and estimated_total_seconds >= 1800:
+        runtime_warning = (
+            f"예상 소요 시간이 {format_seconds(estimated_total_seconds)}으로 깁니다. "
+            "sweep case 수나 ensemble member 수를 줄여 먼저 테스트하는 것을 권장합니다."
+        )
+
     return RunPlan(
         mode=mode,
         case_count=case_count,
@@ -80,12 +113,18 @@ def estimate_run_plan(config: Dict[str, Any]) -> RunPlan:
         adapter=adapter,
         run_label=run_label,
         description=description,
+        estimated_seconds_per_run=timing.seconds_per_run,
+        estimated_total_seconds=estimated_total_seconds,
+        estimated_total_duration=format_seconds(estimated_total_seconds),
+        runtime_basis=timing.basis,
+        runtime_is_measured=timing.is_measured,
+        runtime_warning=runtime_warning,
     )
 
 
-def run_plan_rows(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def run_plan_rows(config: Dict[str, Any], results_dir: Path | str = "results") -> List[Dict[str, Any]]:
     """Return a compact table for run plan display."""
-    plan = estimate_run_plan(config)
+    plan = estimate_run_plan(config, results_dir=results_dir)
     return [
         {"item": "Scenario / experiment", "value": plan.run_label},
         {"item": "Mode", "value": plan.mode},
@@ -94,5 +133,8 @@ def run_plan_rows(config: Dict[str, Any]) -> List[Dict[str, Any]]:
         {"item": "Ensemble members", "value": plan.ensemble_members},
         {"item": "Control/seeding factor", "value": plan.control_factor},
         {"item": "Estimated model runs", "value": plan.total_model_runs},
+        {"item": "Estimated time per run", "value": format_seconds(plan.estimated_seconds_per_run)},
+        {"item": "Estimated total runtime", "value": plan.estimated_total_duration},
+        {"item": "Runtime estimate basis", "value": plan.runtime_basis},
         {"item": "Plan", "value": plan.description},
     ]

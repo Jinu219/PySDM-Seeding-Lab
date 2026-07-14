@@ -46,6 +46,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
     seed = cfg.get("seeding", {})
     dyn = cfg.get("dynamics", {})
     microphysics = cfg.get("microphysics", {})
+    diagnostics = cfg.get("diagnostics", {})
     output = cfg.get("output", {})
 
     # -------------------------------------------------------------------------
@@ -288,6 +289,25 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 "background_aerosol.number_concentration",
                 "number_concentration is very high.",
                 "Check whether this is intended for a heavily polluted case.",
+            )
+        )
+
+    if int(aero.get("number_superdroplets", 0)) <= 0:
+        issues.append(
+            _issue(
+                "error",
+                "background_aerosol.number_superdroplets",
+                "number_superdroplets must be positive.",
+                "Use at least 1 super-droplet; run a convergence sweep before quantitative analysis.",
+            )
+        )
+    elif int(aero.get("number_superdroplets", 0)) < 20:
+        issues.append(
+            _issue(
+                "warning",
+                "background_aerosol.number_superdroplets",
+                "The background aerosol spectrum is represented by very few super-droplets.",
+                "Increase the count or demonstrate numerical convergence.",
             )
         )
 
@@ -596,6 +616,334 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
             )
         )
 
+    activation_radius = diagnostics.get("activation_radius_threshold", 0)
+    rain_radius = diagnostics.get("rain_radius_threshold", 0)
+    if activation_radius <= 0:
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.activation_radius_threshold",
+                "activation_radius_threshold must be positive.",
+                "Use a wet-radius threshold such as 0.5e-6 m.",
+            )
+        )
+    if rain_radius <= 0:
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.rain_radius_threshold",
+                "rain_radius_threshold must be positive.",
+                "Use a wet-radius threshold such as 25e-6 m.",
+            )
+        )
+    if activation_radius > 0 and rain_radius > 0 and activation_radius >= rain_radius:
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.rain_radius_threshold",
+                "rain_radius_threshold must exceed activation_radius_threshold.",
+                "Keep cloud and rain radius ranges ordered and non-overlapping.",
+            )
+        )
+
+    spectrum_cfg = diagnostics.get("wet_radius_spectrum", {})
+    if not isinstance(spectrum_cfg, dict):
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.wet_radius_spectrum",
+                "wet_radius_spectrum must be a mapping.",
+                "Reset this section to the default spectrum configuration.",
+            )
+        )
+    else:
+        spectrum_enabled = spectrum_cfg.get("enabled", True)
+        if not isinstance(spectrum_enabled, bool):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.enabled",
+                    "enabled must be true or false.",
+                    "Use a YAML boolean value.",
+                )
+            )
+
+        minimum_radius = spectrum_cfg.get("min_radius", 0.05e-6)
+        maximum_radius = spectrum_cfg.get("max_radius", 1000.0e-6)
+        n_bins = spectrum_cfg.get("n_bins", 32)
+        factors = spectrum_cfg.get("threshold_factors", [0.8, 1.0, 1.2])
+        checkpoints = spectrum_cfg.get("checkpoint_times", [])
+        checkpoint_interval = spectrum_cfg.get("checkpoint_interval_seconds", 10.0)
+
+        if not isinstance(n_bins, int) or isinstance(n_bins, bool) or not 8 <= n_bins <= 256:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.n_bins",
+                    "n_bins must be an integer between 8 and 256.",
+                    "Use 32 bins for the default checkpoint diagnostic.",
+                )
+            )
+
+        numeric_bounds = isinstance(minimum_radius, (int, float)) and isinstance(
+            maximum_radius, (int, float)
+        )
+        if not numeric_bounds or minimum_radius <= 0 or maximum_radius <= minimum_radius:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.min_radius",
+                    "Spectrum bounds must satisfy 0 < min_radius < max_radius.",
+                    "Use SI metres, for example 0.05e-6 to 1000e-6.",
+                )
+            )
+
+        valid_factors = (
+            isinstance(factors, list)
+            and bool(factors)
+            and all(isinstance(value, (int, float)) and value > 0 for value in factors)
+        )
+        if not valid_factors:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.threshold_factors",
+                    "threshold_factors must be a non-empty list of positive numbers.",
+                    "Use [0.8, 1.0, 1.2] for the default robustness test.",
+                )
+            )
+        elif not any(abs(float(value) - 1.0) < 1.0e-12 for value in factors):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.threshold_factors",
+                    "threshold_factors must include the baseline factor 1.0.",
+                    "Add 1.0 so robustness results retain the configured definition.",
+                )
+            )
+        elif numeric_bounds and activation_radius > 0 and rain_radius > 0:
+            if minimum_radius >= activation_radius * min(factors):
+                issues.append(
+                    _issue(
+                        "error",
+                        "diagnostics.wet_radius_spectrum.min_radius",
+                        "min_radius must be below the smallest tested activation threshold.",
+                        "Decrease min_radius or narrow threshold_factors.",
+                    )
+                )
+            if maximum_radius <= rain_radius * max(factors):
+                issues.append(
+                    _issue(
+                        "error",
+                        "diagnostics.wet_radius_spectrum.max_radius",
+                        "max_radius must exceed the largest tested rain threshold.",
+                        "Increase max_radius or narrow threshold_factors.",
+                    )
+                )
+
+        if not isinstance(checkpoints, list) or not all(
+            isinstance(value, (int, float)) for value in checkpoints
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.checkpoint_times",
+                    "checkpoint_times must be a list of times in seconds.",
+                    "Use [] for automatic start/injection/end checkpoints.",
+                )
+            )
+        elif any(float(value) < 0 or (duration > 0 and float(value) > duration) for value in checkpoints):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.checkpoint_times",
+                    "Every checkpoint must fall inside the simulation duration.",
+                    "Remove out-of-range values or use [] for automatic checkpoints.",
+                )
+            )
+
+        if (
+            not isinstance(checkpoint_interval, (int, float))
+            or isinstance(checkpoint_interval, bool)
+            or checkpoint_interval <= 0
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.checkpoint_interval_seconds",
+                    "checkpoint_interval_seconds must be positive.",
+                    "Use 10 seconds for the observation-informed onset-timing cadence.",
+                )
+            )
+
+    water_budget_cfg = diagnostics.get("water_budget", {})
+    if not isinstance(water_budget_cfg, dict):
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.water_budget",
+                "water_budget must be a mapping.",
+                "Reset this section to the default quality-gate configuration.",
+            )
+        )
+    else:
+        warning_drift = water_budget_cfg.get("warning_relative_drift_percent", 0.01)
+        failure_drift = water_budget_cfg.get("failure_relative_drift_percent", 0.1)
+        if not isinstance(water_budget_cfg.get("enabled", True), bool):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.water_budget.enabled",
+                    "enabled must be true or false.",
+                    "Use a YAML boolean value.",
+                )
+            )
+        valid_budget_limits = all(
+            isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+            for value in (warning_drift, failure_drift)
+        )
+        if not valid_budget_limits or warning_drift >= failure_drift:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.water_budget.failure_relative_drift_percent",
+                    "Water-budget limits must satisfy 0 < warning < failure.",
+                    "Use 0.01% warning and 0.1% failure for the default quality gate.",
+                )
+            )
+
+    convergence_cfg = diagnostics.get("numerical_convergence", {})
+    if not isinstance(convergence_cfg, dict):
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.numerical_convergence",
+                "numerical_convergence must be a mapping.",
+                "Reset this section to the default convergence configuration.",
+            )
+        )
+    else:
+        convergence_enabled = convergence_cfg.get("enabled", True)
+        tolerance = convergence_cfg.get("relative_tolerance_percent", 5.0)
+        reference_floor = convergence_cfg.get("relative_reference_floor", 1.0e-12)
+        convergence_metrics = convergence_cfg.get("metrics", [])
+        if not isinstance(convergence_enabled, bool):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.numerical_convergence.enabled",
+                    "enabled must be true or false.",
+                    "Use a YAML boolean value.",
+                )
+            )
+        if (
+            not isinstance(tolerance, (int, float))
+            or isinstance(tolerance, bool)
+            or tolerance <= 0
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.numerical_convergence.relative_tolerance_percent",
+                    "relative_tolerance_percent must be positive.",
+                    "Use 5.0 for a 5% next-finest resolution criterion.",
+                )
+            )
+        if (
+            not isinstance(reference_floor, (int, float))
+            or isinstance(reference_floor, bool)
+            or reference_floor <= 0
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.numerical_convergence.relative_reference_floor",
+                    "relative_reference_floor must be positive.",
+                    "Use 1e-12 unless the selected metric has a justified absolute scale.",
+                )
+            )
+        if not isinstance(convergence_metrics, list) or not all(
+            isinstance(metric, str) for metric in convergence_metrics
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.numerical_convergence.metrics",
+                    "metrics must be a list of summary-column names.",
+                    "Use [] to select the available default metrics automatically.",
+                )
+            )
+
+    transition_cfg = diagnostics.get("spectrum_transition", {})
+    if not isinstance(transition_cfg, dict):
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.spectrum_transition",
+                "spectrum_transition must be a mapping.",
+                "Reset this section to the default transition configuration.",
+            )
+        )
+    else:
+        transition_enabled = transition_cfg.get("enabled", True)
+        transition_threshold = transition_cfg.get("rain_volume_fraction_threshold", 0.01)
+        transition_thresholds = transition_cfg.get(
+            "rain_volume_fraction_thresholds", [0.005, 0.01, 0.02]
+        )
+        if not isinstance(transition_enabled, bool):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.spectrum_transition.enabled",
+                    "enabled must be true or false.",
+                    "Use a YAML boolean value.",
+                )
+            )
+        valid_transition_threshold = (
+            isinstance(transition_threshold, (int, float))
+            and not isinstance(transition_threshold, bool)
+            and 0 < float(transition_threshold) < 1
+        )
+        if not valid_transition_threshold:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.spectrum_transition.rain_volume_fraction_threshold",
+                    "rain_volume_fraction_threshold must be between 0 and 1.",
+                    "Use 0.01 for a 1% activated-liquid transition threshold.",
+                )
+            )
+        valid_transition_thresholds = (
+            isinstance(transition_thresholds, list)
+            and bool(transition_thresholds)
+            and all(
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and 0 < float(value) < 1
+                for value in transition_thresholds
+            )
+        )
+        if not valid_transition_thresholds:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.spectrum_transition.rain_volume_fraction_thresholds",
+                    "rain_volume_fraction_thresholds must be a non-empty list between 0 and 1.",
+                    "Use [0.005, 0.01, 0.02] to bracket the operational 1% baseline.",
+                )
+            )
+        elif valid_transition_threshold and not any(
+            abs(float(value) - float(transition_threshold)) < 1.0e-12
+            for value in transition_thresholds
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.spectrum_transition.rain_volume_fraction_thresholds",
+                    "The sensitivity thresholds must include rain_volume_fraction_threshold.",
+                    "Include the operational baseline so the audit can identify it explicitly.",
+                )
+            )
     if microphysics.get("collision", False):
         issues.append(
             _issue(

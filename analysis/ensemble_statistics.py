@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import time
+import tracemalloc
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 import numpy as np
 import pandas as pd
 
+from analysis.resource_monitor import ProcessRSSMonitor
 
-ENSEMBLE_BUILD_ID = "ensemble-statistics-20260713"
+
+ENSEMBLE_BUILD_ID = "streaming-ensemble-statistics-rss-io-v2-20260714"
 
 
 def member_seed_list(config: Dict[str, Any]) -> List[int]:
@@ -46,6 +51,36 @@ def align_member_dataframes(member_dfs: List[pd.DataFrame]) -> List[pd.DataFrame
     ]
 
 
+def _column_statistics(
+    column: str,
+    stack: np.ndarray,
+) -> Dict[str, np.ndarray]:
+    """Return the canonical ensemble statistics for one stacked variable."""
+    finite = np.isfinite(stack)
+    with warnings.catch_warnings():
+        # All-NaN timesteps are represented by NaN statistics plus n_finite=0;
+        # this is expected diagnostic output rather than a runtime fault.
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        mean = np.nanmean(stack, axis=0)
+        std = (
+            np.nanstd(stack, axis=0, ddof=1)
+            if stack.shape[0] > 1
+            else np.zeros(stack.shape[1], dtype=float)
+        )
+        median = np.nanmedian(stack, axis=0)
+        q25 = np.nanpercentile(stack, 25, axis=0)
+        q75 = np.nanpercentile(stack, 75, axis=0)
+    return {
+        f"{column}_mean": mean,
+        f"{column}_std": std,
+        f"{column}_median": median,
+        f"{column}_q25": q25,
+        f"{column}_q75": q75,
+        f"{column}_n_finite": finite.sum(axis=0),
+        f"{column}_finite_fraction": finite.mean(axis=0),
+    }
+
+
 def build_ensemble_statistics(member_dfs: List[pd.DataFrame]) -> pd.DataFrame:
     """
     Build ensemble statistics over time.
@@ -72,7 +107,9 @@ def build_ensemble_statistics(member_dfs: List[pd.DataFrame]) -> pd.DataFrame:
         common_columns = common_columns.intersection(set(numeric_columns_for_ensemble(df)))
 
     columns = sorted(common_columns)
-    out = pd.DataFrame({"time_s": aligned[0]["time_s"].to_numpy()})
+    output_columns: Dict[str, np.ndarray] = {
+        "time_s": aligned[0]["time_s"].to_numpy()
+    }
 
     for column in columns:
         stack = np.vstack([
@@ -80,17 +117,140 @@ def build_ensemble_statistics(member_dfs: List[pd.DataFrame]) -> pd.DataFrame:
             for df in aligned
         ])
 
-        finite = np.isfinite(stack)
+        output_columns.update(_column_statistics(column, stack))
 
-        out[f"{column}_mean"] = np.nanmean(stack, axis=0)
-        out[f"{column}_std"] = np.nanstd(stack, axis=0, ddof=1) if len(aligned) > 1 else 0.0
-        out[f"{column}_median"] = np.nanmedian(stack, axis=0)
-        out[f"{column}_q25"] = np.nanpercentile(stack, 25, axis=0)
-        out[f"{column}_q75"] = np.nanpercentile(stack, 75, axis=0)
-        out[f"{column}_n_finite"] = finite.sum(axis=0)
-        out[f"{column}_finite_fraction"] = finite.mean(axis=0)
+    return pd.DataFrame(output_columns)
 
-    return out
+
+def build_ensemble_statistics_from_paths(
+    member_paths: List[Path],
+    *,
+    phase_diagnostics: Dict[str, Any] | None = None,
+) -> pd.DataFrame:
+    """Aggregate member CSVs one variable at a time to bound peak memory use.
+
+    The legacy in-memory implementation retains every member dataframe. This
+    implementation first discovers common time/columns, then reads only one
+    variable from all members at a time. Peak aggregation memory therefore
+    scales with members x timesteps instead of members x timesteps x variables.
+    """
+    paths = [Path(path) for path in member_paths]
+    if not paths:
+        return pd.DataFrame()
+
+    common_time: set[float] | None = None
+    common_columns: set[str] | None = None
+    discovery_started = time.perf_counter()
+    for path in paths:
+        member = pd.read_csv(path)
+        if "time_s" not in member:
+            raise ValueError(f"Ensemble member file has no time_s column: {path}")
+        member_time = set(
+            pd.to_numeric(member["time_s"], errors="coerce").dropna().astype(float)
+        )
+        member_columns = set(numeric_columns_for_ensemble(member))
+        common_time = member_time if common_time is None else common_time.intersection(member_time)
+        common_columns = (
+            member_columns
+            if common_columns is None
+            else common_columns.intersection(member_columns)
+        )
+    discovery_elapsed = time.perf_counter() - discovery_started
+
+    times = sorted(common_time or set())
+    columns = sorted(common_columns or set())
+    if not times:
+        return pd.DataFrame()
+
+    output_columns: Dict[str, np.ndarray] = {
+        "time_s": np.asarray(times, dtype=float)
+    }
+    streaming_started = time.perf_counter()
+    for column in columns:
+        member_values = []
+        for path in paths:
+            member = pd.read_csv(path, usecols=["time_s", column])
+            member["time_s"] = pd.to_numeric(member["time_s"], errors="coerce")
+            member[column] = pd.to_numeric(member[column], errors="coerce")
+            aligned = (
+                member.dropna(subset=["time_s"])
+                .drop_duplicates(subset=["time_s"], keep="last")
+                .set_index("time_s")[column]
+                .reindex(times)
+            )
+            member_values.append(aligned.to_numpy(dtype=float))
+        output_columns.update(_column_statistics(column, np.vstack(member_values)))
+
+    streaming_elapsed = time.perf_counter() - streaming_started
+    if phase_diagnostics is not None:
+        phase_diagnostics.update(
+            {
+                "schema_discovery_seconds": float(discovery_elapsed),
+                "column_streaming_seconds": float(streaming_elapsed),
+                "csv_read_passes_per_member": int(1 + len(columns)),
+            }
+        )
+
+    return pd.DataFrame(output_columns)
+
+
+def benchmark_ensemble_statistics_from_paths(
+    member_paths: List[Path],
+) -> tuple[pd.DataFrame, Dict[str, Any]]:
+    """Run streaming aggregation and return allocation plus process-RSS diagnostics."""
+    paths = [Path(path) for path in member_paths]
+    total_input_bytes = sum(path.stat().st_size for path in paths if path.exists())
+    tracing_was_active = tracemalloc.is_tracing()
+    if not tracing_was_active:
+        tracemalloc.start()
+        tracemalloc.reset_peak()
+    rss_monitor = ProcessRSSMonitor()
+    phase_diagnostics: Dict[str, Any] = {}
+    with rss_monitor:
+        started = time.perf_counter()
+        try:
+            statistics = build_ensemble_statistics_from_paths(
+                paths,
+                phase_diagnostics=phase_diagnostics,
+            )
+            elapsed_seconds = time.perf_counter() - started
+            _, peak_traced_bytes = tracemalloc.get_traced_memory()
+        finally:
+            if not tracing_was_active:
+                tracemalloc.stop()
+
+    n_statistic_columns = max(0, len(statistics.columns) - 1)
+    n_variables = n_statistic_columns // 7
+    estimated_csv_bytes_scanned = total_input_bytes * int(1 + n_variables)
+    scan_mib = estimated_csv_bytes_scanned / (1024.0**2)
+    diagnostics = {
+        "build_id": ENSEMBLE_BUILD_ID,
+        "method": "column_streaming_from_member_csv",
+        "n_member_files": len(paths),
+        "total_input_bytes": int(total_input_bytes),
+        "elapsed_seconds": float(elapsed_seconds),
+        "python_peak_traced_bytes": int(peak_traced_bytes),
+        "output_rows": int(len(statistics)),
+        "output_columns": int(len(statistics.columns)),
+        "aggregated_variables": int(n_variables),
+        **phase_diagnostics,
+        "estimated_csv_bytes_scanned": int(estimated_csv_bytes_scanned),
+        "estimated_scan_mib_per_second": (
+            float(scan_mib / elapsed_seconds) if elapsed_seconds > 0 else None
+        ),
+        "source_input_mib_per_second": (
+            float((total_input_bytes / (1024.0**2)) / elapsed_seconds)
+            if elapsed_seconds > 0
+            else None
+        ),
+        "process_rss": rss_monitor.summary(),
+        "memory_scope": (
+            "Python and NumPy allocations visible to tracemalloc during aggregation; "
+            "whole-process RSS is reported separately under process_rss. If an outer trace "
+            "was already active, its peak scope is retained."
+        ),
+    }
+    return statistics, diagnostics
 
 
 def final_stat(stats_df: pd.DataFrame, base_column: str, stat: str = "mean") -> float | None:

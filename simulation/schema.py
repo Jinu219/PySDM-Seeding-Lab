@@ -60,6 +60,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "background_aerosol": {
         "distribution_type": "single_lognormal",
         "number_concentration": 100.0,
+        "number_superdroplets": 100,
         "dry_radius": 7.5e-8,
         "geometric_sigma": 1.4,
         "kappa": 0.5,
@@ -95,6 +96,36 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "condensation": True,
         "collision": False,
         "sedimentation": False,
+    },
+    "diagnostics": {
+        "growth_pathway_mode": True,
+        "activation_radius_threshold": 0.5e-6,
+        "rain_radius_threshold": 25.0e-6,
+        "wet_radius_spectrum": {
+            "enabled": True,
+            "min_radius": 0.05e-6,
+            "max_radius": 1000.0e-6,
+            "n_bins": 32,
+            "checkpoint_times": [],
+            "checkpoint_interval_seconds": 10.0,
+            "threshold_factors": [0.8, 1.0, 1.2],
+        },
+        "water_budget": {
+            "enabled": True,
+            "warning_relative_drift_percent": 0.01,
+            "failure_relative_drift_percent": 0.1,
+        },
+        "numerical_convergence": {
+            "enabled": True,
+            "relative_tolerance_percent": 5.0,
+            "relative_reference_floor": 1.0e-12,
+            "metrics": [],
+        },
+        "spectrum_transition": {
+            "enabled": True,
+            "rain_volume_fraction_threshold": 0.01,
+            "rain_volume_fraction_thresholds": [0.005, 0.01, 0.02],
+        },
     },
     "sweep": {
         "run_mode": "control_vs_seeding",
@@ -133,6 +164,7 @@ FIELD_UNITS: Dict[str, Dict[str, str]] = {
     },
     "background_aerosol": {
         "number_concentration": "cm^-3",
+        "number_superdroplets": "count",
         "dry_radius": "m",
         "geometric_sigma": "-",
         "kappa": "-",
@@ -160,6 +192,20 @@ FIELD_UNITS: Dict[str, Dict[str, str]] = {
         "cape": "J/kg",
         "cin": "J/kg",
     },
+    "diagnostics": {
+        "activation_radius_threshold": "m",
+        "rain_radius_threshold": "m",
+        "min_radius": "m",
+        "max_radius": "m",
+        "checkpoint_times": "s",
+        "checkpoint_interval_seconds": "s",
+        "warning_relative_drift_percent": "%",
+        "failure_relative_drift_percent": "%",
+        "relative_tolerance_percent": "%",
+        "relative_reference_floor": "metric-dependent",
+        "rain_volume_fraction_threshold": "-",
+        "rain_volume_fraction_thresholds": "-",
+    },
 }
 
 
@@ -184,6 +230,16 @@ def deep_merge(default: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, A
 def normalize_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
     """Fill missing fields using the canonical schema."""
     return deep_merge(DEFAULT_CONFIG, config or {})
+
+
+def diagnostic_radius_thresholds(config: Dict[str, Any] | None) -> tuple[float, float]:
+    """Return activation and rain wet-radius thresholds in metres."""
+    cfg = normalize_config(config)
+    diagnostics = cfg.get("diagnostics", {})
+    return (
+        float(diagnostics.get("activation_radius_threshold", 0.5e-6)),
+        float(diagnostics.get("rain_radius_threshold", 25.0e-6)),
+    )
 
 
 def schema_summary() -> List[Dict[str, str]]:

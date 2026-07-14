@@ -6,7 +6,17 @@ import numpy as np
 import pandas as pd
 
 from simulation.progress import ProgressCallback, emit_progress
+from simulation.schema import diagnostic_radius_thresholds
 from simulation.types import AdapterResult, SimulationRunSpec
+from simulation.wet_radius_spectrum import (
+    ROBUSTNESS_TABLE_NAME,
+    SPECTRUM_TABLE_NAME,
+    build_spectrum_bin_edges,
+    build_threshold_robustness_table,
+    build_wet_radius_spectrum_table,
+    resolve_spectrum_checkpoint_times,
+    wet_radius_spectrum_config,
+)
 
 
 R_DRY_AIR = 287.05  # J kg^-1 K^-1
@@ -20,12 +30,17 @@ def _require_pysdm() -> Dict[str, Any]:
     The actual import is only required when the `pysdm_parcel` adapter is selected.
     """
     try:
+        import PySDM
+        import PySDM_examples
         from PySDM import Formulae
         from PySDM.initialisation.sampling.spectral_sampling import ConstantMultiplicity
         from PySDM.initialisation.spectra import Lognormal
         from PySDM.physics import si
         from PySDM_examples.seeding.settings import Settings
-        from PySDM_examples.seeding.simulation import Simulation
+        from simulation.native_parcel_simulation import (
+            NATIVE_PRODUCT_BUILD_ID,
+            NativeParcelSimulation,
+        )
     except Exception as exc:  # pragma: no cover - depends on external PySDM install
         raise RuntimeError(
             "PySDM parcel adapter requires PySDM and PySDM-examples.\n\n"
@@ -41,7 +56,10 @@ def _require_pysdm() -> Dict[str, Any]:
         "Lognormal": Lognormal,
         "si": si,
         "Settings": Settings,
-        "Simulation": Simulation,
+        "Simulation": NativeParcelSimulation,
+        "native_product_build_id": NATIVE_PRODUCT_BUILD_ID,
+        "pysdm_version": getattr(PySDM, "__version__", "unknown"),
+        "pysdm_examples_version": getattr(PySDM_examples, "__version__", "unknown"),
     }
 
 
@@ -178,10 +196,10 @@ def _configure_settings(spec: SimulationRunSpec, progress_callback: ProgressCall
     pressure_pa = float(env.get("pressure", 100000.0))
     qv_kg_kg = float(env.get("water_vapour_mixing_ratio", 0.0222))
     updraft_m_s = float(env.get("updraft_velocity", 1.0))
+    activation_radius_m, rain_radius_m = diagnostic_radius_thresholds(spec.config)
 
     n_sd_initial = int(aero.get("number_superdroplets", 100))
-    # The UI currently stores initial SD count in background_aerosol only implicitly.
-    # If not provided, keep the MVP default of 100.
+    # Older scenario files predate the explicit background super-droplet field.
     if "number_superdroplets" not in aero:
         n_sd_initial = 100
 
@@ -200,7 +218,7 @@ def _configure_settings(spec: SimulationRunSpec, progress_callback: ProgressCall
         super_droplet_injection_rate=injection_rate,
         n_sd_initial=n_sd_initial,
         n_sd_seeding=n_sd_seeding,
-        rain_water_radius_threshold=25.0 * si.um,
+        rain_water_radius_threshold=rain_radius_m * si.m,
         formulae=formulae,
         enable_collisions=bool(microphysics.get("collision", False)),
     )
@@ -284,16 +302,62 @@ def _output_to_dataframe(output: Dict[str, Any], spec: SimulationRunSpec) -> pd.
     df = pd.DataFrame({"time_s": np.asarray(time, dtype=float)})
 
     product_mapping = {
-        "rain_water_mixing_ratio": ("rain water mixing ratio", "rain_water_mixing_ratio"),
-        "effective_radius_um": ("r_eff", "effective radius", "effective_radius"),
-        "droplet_number_concentration_cm3": ("n_drop", "droplet concentration", "n_drop_cm3"),
-        "superdroplet_count": ("sd_count", "super droplet count", "sd_count"),
+        "temperature_K": ("temperature_K", "T"),
+        "pressure_Pa": ("pressure_Pa", "p"),
+        "water_vapour_mixing_ratio": (
+            "water_vapour_mixing_ratio",
+            "water vapour mixing ratio",
+        ),
+        "unactivated_water_mixing_ratio": ("unactivated_water_mixing_ratio",),
+        "cloud_water_mixing_ratio": ("cloud_water_mixing_ratio",),
+        "rain_water_mixing_ratio": (
+            "rain_water_mixing_ratio",
+            "rain water mixing ratio",
+        ),
+        "total_liquid_water_mixing_ratio": ("total_liquid_water_mixing_ratio",),
+        "cloud_droplet_concentration": (
+            "cloud_droplet_concentration",
+            "n_drop",
+            "droplet concentration",
+            "n_drop_cm3",
+        ),
+        "rain_droplet_concentration": ("rain_droplet_concentration",),
+        "effective_radius_cloud_um": (
+            "effective_radius_cloud_um",
+            "r_eff",
+            "effective radius",
+            "effective_radius",
+        ),
+        "effective_radius_rain_um": ("effective_radius_rain_um",),
+        "effective_radius_all_um": ("effective_radius_all_um",),
+        "superdroplet_count": (
+            "superdroplet_count",
+            "sd_count",
+            "super droplet count",
+        ),
     }
 
     for out_name, candidates in product_mapping.items():
         values = _extract_product(products, *candidates)
         if values is not None:
             df[out_name] = np.asarray(values, dtype=float)
+
+    relative_humidity = _extract_product(products, "relative_humidity", "RH")
+    if relative_humidity is not None:
+        relative_humidity = np.asarray(relative_humidity, dtype=float)
+        finite = relative_humidity[np.isfinite(relative_humidity)]
+        if finite.size and np.nanquantile(np.abs(finite), 0.95) <= 2.0:
+            relative_humidity = relative_humidity * 100.0
+        df["relative_humidity_percent"] = relative_humidity
+        df["supersaturation_percent"] = relative_humidity - 100.0
+
+    # Backward-compatible aliases used by older dashboards and summaries.
+    if "cloud_droplet_concentration" in df.columns:
+        df["droplet_number_concentration_cm3"] = df["cloud_droplet_concentration"]
+    if "rain_droplet_concentration" in df.columns:
+        df["rain_drop_number_concentration"] = df["rain_droplet_concentration"]
+    if "effective_radius_all_um" in df.columns:
+        df["effective_radius_um"] = df["effective_radius_all_um"]
 
     seed = spec.settings.get("seeding", {})
     injection_start = float(seed.get("injection_start", np.inf))
@@ -313,10 +377,10 @@ def run_pysdm_parcel_simulation(
     progress_callback: ProgressCallback = None,
 ) -> AdapterResult:
     """
-    Run the first real PySDM parcel seeding simulation.
+    Run the PySDM parcel seeding simulation with project-owned native products.
 
-    This adapter uses `PySDM_examples.seeding.Settings` and
-    `PySDM_examples.seeding.simulation.Simulation` as the initial bridge.
+    `PySDM_examples.seeding.Settings` remains the compatible settings layer;
+    `NativeParcelSimulation` owns the builder and diagnostic product list.
     """
     modules = _require_pysdm()
     Simulation = modules["Simulation"]
@@ -329,7 +393,19 @@ def run_pysdm_parcel_simulation(
     expected_steps = int(duration / max(timestep, 1)) + 1
 
     emit_progress(progress_callback, "adapter", 3, 5, "Initializing PySDM Simulation object")
-    simulation = Simulation(settings=settings)
+    activation_radius_m, _ = diagnostic_radius_thresholds(spec.config)
+    spectrum_cfg = wet_radius_spectrum_config(spec.config)
+    spectrum_enabled = bool(spectrum_cfg.get("enabled", True))
+    spectrum_edges = build_spectrum_bin_edges(spec.config) if spectrum_enabled else np.asarray([])
+    spectrum_checkpoints = (
+        resolve_spectrum_checkpoint_times(spec.config) if spectrum_enabled else []
+    )
+    simulation = Simulation(
+        settings=settings,
+        activation_radius_threshold=activation_radius_m,
+        spectrum_radius_bin_edges=spectrum_edges if spectrum_enabled else None,
+        spectrum_checkpoint_times=tuple(spectrum_checkpoints),
+    )
 
     emit_progress(
         progress_callback,
@@ -342,11 +418,38 @@ def run_pysdm_parcel_simulation(
 
     emit_progress(progress_callback, "adapter", 5, 5, "Converting PySDM output to DataFrame")
     df = _output_to_dataframe(output, spec)
+    activation_radius_m, rain_radius_m = diagnostic_radius_thresholds(spec.config)
+    spectrum_df = build_wet_radius_spectrum_table(
+        output.get("spectra", {}),
+        spectrum_edges,
+        spec.config,
+    )
+    robustness_df = build_threshold_robustness_table(spectrum_df, spec.config)
 
     summary = {
         "adapter": "pysdm_parcel",
         "is_placeholder": False,
         "n_time_steps": int(len(df)),
+        "native_product_build_id": modules["native_product_build_id"],
+        "native_diagnostic_columns": [
+            column
+            for column in (
+                "temperature_K",
+                "pressure_Pa",
+                "water_vapour_mixing_ratio",
+                "relative_humidity_percent",
+                "cloud_water_mixing_ratio",
+                "rain_water_mixing_ratio",
+                "cloud_droplet_concentration",
+                "rain_droplet_concentration",
+                "effective_radius_cloud_um",
+                "effective_radius_rain_um",
+                "effective_radius_all_um",
+            )
+            if column in df.columns
+        ],
+        "wet_radius_spectrum_rows": int(len(spectrum_df)),
+        "threshold_robustness_rows": int(len(robustness_df)),
     }
 
     if "rain_water_mixing_ratio" in df:
@@ -362,14 +465,85 @@ def run_pysdm_parcel_simulation(
             df["droplet_number_concentration_cm3"].iloc[-1]
         )
 
+    closure_columns = {
+        "total_liquid_water_mixing_ratio",
+        "unactivated_water_mixing_ratio",
+        "cloud_water_mixing_ratio",
+        "rain_water_mixing_ratio",
+    }
+    if closure_columns.issubset(df.columns):
+        partition_sum = (
+            df["unactivated_water_mixing_ratio"]
+            + df["cloud_water_mixing_ratio"]
+            + df["rain_water_mixing_ratio"]
+        )
+        closure_error = (df["total_liquid_water_mixing_ratio"] - partition_sum).abs()
+        summary["liquid_water_partition_max_abs_error"] = float(closure_error.max())
+
+    if not robustness_df.empty:
+        final_time = float(robustness_df["time_s"].max())
+        final_baseline = robustness_df[
+            np.isclose(robustness_df["time_s"], final_time)
+            & np.isclose(robustness_df["activation_factor"], 1.0)
+            & np.isclose(robustness_df["rain_factor"], 1.0)
+        ]
+        if not final_baseline.empty:
+            summary["final_threshold_baseline"] = {
+                str(key): float(value)
+                for key, value in final_baseline.iloc[0].to_dict().items()
+            }
+
     metadata = {
         **spec.metadata,
-        "adapter_note": "Real PySDM parcel adapter using PySDM_examples.seeding.",
+        "adapter_note": (
+            "Real PySDM parcel adapter using a project-owned native product builder "
+            "and PySDM_examples.seeding.Settings."
+        ),
         "requires": ["PySDM", "PySDM-examples"],
+        "pysdm_version": modules["pysdm_version"],
+        "pysdm_examples_version": modules["pysdm_examples_version"],
+        "native_product_build_id": modules["native_product_build_id"],
+        "diagnostic_radius_thresholds": {
+            "activation_radius_m": activation_radius_m,
+            "activation_radius_um": activation_radius_m * 1.0e6,
+            "rain_radius_m": rain_radius_m,
+            "rain_radius_um": rain_radius_m * 1.0e6,
+            "range_convention": "lower inclusive, upper exclusive",
+        },
+        "native_product_names": sorted(output.get("products", {}).keys()),
+        "wet_radius_spectrum": {
+            "enabled": spectrum_enabled,
+            "configured_log_bins": int(spectrum_cfg.get("n_bins", 32)),
+            "actual_bins_after_threshold_insertion": max(0, int(len(spectrum_edges) - 1)),
+            "radius_bin_edges_um": (spectrum_edges * 1.0e6).tolist(),
+            "checkpoint_times_s": spectrum_checkpoints,
+            "checkpoint_interval_seconds": float(
+                spectrum_cfg.get("checkpoint_interval_seconds", 10.0)
+            ),
+            "checkpoint_policy": (
+                "Explicit checkpoint_times when provided; otherwise regular cadence plus "
+                "start, injection boundaries, and run end, snapped to the model timestep."
+            ),
+            "threshold_factors": [
+                float(value)
+                for value in spectrum_cfg.get("threshold_factors", [0.8, 1.0, 1.2])
+            ],
+            "number_product": "NumberSizeSpectrum (bin-integrated, m^-3)",
+            "volume_product": (
+                "ParticleVolumeVersusRadiusLogarithmSpectrum "
+                "(dV_liquid/V_air per dln(r))"
+            ),
+        },
     }
 
     return AdapterResult(
         timeseries=df,
         metadata=metadata,
         summary=summary,
+        tables={
+            SPECTRUM_TABLE_NAME: spectrum_df,
+            ROBUSTNESS_TABLE_NAME: robustness_df,
+        }
+        if spectrum_enabled
+        else {},
     )

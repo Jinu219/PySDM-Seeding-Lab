@@ -5,8 +5,9 @@ from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 
+from simulation.schema import diagnostic_radius_thresholds
 
-GROWTH_PATHWAY_BUILD_ID = "growth-pathway-diagnostics-20260713"
+GROWTH_PATHWAY_BUILD_ID = "native-growth-pathway-diagnostics-20260714"
 
 ACTIVATED_RADIUS_THRESHOLD_M = 0.5e-6
 RAIN_RADIUS_THRESHOLD_M = 25.0e-6
@@ -190,6 +191,248 @@ def add_growth_pathway_diagnostics(
         out["effective_radius_rain_um"] = np.where(rain_water > 0, all_reff, np.nan)
 
     return out
+
+
+PROVENANCE_NATIVE = "native"
+PROVENANCE_DERIVED = "derived"
+PROVENANCE_PROXY = "proxy"
+
+PROVENANCE_LABELS_KO: Dict[str, str] = {
+    PROVENANCE_NATIVE: "실측 (native)",
+    PROVENANCE_DERIVED: "계산값 (derived)",
+    PROVENANCE_PROXY: "근사값 (proxy)",
+}
+
+
+def classify_diagnostic_provenance(
+    raw_columns: List[str] | set,
+    config: Dict[str, Any] | None = None,
+) -> Dict[str, Dict[str, str]]:
+    """
+    Classify each Growth Pathway variable as native / derived / proxy.
+
+    - native: the adapter already produced this exact column.
+    - derived: computed from other *native* adapter columns using a direct,
+      physically exact relationship (e.g. all_activated = cloud + rain, when
+      both cloud and rain are themselves native).
+    - proxy: not available from the adapter; approximated with a heuristic
+      that does not come from PySDM's own physics (e.g. temperature guessed
+      from a liquid-water scale, water vapour back-calculated from qv0).
+
+    `raw_columns` must be the adapter's *raw* output columns, captured before
+    `add_growth_pathway_diagnostics` is applied, since that function fills in
+    proxy columns and would otherwise make everything look native.
+    """
+    raw = set(raw_columns)
+    info: Dict[str, Dict[str, str]] = {}
+    activation_radius_m, rain_radius_m = diagnostic_radius_thresholds(config)
+    activation_radius_um = activation_radius_m * 1.0e6
+    rain_radius_um = rain_radius_m * 1.0e6
+
+    def set_info(var: str, provenance: str, basis: str) -> None:
+        info[var] = {"provenance": provenance, "basis": basis}
+
+    cloud_native = "cloud_water_mixing_ratio" in raw
+    rain_native = "rain_water_mixing_ratio" in raw
+
+    # --- Thermodynamic pathway ---------------------------------------------
+    if "water_vapour_mixing_ratio" in raw:
+        set_info("water_vapour_mixing_ratio", PROVENANCE_NATIVE, "adapter output column")
+    else:
+        set_info(
+            "water_vapour_mixing_ratio",
+            PROVENANCE_PROXY,
+            "adapter가 제공하지 않아 qv0 - (cloud_water + rain_water)로 역산 (PySDM 직접 출력 아님)",
+        )
+
+    if "supersaturation_percent" in raw:
+        set_info("supersaturation_percent", PROVENANCE_NATIVE, "adapter output column")
+    elif "supersaturation" in raw:
+        set_info(
+            "supersaturation_percent",
+            PROVENANCE_DERIVED,
+            "adapter의 'supersaturation' 컬럼을 %로 단위 변환 (값 자체는 native)",
+        )
+    elif "relative_humidity_percent" in raw:
+        set_info(
+            "supersaturation_percent",
+            PROVENANCE_DERIVED,
+            "adapter의 relative_humidity_percent에서 -100 오프셋으로 계산",
+        )
+    else:
+        set_info(
+            "supersaturation_percent",
+            PROVENANCE_PROXY,
+            "adapter가 supersaturation 관련 값을 전혀 제공하지 않아 NaN으로 남음",
+        )
+
+    if "relative_humidity_percent" in raw:
+        set_info("relative_humidity_percent", PROVENANCE_NATIVE, "adapter output column")
+    else:
+        set_info(
+            "relative_humidity_percent",
+            PROVENANCE_DERIVED if ("supersaturation_percent" in raw or "supersaturation" in raw) else PROVENANCE_PROXY,
+            "supersaturation_percent(추정치 포함)로부터 100 + supersaturation으로 계산",
+        )
+
+    if "temperature_K" in raw:
+        set_info("temperature_K", PROVENANCE_NATIVE, "adapter output column")
+    else:
+        set_info(
+            "temperature_K",
+            PROVENANCE_PROXY,
+            "adapter가 온도 시계열을 제공하지 않아, 초기 온도에 liquid water 비례 보정을 더한 휴리스틱 (PySDM 열역학 계산 아님)",
+        )
+
+    # --- Water mass pathway --------------------------------------------------
+    set_info(
+        "cloud_water_mixing_ratio",
+        PROVENANCE_NATIVE if cloud_native else PROVENANCE_PROXY,
+        (
+            f"PySDM WaterMixingRatio native product ({activation_radius_um:g} ≤ wet radius < {rain_radius_um:g} µm)"
+            if cloud_native
+            else "adapter가 제공하지 않아 0으로 기본값 처리됨"
+        ),
+    )
+    set_info(
+        "rain_water_mixing_ratio",
+        PROVENANCE_NATIVE if rain_native else PROVENANCE_PROXY,
+        (
+            f"PySDM WaterMixingRatio native product (wet radius ≥ {rain_radius_um:g} µm)"
+            if rain_native
+            else "adapter가 제공하지 않아 0으로 기본값 처리됨"
+        ),
+    )
+    if "all_activated_water_mixing_ratio" in raw:
+        set_info(
+            "all_activated_water_mixing_ratio",
+            PROVENANCE_NATIVE,
+            "adapter output column",
+        )
+    elif cloud_native and rain_native:
+        set_info(
+            "all_activated_water_mixing_ratio",
+            PROVENANCE_DERIVED,
+            "cloud_water_mixing_ratio + rain_water_mixing_ratio (둘 다 native이므로 정확한 합산)",
+        )
+    else:
+        set_info(
+            "all_activated_water_mixing_ratio",
+            PROVENANCE_PROXY,
+            "cloud/rain 중 최소 하나가 proxy이므로 합산 결과도 근사값",
+        )
+
+    # --- Number concentration pathway ----------------------------------------
+    if (
+        "cloud_droplet_concentration" in raw
+        or "droplet_number_concentration_cm3" in raw
+        or "droplet_number_concentration" in raw
+    ):
+        set_info(
+            "cloud_droplet_concentration",
+            PROVENANCE_NATIVE,
+            f"PySDM ParticleConcentration native product ({activation_radius_um:g} ≤ wet radius < {rain_radius_um:g} µm)",
+        )
+        cloud_conc_native = True
+    else:
+        set_info(
+            "cloud_droplet_concentration",
+            PROVENANCE_PROXY,
+            "adapter가 제공하지 않아 NaN으로 남음",
+        )
+        cloud_conc_native = False
+
+    if "rain_droplet_concentration" in raw or "rain_drop_number_concentration" in raw:
+        set_info(
+            "rain_droplet_concentration",
+            PROVENANCE_NATIVE,
+            f"PySDM ParticleConcentration native product (wet radius ≥ {rain_radius_um:g} µm)",
+        )
+        rain_conc_native = True
+    else:
+        set_info(
+            "rain_droplet_concentration",
+            PROVENANCE_PROXY,
+            "adapter가 강우 방울 수농도를 제공하지 않아, rain_water_mixing_ratio>0 여부만으로 0/1 지시값을 대신 사용 (수농도 아님)",
+        )
+        rain_conc_native = False
+
+    if "all_activated_concentration" in raw:
+        set_info(
+            "all_activated_concentration",
+            PROVENANCE_NATIVE,
+            "adapter output column",
+        )
+    elif cloud_conc_native and rain_conc_native:
+        set_info(
+            "all_activated_concentration",
+            PROVENANCE_DERIVED,
+            "cloud_droplet_concentration + rain_droplet_concentration (둘 다 native)",
+        )
+    else:
+        set_info(
+            "all_activated_concentration",
+            PROVENANCE_PROXY,
+            "구성 성분 중 최소 하나가 proxy이므로 합산 결과도 근사값",
+        )
+
+    # --- Size growth pathway ---------------------------------------------------
+    all_radius_native = "effective_radius_all_um" in raw
+    cloud_radius_native = (
+        "effective_radius_cloud_um" in raw
+        or "effective_radius_um" in raw
+        or "mean_radius_m" in raw
+    )
+    rain_radius_native = "effective_radius_rain_um" in raw
+    set_info(
+        "effective_radius_all_um",
+        PROVENANCE_NATIVE if all_radius_native else PROVENANCE_PROXY,
+        (
+            f"PySDM EffectiveRadius native product (wet radius ≥ {activation_radius_um:g} µm)"
+            if all_radius_native
+            else "adapter가 all-activated 유효반경을 제공하지 않아 generic radius를 대신 사용할 수 있음"
+        ),
+    )
+    set_info(
+        "effective_radius_cloud_um",
+        PROVENANCE_NATIVE if cloud_radius_native else PROVENANCE_PROXY,
+        (
+            f"PySDM EffectiveRadius native product ({activation_radius_um:g} ≤ wet radius < {rain_radius_um:g} µm)"
+            if cloud_radius_native
+            else "adapter가 제공하지 않아 NaN으로 남음"
+        ),
+    )
+    set_info(
+        "effective_radius_rain_um",
+        PROVENANCE_NATIVE if rain_radius_native else PROVENANCE_PROXY,
+        (
+            f"PySDM EffectiveRadius native product (wet radius ≥ {rain_radius_um:g} µm)"
+            if rain_radius_native
+            else "rain_water_mixing_ratio>0인 시점에만 전체 유효반경 값을 사용하는 근사"
+        ),
+    )
+
+    return info
+
+
+def diagnostic_provenance_rows(
+    raw_columns: List[str] | set,
+    config: Dict[str, Any] | None = None,
+) -> List[Dict[str, Any]]:
+    """Return provenance classification as table rows, in preferred display order."""
+    provenance = classify_diagnostic_provenance(raw_columns, config)
+    rows: List[Dict[str, Any]] = []
+    for column in GROWTH_PATHWAY_PREFERRED_ORDER:
+        entry = provenance.get(column, {"provenance": PROVENANCE_PROXY, "basis": "분류되지 않음"})
+        rows.append(
+            {
+                "variable": column,
+                "provenance": entry["provenance"],
+                "provenance_label": PROVENANCE_LABELS_KO.get(entry["provenance"], entry["provenance"]),
+                "basis": entry["basis"],
+            }
+        )
+    return rows
 
 
 def diagnostic_health(df: pd.DataFrame) -> Dict[str, Any]:

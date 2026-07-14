@@ -24,12 +24,51 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_difference",
     "plot_sweep_ranking",
     "sweep_base_variables",
+    "sweep_execution_status_table",
     "build_sweep_overlay_dataframe",
     "plot_sweep_overlay",
     "compute_overlay_spread",
     "sweep_param_columns",
     "plot_sweep_heatmap",
     "build_overlay_legend_table",
+    "growth_pathway_all_variables",
+    "growth_pathway_variable_groups",
+    "diagnostic_provenance_dataframe",
+    "diagnostic_provenance_summary_counts",
+    "result_file_roles_dataframe",
+    "filter_sweep_dataframe",
+    "build_sweep_overlay_dataframe_relative_time",
+    "sweep_case_metrics_table",
+    "varying_sweep_parameters",
+    "plot_parameter_sensitivity",
+    "add_kappa_koehler_collapse_variable",
+    "plot_collapse_variable_response",
+    "plot_response_surface_heatmap",
+    "plot_ensemble_uncertainty",
+    "ensemble_available_bases",
+    "load_sweep_case_publication_data",
+    "sweep_case_display_label",
+    "matched_collision_cases",
+    "plot_growth_pathway_four_panel",
+    "plot_ensemble_uncertainty_panel",
+    "plot_one_factor_sensitivity_panel",
+    "plot_collision_off_on_panel",
+    "plot_wet_radius_spectrum",
+    "plot_threshold_robustness",
+    "plot_wet_radius_spectrum_difference",
+    "plot_threshold_robustness_difference",
+    "spectrum_checkpoint_times",
+    "threshold_robustness_metrics",
+    "plot_water_budget",
+    "plot_numerical_convergence",
+    "plot_spectrum_transition",
+    "convergence_metrics",
+    "figure_to_svg_bytes",
+    "figure_to_pdf_bytes",
+    "apply_publication_style",
+    "publication_parameter_label",
+    "publication_variable_label",
+    "comparison_seeding_intervals",
 ]
 
 
@@ -89,10 +128,130 @@ def check_safe_read_csv_no_recursion() -> None:
         raise RuntimeError("safe_read_csv does not call pd.read_csv(path).")
 
 
+def check_sweep_catalog() -> None:
+    from simulation.schema import default_config
+    from simulation.sweep import generate_sweep_cases
+    from simulation.sweep_catalog import COMMON_SWEEP_PARAMETERS, SENSITIVITY_PRESETS
+
+    names = [spec.name for spec in COMMON_SWEEP_PARAMETERS]
+    if len(names) != len(set(names)):
+        raise RuntimeError("Common sweep catalog contains duplicate parameter names.")
+    if len(names) < 15:
+        raise RuntimeError("Common sweep catalog unexpectedly lost parameter coverage.")
+
+    for preset_name, preset in SENSITIVITY_PRESETS.items():
+        parameters = preset.get("parameters", {})
+        if preset_name == "Custom":
+            continue
+        unknown = sorted(set(parameters) - set(names))
+        if unknown:
+            raise RuntimeError(f"Preset {preset_name!r} uses unknown parameters: {unknown}")
+        case_count = 1
+        for raw_values in parameters.values():
+            case_count *= len([item for item in str(raw_values).split(",") if item.strip()])
+        if case_count > 100:
+            raise RuntimeError(f"Preset {preset_name!r} exceeds the default 100-case safety limit.")
+
+    cfg = default_config()
+    cfg["experiment"]["mode"] = "parameter_sweep"
+    cfg["sweep"]["max_runs"] = 10
+    cfg["sweep"]["parameters"] = [
+        {"name": "seeding.injection_start", "values": [100, 200]},
+        {"name": "seeding.injection_duration", "values": [30]},
+    ]
+    cases = generate_sweep_cases(cfg)
+    expected_ends = [130, 230]
+    actual_ends = [case.config["seeding"]["injection_end"] for case in cases]
+    if actual_ends != expected_ends:
+        raise RuntimeError(
+            f"Derived injection_end values are wrong: expected {expected_ends}, got {actual_ends}"
+        )
+
+
+def check_native_diagnostic_contract() -> None:
+    import numpy as np
+
+    from analysis.growth_pathway_diagnostics import diagnostic_provenance_rows
+    from simulation.builder import build_run_spec
+    from simulation.pysdm_parcel_adapter import _output_to_dataframe
+    from simulation.schema import default_config, diagnostic_radius_thresholds
+    from simulation.validation import validate_config_detailed
+
+    cfg = default_config()
+    activation_radius, rain_radius = diagnostic_radius_thresholds(cfg)
+    if not 0 < activation_radius < rain_radius:
+        raise RuntimeError("Default diagnostic radius thresholds are invalid.")
+
+    products = {"time": np.array([0.0, 15.0])}
+    for index, name in enumerate(
+        (
+            "temperature_K",
+            "pressure_Pa",
+            "water_vapour_mixing_ratio",
+            "relative_humidity",
+            "unactivated_water_mixing_ratio",
+            "cloud_water_mixing_ratio",
+            "rain_water_mixing_ratio",
+            "total_liquid_water_mixing_ratio",
+            "cloud_droplet_concentration",
+            "rain_droplet_concentration",
+            "effective_radius_cloud_um",
+            "effective_radius_rain_um",
+            "effective_radius_all_um",
+            "superdroplet_count",
+        ),
+        start=1,
+    ):
+        products[name] = np.full(2, index * 0.01)
+
+    df = _output_to_dataframe({"products": products}, build_run_spec(cfg))
+    provenance = diagnostic_provenance_rows(list(df.columns), cfg)
+    proxies = [row["variable"] for row in provenance if row["provenance"] == "proxy"]
+    if proxies:
+        raise RuntimeError(f"Native diagnostic contract regressed to proxy: {proxies}")
+
+    invalid = default_config()
+    invalid["diagnostics"]["activation_radius_threshold"] = 30.0e-6
+    invalid["diagnostics"]["rain_radius_threshold"] = 25.0e-6
+    errors = [
+        issue
+        for issue in validate_config_detailed(invalid)
+        if issue.severity == "error"
+    ]
+    if not any(issue.field == "diagnostics.rain_radius_threshold" for issue in errors):
+        raise RuntimeError("Invalid diagnostic threshold ordering is not rejected.")
+
+
 def main() -> None:
+    check_page_files()
     check_safe_read_csv_no_recursion()
+    check_sweep_catalog()
+    check_native_diagnostic_contract()
+    py_compile.compile(str(PROJECT_ROOT / "app.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "ui_helpers.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "path_policy.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "native_parcel_simulation.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "pysdm_parcel_adapter.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "wet_radius_spectrum.py"), doraise=True)
+    for page_path in sorted((PROJECT_ROOT / "pages").glob("*.py")):
+        py_compile.compile(str(page_path), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "publication_plots.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "ensemble_statistics.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "resource_monitor.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "wet_radius_plots.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "water_budget.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "numerical_convergence.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "case_diagnostic_comparison.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "spectrum_transition.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "qualification_evidence.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "reporting.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_numerical_qualification.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_ensemble_benchmark.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 
@@ -104,6 +263,7 @@ def main() -> None:
 
     print("Project integrity check passed.")
     print("Dashboard exports are complete.")
+    print("Native diagnostic contract is complete (proxy-free synthetic mapping).")
     print(f"Dashboard build: {getattr(dashboard, 'DASHBOARD_BUILD_ID', 'unknown')}")
 
 

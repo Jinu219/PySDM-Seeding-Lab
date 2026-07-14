@@ -11,9 +11,46 @@ import numpy as np
 import pandas as pd
 import yaml
 from analysis.ensemble_statistics import ensemble_variable_bases
-from analysis.growth_pathway_diagnostics import GROWTH_PATHWAY_VARIABLE_GROUPS, GROWTH_PATHWAY_PREFERRED_ORDER
+from analysis.growth_pathway_diagnostics import (
+    GROWTH_PATHWAY_VARIABLE_GROUPS,
+    GROWTH_PATHWAY_PREFERRED_ORDER,
+    PROVENANCE_LABELS_KO,
+)
+from analysis.result_files import describe_result_files
+from analysis.result_manifest import inspect_result_compatibility
+from analysis.spectrum_transition import plot_spectrum_transition
+from analysis.numerical_convergence import (
+    convergence_metrics,
+    plot_numerical_convergence,
+)
+from analysis.water_budget import plot_water_budget
+from analysis.publication_plots import (
+    DEFAULT_PATHWAY_VARIABLES,
+    PUBLICATION_PLOTS_BUILD_ID,
+    PUBLICATION_STYLE_PRESETS,
+    apply_publication_style,
+    matched_collision_cases,
+    one_factor_sensitivity_slices,
+    plot_collision_off_on_panel,
+    plot_ensemble_uncertainty_panel,
+    plot_growth_pathway_four_panel,
+    plot_one_factor_sensitivity_panel,
+    publication_parameter_label,
+    publication_provenance_note,
+    publication_variable_label,
+)
+from analysis.wet_radius_plots import (
+    ROBUSTNESS_METRIC_LABELS,
+    SPECTRUM_VALUE_LABELS,
+    plot_threshold_robustness,
+    plot_threshold_robustness_difference,
+    plot_wet_radius_spectrum,
+    plot_wet_radius_spectrum_difference,
+    spectrum_checkpoint_times,
+    threshold_robustness_metrics,
+)
 
-DASHBOARD_BUILD_ID = "sweep-case-filter-coverage-20260713"
+DASHBOARD_BUILD_ID = "qualification-benchmark-report-migration-20260714"
 
 
 @dataclass(frozen=True)
@@ -24,6 +61,23 @@ class ResultEntry:
     label: str
     is_run_directory: bool
     result_type: str
+
+
+def _representative_diagnostic_provenance_path(result_root: Path) -> Path | None:
+    """Find one diagnostic provenance file representative of a structured result."""
+    direct_candidates = [
+        result_root / "diagnostic_provenance.json",
+        result_root / "control" / "diagnostic_provenance.json",
+        result_root / "seeding" / "diagnostic_provenance.json",
+    ]
+    for candidate in direct_candidates:
+        if candidate.exists():
+            return candidate
+
+    try:
+        return next(iter(sorted(result_root.rglob("diagnostic_provenance.json"))), None)
+    except OSError:
+        return None
 
 
 def discover_results(result_dir: Path) -> List[ResultEntry]:
@@ -85,6 +139,7 @@ def discover_results(result_dir: Path) -> List[ResultEntry]:
 
 def load_result(entry: ResultEntry) -> Dict[str, Any]:
     """Load a result directory or legacy CSV into a common dictionary."""
+    compatibility = inspect_result_compatibility(entry.path)
     if entry.result_type == "ensemble":
         stats_path = entry.path / "ensemble_statistics.csv"
         member_summary_path = entry.path / "member_summary.csv"
@@ -92,6 +147,12 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
+        report_path = entry.path / "report.md"
+        html_report_path = entry.path / "report.html"
+        pdf_report_path = entry.path / "report.pdf"
+        aggregation_diagnostics_path = entry.path / "ensemble_aggregation_diagnostics.json"
+        ensemble_benchmark_path = entry.path / "ensemble_benchmark.json"
+        diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         stats_df = safe_read_csv(stats_path)
         member_summary_df = safe_read_csv(member_summary_path)
@@ -105,10 +166,21 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
             "seeding": pd.DataFrame(),
+            "wet_radius_spectrum": pd.DataFrame(),
+            "threshold_robustness": pd.DataFrame(),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
+            "diagnostic_provenance": (
+                _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
+            ) or [],
+            "report_markdown": _read_text(report_path),
+            "report_html": _read_text(html_report_path),
+            "report_pdf": _read_bytes(pdf_report_path),
+            "ensemble_aggregation_diagnostics": _read_json(aggregation_diagnostics_path),
+            "ensemble_benchmark": _read_json(ensemble_benchmark_path),
+            "result_compatibility": compatibility,
             "files": {
                 "ensemble_statistics": stats_path,
                 "member_summary": member_summary_path,
@@ -116,15 +188,26 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "metadata": metadata_path,
                 "config": config_path,
                 "validation": validation_path,
+                "diagnostic_provenance": diagnostic_provenance_path,
+                "report": report_path,
+                "report_html": html_report_path,
+                "report_pdf": pdf_report_path,
+                "ensemble_aggregation_diagnostics": aggregation_diagnostics_path,
+                "ensemble_benchmark": ensemble_benchmark_path,
             },
         }
 
     if entry.result_type == "parameter_sweep":
         sweep_path = entry.path / "sweep_summary.csv"
+        convergence_path = entry.path / "numerical_convergence.csv"
+        report_path = entry.path / "report.md"
+        html_report_path = entry.path / "report.html"
+        pdf_report_path = entry.path / "report.pdf"
         summary_path = entry.path / "summary.json"
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
+        diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         sweep_df = safe_read_csv(sweep_path)
 
@@ -135,16 +218,31 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
             "seeding": pd.DataFrame(),
+            "wet_radius_spectrum": pd.DataFrame(),
+            "threshold_robustness": pd.DataFrame(),
+            "numerical_convergence": safe_read_csv(convergence_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
+            "diagnostic_provenance": (
+                _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
+            ) or [],
+            "report_markdown": _read_text(report_path),
+            "report_html": _read_text(html_report_path),
+            "report_pdf": _read_bytes(pdf_report_path),
+            "result_compatibility": compatibility,
             "files": {
                 "sweep_summary": sweep_path,
+                "numerical_convergence": convergence_path,
                 "summary": summary_path,
                 "metadata": metadata_path,
                 "config": config_path,
                 "validation": validation_path,
+                "diagnostic_provenance": diagnostic_provenance_path,
+                "report": report_path,
+                "report_html": html_report_path,
+                "report_pdf": pdf_report_path,
             },
         }
 
@@ -156,6 +254,25 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         validation_path = entry.path / "validation_report.json"
         control_path = entry.path / "control" / "timeseries.csv"
         seeding_path = entry.path / "seeding" / "timeseries.csv"
+        control_spectrum_path = entry.path / "control" / "wet_radius_spectrum.csv"
+        seeding_spectrum_path = entry.path / "seeding" / "wet_radius_spectrum.csv"
+        control_robustness_path = entry.path / "control" / "threshold_robustness.csv"
+        seeding_robustness_path = entry.path / "seeding" / "threshold_robustness.csv"
+        control_water_budget_path = entry.path / "control" / "water_budget.csv"
+        seeding_water_budget_path = entry.path / "seeding" / "water_budget.csv"
+        spectrum_comparison_path = entry.path / "wet_radius_spectrum_comparison.csv"
+        threshold_comparison_path = entry.path / "threshold_robustness_comparison.csv"
+        water_budget_comparison_path = entry.path / "water_budget_comparison.csv"
+        transition_path = entry.path / "spectrum_transition.csv"
+        transition_robustness_path = entry.path / "spectrum_transition_onset_robustness.csv"
+        report_path = entry.path / "report.md"
+        html_report_path = entry.path / "report.html"
+        pdf_report_path = entry.path / "report.pdf"
+        # Provenance is identical for control and seeding runs of the same
+        # comparison (same adapter, same diagnostics config), so either
+        # subdirectory's provenance file is representative; control is used
+        # because it always exists when a comparison result exists.
+        diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         comparison_df = safe_read_csv(comparison_path)
         control_df = safe_read_csv(control_path)
@@ -168,10 +285,28 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "comparison": comparison_df,
             "control": control_df,
             "seeding": seeding_df,
+            "control_wet_radius_spectrum": safe_read_csv(control_spectrum_path),
+            "seeding_wet_radius_spectrum": safe_read_csv(seeding_spectrum_path),
+            "control_threshold_robustness": safe_read_csv(control_robustness_path),
+            "seeding_threshold_robustness": safe_read_csv(seeding_robustness_path),
+            "control_water_budget": safe_read_csv(control_water_budget_path),
+            "seeding_water_budget": safe_read_csv(seeding_water_budget_path),
+            "wet_radius_spectrum_comparison": safe_read_csv(spectrum_comparison_path),
+            "threshold_robustness_comparison": safe_read_csv(threshold_comparison_path),
+            "water_budget_comparison": safe_read_csv(water_budget_comparison_path),
+            "spectrum_transition": safe_read_csv(transition_path),
+            "spectrum_transition_onset_robustness": safe_read_csv(transition_robustness_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
+            "diagnostic_provenance": (
+                _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
+            ) or [],
+            "report_markdown": _read_text(report_path),
+            "report_html": _read_text(html_report_path),
+            "report_pdf": _read_bytes(pdf_report_path),
+            "result_compatibility": compatibility,
             "files": {
                 "comparison": comparison_path,
                 "summary": summary_path,
@@ -180,6 +315,21 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "validation": validation_path,
                 "control_timeseries": control_path,
                 "seeding_timeseries": seeding_path,
+                "control_wet_radius_spectrum": control_spectrum_path,
+                "seeding_wet_radius_spectrum": seeding_spectrum_path,
+                "control_threshold_robustness": control_robustness_path,
+                "seeding_threshold_robustness": seeding_robustness_path,
+                "control_water_budget": control_water_budget_path,
+                "seeding_water_budget": seeding_water_budget_path,
+                "wet_radius_spectrum_comparison": spectrum_comparison_path,
+                "threshold_robustness_comparison": threshold_comparison_path,
+                "water_budget_comparison": water_budget_comparison_path,
+                "spectrum_transition": transition_path,
+                "spectrum_transition_onset_robustness": transition_robustness_path,
+                "diagnostic_provenance": diagnostic_provenance_path,
+                "report": report_path,
+                "report_html": html_report_path,
+                "report_pdf": pdf_report_path,
             },
         }
 
@@ -189,6 +339,13 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
+        diagnostic_provenance_path = entry.path / "diagnostic_provenance.json"
+        spectrum_path = entry.path / "wet_radius_spectrum.csv"
+        robustness_path = entry.path / "threshold_robustness.csv"
+        water_budget_path = entry.path / "water_budget.csv"
+        report_path = entry.path / "report.md"
+        html_report_path = entry.path / "report.html"
+        pdf_report_path = entry.path / "report.pdf"
 
         df = safe_read_csv(timeseries_path)
 
@@ -201,16 +358,31 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
             "seeding": pd.DataFrame(),
+            "wet_radius_spectrum": safe_read_csv(spectrum_path),
+            "threshold_robustness": safe_read_csv(robustness_path),
+            "water_budget": safe_read_csv(water_budget_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
+            "diagnostic_provenance": _read_json(diagnostic_provenance_path) or [],
+            "report_markdown": _read_text(report_path),
+            "report_html": _read_text(html_report_path),
+            "report_pdf": _read_bytes(pdf_report_path),
+            "result_compatibility": compatibility,
             "files": {
                 "timeseries": timeseries_path,
                 "summary": summary_path,
                 "metadata": metadata_path,
                 "config": config_path,
                 "validation": validation_path,
+                "diagnostic_provenance": diagnostic_provenance_path,
+                "wet_radius_spectrum": spectrum_path,
+                "threshold_robustness": robustness_path,
+                "water_budget": water_budget_path,
+                "report": report_path,
+                "report_html": html_report_path,
+                "report_pdf": pdf_report_path,
             },
         }
 
@@ -222,10 +394,19 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         "comparison": pd.DataFrame(),
         "control": pd.DataFrame(),
         "seeding": pd.DataFrame(),
+        "wet_radius_spectrum": pd.DataFrame(),
+        "threshold_robustness": pd.DataFrame(),
+        "water_budget": pd.DataFrame(),
+        "numerical_convergence": pd.DataFrame(),
         "summary": {},
         "metadata": {"source": "legacy_csv", "filename": entry.path.name},
         "config": {},
         "validation": [],
+        "diagnostic_provenance": [],
+        "report_markdown": "",
+        "report_html": "",
+        "report_pdf": b"",
+        "result_compatibility": compatibility,
         "files": {
             "timeseries": entry.path,
         },
@@ -244,6 +425,24 @@ def _read_yaml(path: Path) -> Any:
         return {}
     with path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _read_text(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _read_bytes(path: Path) -> bytes:
+    if not path.exists():
+        return b""
+    try:
+        return path.read_bytes()
+    except OSError:
+        return b""
 
 
 def safe_read_csv(path: Path) -> pd.DataFrame:
@@ -435,6 +634,11 @@ def _seeding_intervals_from_comparison(comparison_df: pd.DataFrame) -> List[tupl
     return []
 
 
+def comparison_seeding_intervals(comparison_df: pd.DataFrame) -> List[tuple[float, float]]:
+    """Public wrapper returning seeding-active intervals from comparison data."""
+    return _seeding_intervals_from_comparison(comparison_df)
+
+
 
 
 def _curve_palette(n: int) -> List[str]:
@@ -610,16 +814,35 @@ def _format_sweep_case_label(row: pd.Series) -> str:
 
     conc_key = "param.seeding.number_concentration"
     if conc_key in row and pd.notna(row[conc_key]):
-        parts.append(f"Nseed={row[conc_key]}")
+        parts.append(f"Nseed={format_sweep_param_value(conc_key, row[conc_key])}")
 
     updraft_key = "param.environment.updraft_velocity"
     if updraft_key in row and pd.notna(row[updraft_key]):
-        parts.append(f"w={row[updraft_key]}")
+        parts.append(f"w={float(row[updraft_key]):g}m/s")
 
     collision_key = "param.microphysics.collision"
     if collision_key in row and pd.notna(row[collision_key]):
-        collision_value = bool(row[collision_key])
+        raw_collision = row[collision_key]
+        if isinstance(raw_collision, str):
+            collision_value = raw_collision.strip().lower() in {"true", "1", "yes", "on"}
+        else:
+            collision_value = bool(raw_collision)
         parts.append("coll=ON" if collision_value else "coll=OFF")
+
+    handled_parameters = {
+        radius_key,
+        kappa_key,
+        injection_key,
+        conc_key,
+        updraft_key,
+        collision_key,
+    }
+    for parameter in [key for key in row.index if str(key).startswith("param.")]:
+        if parameter in handled_parameters or pd.isna(row[parameter]):
+            continue
+        parts.append(
+            f"{short_sweep_param_name(parameter)}={format_sweep_param_value(parameter, row[parameter])}"
+        )
 
     if parts:
         return ", ".join(parts)
@@ -628,6 +851,11 @@ def _format_sweep_case_label(row: pd.Series) -> str:
         return str(row["case_name"])
 
     return "case"
+
+
+def sweep_case_display_label(row: pd.Series) -> str:
+    """Public wrapper for the compact sweep-case label used by the Results UI."""
+    return _format_sweep_case_label(row)
 
 
 
@@ -680,6 +908,99 @@ def _read_sweep_case_dataframe(case_dir: Path, curve_source: str) -> pd.DataFram
         return pd.DataFrame()
 
     return safe_read_csv(path)
+
+
+def load_sweep_case_publication_data(
+    sweep_dir: Path,
+    row: pd.Series,
+) -> tuple[str, pd.DataFrame]:
+    """Load one sweep case as either a comparison or ensemble-statistics dataset."""
+    case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+    comparison_path = case_dir / "comparison.csv"
+    if comparison_path.exists():
+        return "comparison", safe_read_csv(comparison_path)
+
+    ensemble_path = case_dir / "ensemble_statistics.csv"
+    if ensemble_path.exists():
+        return "ensemble", safe_read_csv(ensemble_path)
+
+    return "unavailable", pd.DataFrame()
+
+
+def sweep_execution_status_table(
+    sweep_dir: Path,
+    sweep_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build case-level execution health, including inference for older sweep results."""
+    columns = [
+        "case_index",
+        "case_name",
+        "execution_status",
+        "member_success",
+        "member_failed",
+        "data_available",
+        "error",
+        "result_dir",
+    ]
+    if sweep_df.empty:
+        return pd.DataFrame(columns=columns)
+
+    rows: list[dict[str, Any]] = []
+    for _, row in sweep_df.iterrows():
+        case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+        member_success = pd.to_numeric(
+            pd.Series([row.get("ensemble.n_success")]), errors="coerce"
+        ).iloc[0]
+        member_failed = pd.to_numeric(
+            pd.Series([row.get("ensemble.n_failed")]), errors="coerce"
+        ).iloc[0]
+        success_count = int(member_success) if pd.notna(member_success) else 0
+        failed_count = int(member_failed) if pd.notna(member_failed) else 0
+
+        case_data = _read_sweep_case_dataframe(case_dir, "comparison")
+        data_available = not case_data.empty and "time_s" in case_data.columns
+        explicit_status = str(row.get("case_status", "")).strip().lower()
+        if explicit_status in {"success", "partial", "failed"}:
+            status = explicit_status
+        elif success_count + failed_count > 0:
+            status = (
+                "failed"
+                if success_count == 0
+                else "partial"
+                if failed_count > 0
+                else "success"
+            )
+        else:
+            status = "success" if data_available else "unknown"
+
+        error = str(row.get("case_error", "") or "").strip()
+        if not error or error.lower() == "nan":
+            member_summary = safe_read_csv(case_dir / "member_summary.csv")
+            if not member_summary.empty and "success" in member_summary.columns:
+                success_values = member_summary["success"].astype(str).str.lower()
+                failed_members = member_summary[~success_values.isin({"true", "1", "yes"})]
+                if not failed_members.empty:
+                    for error_column in ("error_message", "error"):
+                        if error_column in failed_members.columns:
+                            values = failed_members[error_column].dropna().astype(str)
+                            if len(values):
+                                error = values.iloc[0]
+                                break
+
+        rows.append(
+            {
+                "case_index": row.get("case_index"),
+                "case_name": row.get("case_name", ""),
+                "execution_status": status,
+                "member_success": success_count,
+                "member_failed": failed_count,
+                "data_available": data_available,
+                "error": error,
+                "result_dir": str(row.get("result_dir", "")),
+            }
+        )
+
+    return pd.DataFrame(rows, columns=columns)
 
 
 def sweep_base_variables(
@@ -781,7 +1102,27 @@ def _limit_sweep_cases_for_display(work_df: pd.DataFrame, max_cases: int) -> pd.
 
 def short_sweep_param_name(column: str) -> str:
     """Human-friendly sweep parameter name."""
-    return column.replace("param.", "")
+    aliases = {
+        "param.seeding.dry_radius": "rseed",
+        "param.seeding.kappa": "κseed",
+        "param.seeding.geometric_sigma": "σg,seed",
+        "param.seeding.number_concentration": "Nseed",
+        "param.seeding.number_superdroplets": "NSD,seed",
+        "param.seeding.injection_start": "tinj",
+        "param.seeding.injection_duration": "Δtinj",
+        "param.environment.updraft_velocity": "w",
+        "param.environment.temperature": "T0",
+        "param.environment.pressure": "p0",
+        "param.environment.water_vapour_mixing_ratio": "qv0",
+        "param.environment.timestep": "Δt",
+        "param.background_aerosol.number_concentration": "Nbg",
+        "param.background_aerosol.number_superdroplets": "NSD,bg",
+        "param.background_aerosol.dry_radius": "rbg",
+        "param.background_aerosol.kappa": "κbg",
+        "param.background_aerosol.geometric_sigma": "σg,bg",
+        "param.microphysics.collision": "collision",
+    }
+    return aliases.get(column, column.replace("param.", ""))
 
 
 def format_sweep_param_value(column: str, value: Any) -> str:
@@ -801,8 +1142,54 @@ def format_sweep_param_value(column: str, value: Any) -> str:
         except Exception:
             return str(value)
 
+    if column.endswith("timestep"):
+        try:
+            return f"{float(value):g} s"
+        except Exception:
+            return str(value)
+
+    if column.endswith("temperature"):
+        try:
+            return f"{float(value):g} K"
+        except Exception:
+            return str(value)
+
+    if column.endswith("pressure"):
+        try:
+            return f"{float(value):g} Pa"
+        except Exception:
+            return str(value)
+
+    if column.endswith("number_concentration"):
+        try:
+            return f"{float(value):g} cm⁻³"
+        except Exception:
+            return str(value)
+
+    if column.endswith("number_superdroplets"):
+        try:
+            return f"{int(value)}"
+        except Exception:
+            return str(value)
+
+    if column.endswith("water_vapour_mixing_ratio"):
+        try:
+            return f"{float(value):g} kg kg⁻¹"
+        except Exception:
+            return str(value)
+
+    if column.endswith("geometric_sigma"):
+        try:
+            return f"{float(value):g}"
+        except Exception:
+            return str(value)
+
     if column.endswith("collision"):
-        return "ON" if bool(value) else "OFF"
+        if isinstance(value, str):
+            enabled = value.strip().lower() in {"true", "1", "yes", "on"}
+        else:
+            enabled = bool(value)
+        return "ON" if enabled else "OFF"
 
     if column.endswith("kappa"):
         try:
@@ -1271,13 +1658,77 @@ def growth_pathway_all_variables() -> List[str]:
     return list(GROWTH_PATHWAY_PREFERRED_ORDER)
 
 
+def diagnostic_provenance_dataframe(provenance_rows: List[Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Turn diagnostic_provenance.json rows into a display-ready DataFrame.
 
-def figure_to_png_bytes(fig) -> bytes:
-    """Serialize a matplotlib figure to PNG bytes for Streamlit download buttons."""
+    Columns: variable / provenance_label / basis. Rows are already ordered by
+    GROWTH_PATHWAY_PREFERRED_ORDER (see analysis.growth_pathway_diagnostics).
+    """
+    if not provenance_rows:
+        return pd.DataFrame(columns=["variable", "provenance_label", "basis"])
+
+    df = pd.DataFrame(provenance_rows)
+    columns = [c for c in ["variable", "provenance_label", "basis"] if c in df.columns]
+    return df[columns]
+
+
+def diagnostic_provenance_summary_counts(provenance_rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Count how many diagnostic variables are native / derived / proxy."""
+    counts = {"native": 0, "derived": 0, "proxy": 0}
+    for row in provenance_rows:
+        provenance = row.get("provenance")
+        if provenance in counts:
+            counts[provenance] += 1
+    return counts
+
+
+def result_file_roles_dataframe(metadata: Dict[str, Any]) -> pd.DataFrame:
+    """
+    Return the 'what is each output file for' table for a loaded result.
+
+    Prefers the `file_roles` already embedded in metadata.json by the runner
+    (see analysis/result_files.py); falls back to computing it from
+    `result_files` for older result folders written before this feature.
+    """
+    file_roles = metadata.get("file_roles")
+    if not file_roles:
+        result_files = metadata.get("result_files", {})
+        file_roles = describe_result_files(list(result_files.values()))
+
+    if not file_roles:
+        return pd.DataFrame(columns=["file", "생성 시점", "무엇에 대한 답인가", "설명"])
+
+    return pd.DataFrame(file_roles)
+
+
+def figure_to_png_bytes(fig, *, dpi: int = 300) -> bytes:
+    """Serialize a matplotlib figure to a publication-ready PNG byte stream."""
+    return figure_to_bytes(fig, file_format="png", dpi=dpi)
+
+
+def figure_to_bytes(fig, *, file_format: str, dpi: int = 300) -> bytes:
+    """Serialize a matplotlib figure to PNG, SVG, or PDF."""
+    normalized = str(file_format).lower()
+    if normalized not in {"png", "svg", "pdf"}:
+        raise ValueError("file_format must be one of: png, svg, pdf")
     buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=220, bbox_inches="tight")
+    save_kwargs = {"format": normalized, "bbox_inches": "tight"}
+    if normalized == "png":
+        save_kwargs["dpi"] = dpi
+    fig.savefig(buffer, **save_kwargs)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def figure_to_svg_bytes(fig) -> bytes:
+    """Serialize a matplotlib figure to editable SVG vector bytes."""
+    return figure_to_bytes(fig, file_format="svg")
+
+
+def figure_to_pdf_bytes(fig) -> bytes:
+    """Serialize a matplotlib figure to publication-ready PDF vector bytes."""
+    return figure_to_bytes(fig, file_format="pdf")
 
 
 def ensemble_available_bases(stats_df: pd.DataFrame) -> List[str]:
@@ -1481,16 +1932,23 @@ def _time_integral(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.trapz(y, x=x))
 
 
-def build_sweep_effect_summary(
+def sweep_case_metrics_table(
     sweep_dir: Path,
     sweep_df: pd.DataFrame,
     *,
     variable: str,
     curve_source: str = "comparison",
     comparison_mode: str = "diff",
-    x_parameter: str = "param.seeding.injection_start",
 ) -> pd.DataFrame:
-    """Summarize each sweep case into final/max/min/integral values."""
+    """
+    Summarize each sweep case's time-series into scalar final/max/min/integral/peak_time_s
+    values, alongside every param.* column for that case.
+
+    This is the shared building block for both the fixed-parameter sensitivity
+    summary and the collapse-variable analysis below: both need "one row per
+    case, with param columns plus a scalar response", they just plot it
+    differently.
+    """
     if sweep_df.empty:
         return pd.DataFrame()
 
@@ -1533,35 +1991,48 @@ def build_sweep_effect_summary(
             if col.startswith("param."):
                 metric_row[col] = row[col]
 
-        if x_parameter in row:
-            metric_row["x_parameter"] = row[x_parameter]
-        else:
-            metric_row["x_parameter"] = None
-
         rows.append(metric_row)
 
     return pd.DataFrame(rows)
 
 
-def plot_sweep_effect_summary(
-    summary_df: pd.DataFrame,
+def varying_sweep_parameters(metrics_df: pd.DataFrame, param_cols: List[str]) -> List[str]:
+    """Return which param.* columns still have more than one distinct value in metrics_df."""
+    if metrics_df.empty:
+        return []
+    varying = []
+    for col in param_cols:
+        if col not in metrics_df.columns:
+            continue
+        if metrics_df[col].nunique(dropna=True) > 1:
+            varying.append(col)
+    return varying
+
+
+def plot_parameter_sensitivity(
+    metrics_df: pd.DataFrame,
     *,
     x_parameter: str,
     statistic: str,
     variable: str,
 ):
-    """Plot compact parameter effect summary instead of many overlapping time curves."""
+    """
+    Plot statistic vs. one sweep parameter, using only cases already filtered so
+    every other swept parameter is held fixed. Callers are responsible for the
+    filtering (see varying_sweep_parameters) -- this function does not check it,
+    since it is also useful as a raw plotting primitive.
+    """
     fig, ax = plt.subplots(figsize=(8.8, 4.8))
 
-    if summary_df.empty or statistic not in summary_df.columns or x_parameter not in summary_df.columns:
-        ax.set_title("No parameter effect summary data")
+    if metrics_df.empty or statistic not in metrics_df.columns or x_parameter not in metrics_df.columns:
+        ax.set_title("No sensitivity summary data")
         return fig
 
-    plot_df = summary_df.copy()
+    plot_df = metrics_df.copy()
     plot_df = plot_df.dropna(subset=[x_parameter, statistic])
 
     if plot_df.empty:
-        ax.set_title("No parameter effect summary data")
+        ax.set_title("No sensitivity summary data")
         return fig
 
     try:
@@ -1572,10 +2043,171 @@ def plot_sweep_effect_summary(
         plot_df[x_parameter] = plot_df[x_parameter].astype(str)
         ax.bar(plot_df[x_parameter], plot_df[statistic])
 
-    ax.set_xlabel(x_parameter)
+    ax.set_xlabel(short_sweep_param_name(x_parameter))
     ax.set_ylabel(f"{statistic} of {variable}")
-    ax.set_title(f"{variable}: {statistic} by {x_parameter}", fontsize=12)
+    ax.set_title(f"{variable}: {statistic} vs {short_sweep_param_name(x_parameter)}\n(other swept parameters held fixed)", fontsize=11)
     ax.grid(alpha=0.22)
+    fig.tight_layout()
+
+    return fig
+
+
+COLLAPSE_VARIABLE_COLUMN = "log10_kappa_r_dry3"
+
+
+def add_kappa_koehler_collapse_variable(
+    metrics_df: pd.DataFrame,
+    *,
+    dry_radius_col: str = "param.seeding.dry_radius",
+    kappa_col: str = "param.seeding.kappa",
+) -> pd.DataFrame:
+    """
+    Add log10(kappa * (dry_radius / 1 m)^3), a dimensionless diagnostic based
+    on the kappa-times-dry-volume term in kappa-Koehler theory. A collapse onto
+    this coordinate is a hypothesis to test, not a guaranteed property: the
+    response can still depend on supersaturation history, injection timing,
+    collisions, size-distribution width, and other conditions.
+
+    Returns metrics_df unchanged (no new column) if either parameter column is
+    absent, e.g. for sweeps that don't vary dry_radius/kappa.
+    """
+    if dry_radius_col not in metrics_df.columns or kappa_col not in metrics_df.columns:
+        return metrics_df
+
+    out = metrics_df.copy()
+    dry_radius = pd.to_numeric(out[dry_radius_col], errors="coerce")
+    kappa = pd.to_numeric(out[kappa_col], errors="coerce")
+    product = kappa * (dry_radius ** 3)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out[COLLAPSE_VARIABLE_COLUMN] = np.where(product > 0, np.log10(product), np.nan)
+
+    return out
+
+
+def plot_collapse_variable_response(
+    metrics_df: pd.DataFrame,
+    *,
+    statistic: str,
+    variable: str,
+    color_by: str | None = None,
+):
+    """
+    Scatter statistic vs. the kappa-Koehler collapse variable across all
+    dry_radius x kappa sweep cases at once (unlike plot_parameter_sensitivity,
+    this intentionally does NOT require fixing other parameters -- collapsing
+    onto log10(kappa * r_dry^3) is the point: if the physics holds, cases with
+    different dry_radius/kappa combinations but the same collapse-variable
+    value should show a similar response).
+    """
+    fig, ax = plt.subplots(figsize=(8.8, 4.8))
+
+    if (
+        metrics_df.empty
+        or COLLAPSE_VARIABLE_COLUMN not in metrics_df.columns
+        or statistic not in metrics_df.columns
+    ):
+        ax.set_title("No collapse-variable data (sweep does not vary both dry_radius and kappa)")
+        return fig
+
+    plot_df = metrics_df.dropna(subset=[COLLAPSE_VARIABLE_COLUMN, statistic]).copy()
+    if plot_df.empty:
+        ax.set_title("No collapse-variable data")
+        return fig
+
+    if color_by and color_by in plot_df.columns:
+        groups = list(plot_df.groupby(color_by))
+        cmap = plt.get_cmap("viridis", max(len(groups), 1))
+        for idx, (group_value, group_df) in enumerate(groups):
+            ax.scatter(
+                group_df[COLLAPSE_VARIABLE_COLUMN],
+                group_df[statistic],
+                color=cmap(idx),
+                label=f"{short_sweep_param_name(color_by)}={format_sweep_param_value(color_by, group_value)}",
+                s=42,
+                alpha=0.85,
+                edgecolors="white",
+                linewidths=0.4,
+            )
+        ax.legend(fontsize=8, loc="best")
+    else:
+        ax.scatter(plot_df[COLLAPSE_VARIABLE_COLUMN], plot_df[statistic], s=42, alpha=0.85, color="#2f6fb0")
+
+    ax.set_xlabel(r"$\log_{10}[\kappa \cdot (r_{dry}/1\,\mathrm{m})^3]$")
+    ax.set_ylabel(f"{statistic} of {variable}")
+    ax.set_title(f"{variable}: response vs κ–dry-volume coordinate", fontsize=11)
+    ax.grid(alpha=0.22)
+    fig.tight_layout()
+
+    return fig
+
+
+def plot_response_surface_heatmap(
+    metrics_df: pd.DataFrame,
+    *,
+    x_param: str,
+    y_param: str,
+    statistic: str,
+    variable: str,
+    agg: str | None = None,
+):
+    """
+    2D response-surface heatmap of `statistic` over two swept parameters
+    (e.g. dry_radius x kappa). By default, the plot refuses to average across
+    additional varying parameters because that would confound the response
+    surface. Callers may explicitly provide an aggregation only when pooling is
+    scientifically intended.
+    """
+    fig, ax = plt.subplots(figsize=(7.2, 5.6))
+
+    required = [x_param, y_param, statistic]
+    if metrics_df.empty or any(col not in metrics_df.columns for col in required):
+        ax.set_title("No response-surface data")
+        return fig
+
+    plot_df = metrics_df.dropna(subset=required).copy()
+    if plot_df.empty:
+        ax.set_title("No response-surface data")
+        return fig
+
+    other_parameter_columns = [
+        col
+        for col in plot_df.columns
+        if col.startswith("param.") and col not in {x_param, y_param}
+    ]
+    confounders = [
+        col for col in other_parameter_columns if plot_df[col].nunique(dropna=True) > 1
+    ]
+    if confounders and agg is None:
+        ax.set_title(
+            "Fix other swept parameters before plotting this response surface:\n"
+            + ", ".join(short_sweep_param_name(col) for col in confounders),
+            fontsize=10,
+        )
+        return fig
+
+    try:
+        plot_df[x_param] = pd.to_numeric(plot_df[x_param])
+        plot_df[y_param] = pd.to_numeric(plot_df[y_param])
+    except Exception:
+        ax.set_title("Response surface requires numeric parameters")
+        return fig
+
+    aggregate = agg or "mean"
+    pivot = plot_df.pivot_table(index=y_param, columns=x_param, values=statistic, aggfunc=aggregate)
+    if pivot.empty:
+        ax.set_title("No response-surface data")
+        return fig
+
+    mesh = ax.pcolormesh(pivot.columns, pivot.index, pivot.to_numpy(), cmap="viridis", shading="nearest")
+    fig.colorbar(mesh, ax=ax, label=f"{statistic} of {variable}")
+
+    ax.set_xlabel(short_sweep_param_name(x_param))
+    ax.set_ylabel(short_sweep_param_name(y_param))
+    ax.set_title(
+        f"{variable}: {statistic} response surface\n({short_sweep_param_name(x_param)} x {short_sweep_param_name(y_param)})",
+        fontsize=11,
+    )
     fig.tight_layout()
 
     return fig

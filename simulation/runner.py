@@ -2,29 +2,196 @@ from __future__ import annotations
 
 import copy
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
 import pandas as pd
 import yaml
+from matplotlib import pyplot as plt
 
 from analysis.comparison import build_difference_dataframe, summarize_comparison
-from analysis.growth_pathway_diagnostics import add_growth_pathway_diagnostics, diagnostic_health_rows
+from analysis.case_diagnostic_comparison import (
+    build_threshold_robustness_comparison,
+    build_water_budget_comparison,
+    build_wet_radius_spectrum_comparison,
+    summarize_spectrum_comparison,
+)
+from analysis.growth_pathway_diagnostics import (
+    add_growth_pathway_diagnostics,
+    diagnostic_health_rows,
+    diagnostic_provenance_rows,
+)
 from analysis.metrics import summarize_timeseries
+from analysis.numerical_convergence import (
+    build_numerical_convergence_table,
+    convergence_metrics,
+    plot_numerical_convergence,
+    summarize_numerical_convergence,
+)
+from analysis.qualification_evidence import build_qualification_evidence
+from analysis.result_files import describe_result_files
+from analysis.reporting import (
+    build_html_report,
+    build_markdown_report,
+    build_pdf_report,
+    figure_to_png_bytes,
+)
+from analysis.result_manifest import build_result_manifest
+from analysis.spectrum_transition import (
+    build_spectrum_transition_table,
+    build_transition_onset_robustness,
+    plot_spectrum_transition,
+    summarize_spectrum_transition,
+)
+from analysis.water_budget import (
+    WATER_BUDGET_TABLE_NAME,
+    build_water_budget_table,
+    plot_water_budget,
+    summarize_water_budget,
+)
 from analysis.ensemble_statistics import (
-    build_ensemble_statistics,
+    ENSEMBLE_BUILD_ID,
+    benchmark_ensemble_statistics_from_paths,
     ensemble_summary_metrics,
     member_seed_list,
     member_summary_rows,
 )
 from simulation.builder import build_run_spec
+from simulation.path_policy import filesystem_token, resolve_result_directory
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.pysdm_adapter import run_adapter
+from simulation.run_timing import record_run_timing
 from simulation.schema import normalize_config
-from simulation.sweep import build_sweep_row, generate_sweep_cases
+from simulation.sweep import build_sweep_row, flatten_nested_dict, generate_sweep_cases
 from simulation.validation import validation_report_rows, validation_summary
-from simulation.types import AdapterResult
+from simulation.types import AdapterResult, SimulationRunSpec
+
+
+# Timing history is intentionally centralized at the project's top-level results
+# directory (not per-sweep-case or per-ensemble-member subfolders), so that
+# runtime estimates in simulation/run_plan.py stay meaningful regardless of
+# where an individual run's output_dir happens to point.
+TIMING_HISTORY_ROOT = Path("results")
+ENSEMBLE_MEMBER_SUMMARY_METRICS = {
+    "seeding_efficiency_score": "comparison.efficiency.seeding_efficiency_score",
+    "accumulated_rain_enhancement": "comparison.efficiency.accumulated_rain_enhancement",
+    "rain_enhancement_final": "comparison.efficiency.rain_enhancement_final",
+    "rain_onset_time_shift_s": "comparison.efficiency.rain_onset_time_shift_s",
+    "cloud_to_rain_conversion_delta": "comparison.efficiency.cloud_to_rain_conversion_delta",
+}
+
+
+class ExperimentExecutionError(RuntimeError):
+    """Raised after durable failure artifacts have been written."""
+
+    def __init__(self, message: str, *, result_dir: Path):
+        super().__init__(message)
+        self.result_dir = Path(result_dir)
+
+
+def _exception_fields(exc: Exception) -> Dict[str, Any]:
+    """Return CSV/JSON-safe exception details without discarding the OS error code."""
+    return {
+        "error": repr(exc),
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "error_errno": getattr(exc, "errno", None),
+        "error_winerror": getattr(exc, "winerror", None),
+    }
+
+
+def _member_result_metrics(result_dir: Path) -> Dict[str, Any]:
+    """Extract ranking-relevant scalar metrics from one successful member result."""
+    summary_path = Path(result_dir) / "summary.json"
+    if not summary_path.exists():
+        return {}
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    flat = flatten_nested_dict(payload)
+    return {
+        f"metric.{short_name}": flat.get(dotted_name)
+        for short_name, dotted_name in ENSEMBLE_MEMBER_SUMMARY_METRICS.items()
+    }
+
+
+def _summarize_member_metrics(member_summary_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    """Summarize successful member scalar metrics for ensemble-aware sweep ranking."""
+    summaries: Dict[str, Dict[str, Any]] = {}
+    if member_summary_df.empty:
+        return summaries
+    for column in member_summary_df.columns:
+        if not column.startswith("metric."):
+            continue
+        values = pd.to_numeric(member_summary_df[column], errors="coerce").dropna()
+        if values.empty:
+            continue
+        short_name = column.removeprefix("metric.")
+        summaries[short_name] = {
+            "mean": float(values.mean()),
+            "std": float(values.std(ddof=1)) if len(values) > 1 else 0.0,
+            "min": float(values.min()),
+            "max": float(values.max()),
+            "n": int(len(values)),
+        }
+    return summaries
+
+
+def _estimate_n_sd_total(spec: SimulationRunSpec) -> int | None:
+    """Best-effort super-droplet count for a run, used only as timing metadata."""
+    try:
+        aero = spec.settings.get("background_aerosol", {}) or {}
+        seed = spec.settings.get("seeding", {}) or {}
+        n_initial = int(aero.get("number_superdroplets", 0) or 0)
+        n_seed = int(seed.get("number_superdroplets", 0) or 0) if seed.get("enabled", True) else 0
+        return n_initial + n_seed
+    except (TypeError, ValueError):
+        return None
+
+
+def _run_adapter_timed(
+    spec: SimulationRunSpec,
+    progress_callback: ProgressCallback = None,
+) -> AdapterResult:
+    """
+    Run the adapter while measuring wall-clock duration.
+
+    The measured duration is (a) attached to the result summary so it is
+    visible per-run in summary.json, and (b) recorded to the local timing
+    history so that `simulation.run_plan.estimate_run_plan` can give a
+    grounded runtime estimate for upcoming sweep/ensemble runs.
+    """
+    started_at = time.perf_counter()
+    result = run_adapter(spec, progress_callback=progress_callback)
+    elapsed_seconds = time.perf_counter() - started_at
+
+    n_sd_total = _estimate_n_sd_total(spec)
+
+    record_run_timing(
+        TIMING_HISTORY_ROOT,
+        adapter=spec.adapter_name,
+        mode=spec.experiment_mode,
+        elapsed_seconds=elapsed_seconds,
+        n_sd_total=n_sd_total,
+    )
+
+    timed_summary = {
+        **result.summary,
+        "timing": {
+            "elapsed_seconds": round(elapsed_seconds, 3),
+            "n_superdroplets_total": n_sd_total,
+        },
+    }
+
+    return AdapterResult(
+        timeseries=result.timeseries,
+        metadata=result.metadata,
+        summary=timed_summary,
+        tables=result.tables,
+    )
 
 
 def _write_json(path: Path, payload: Dict[str, Any] | list[Dict[str, Any]]) -> None:
@@ -37,9 +204,12 @@ def _write_yaml(path: Path, payload: Dict[str, Any]) -> None:
         yaml.safe_dump(payload, f, sort_keys=False, allow_unicode=True)
 
 
-def _safe_name(value: str) -> str:
-    return "".join(ch if ch.isalnum() or ch in ["_", "-", "."] else "_" for ch in value)
-
+def _figure_payload(title: str, figure: Any) -> tuple[str, bytes]:
+    """Convert a report figure to PNG and always release its Matplotlib resources."""
+    try:
+        return title, figure_to_png_bytes(figure)
+    finally:
+        plt.close(figure)
 
 
 def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: Dict[str, Any]) -> AdapterResult:
@@ -48,6 +218,12 @@ def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: D
     enabled = diagnostics_cfg.get("growth_pathway_mode", diagnostics_cfg.get("exper2_mode", True))
     if not enabled:
         return result
+
+    # Capture raw adapter columns *before* enrichment fills in proxy columns,
+    # so provenance classification can tell native output apart from
+    # heuristics added by add_growth_pathway_diagnostics().
+    raw_columns = list(result.require_timeseries().columns)
+    provenance_rows = diagnostic_provenance_rows(raw_columns, config)
 
     enriched = add_growth_pathway_diagnostics(result.require_timeseries(), config)
 
@@ -59,6 +235,7 @@ def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: D
             for column in enriched.columns
             if column not in result.timeseries.columns
         ],
+        "growth_pathway_diagnostic_provenance": provenance_rows,
     }
 
     metadata = {
@@ -66,12 +243,48 @@ def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: D
         "growth_pathway_diagnostics_enabled": True,
     }
 
-    return AdapterResult(timeseries=enriched, metadata=metadata, summary=summary)
+    return AdapterResult(
+        timeseries=enriched,
+        metadata=metadata,
+        summary=summary,
+        tables=result.tables,
+    )
+
+
+def _apply_water_budget_diagnostics_to_result(
+    result: AdapterResult,
+    config: Dict[str, Any],
+) -> AdapterResult:
+    """Attach total-water conservation diagnostics when native water columns exist."""
+    budget_cfg = config.get("diagnostics", {}).get("water_budget", {})
+    if not bool(budget_cfg.get("enabled", True)):
+        return result
+
+    budget_table = build_water_budget_table(result.require_timeseries(), config)
+    budget_summary = summarize_water_budget(budget_table, config)
+    tables = dict(result.tables)
+    if not budget_table.empty:
+        tables[WATER_BUDGET_TABLE_NAME] = budget_table
+
+    return AdapterResult(
+        timeseries=result.timeseries,
+        metadata={
+            **result.metadata,
+            "water_budget_diagnostics_enabled": True,
+        },
+        summary={
+            **result.summary,
+            "water_budget": budget_summary,
+        },
+        tables=tables,
+    )
 
 def run_experiment(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run an experiment according to `experiment.mode`.
@@ -85,21 +298,43 @@ def run_experiment(
     mode = cfg.get("experiment", {}).get("mode", "single")
 
     if mode == "parameter_sweep":
-        return run_parameter_sweep(cfg, output_dir, progress_callback=progress_callback)
+        return run_parameter_sweep(
+            cfg,
+            output_dir,
+            progress_callback=progress_callback,
+            result_dir_name=result_dir_name,
+        )
 
     if cfg.get("ensemble", {}).get("enabled", False):
-        return run_ensemble_experiment(cfg, output_dir, progress_callback=progress_callback)
+        return run_ensemble_experiment(
+            cfg,
+            output_dir,
+            progress_callback=progress_callback,
+            result_dir_name=result_dir_name,
+        )
 
     if mode == "control_vs_seeding":
-        return run_control_vs_seeding(cfg, output_dir, progress_callback=progress_callback)
+        return run_control_vs_seeding(
+            cfg,
+            output_dir,
+            progress_callback=progress_callback,
+            result_dir_name=result_dir_name,
+        )
 
-    return run_single_experiment(cfg, output_dir, progress_callback=progress_callback)
+    return run_single_experiment(
+        cfg,
+        output_dir,
+        progress_callback=progress_callback,
+        result_dir_name=result_dir_name,
+    )
 
 
 def run_single_experiment(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run a single experiment and save a full result directory.
@@ -122,12 +357,13 @@ def run_single_experiment(
     emit_progress(progress_callback, "runner", 2, total_stages, "Building run specification")
     spec = build_run_spec(cfg)
 
-    run_dir = output_dir / spec.run_id
+    run_dir = resolve_result_directory(output_dir, spec.run_id, result_dir_name)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     emit_progress(progress_callback, "runner", 3, total_stages, f"Running adapter: {spec.adapter_name}")
-    result = run_adapter(spec, progress_callback=progress_callback)
+    result = _run_adapter_timed(spec, progress_callback=progress_callback)
     result = _apply_growth_pathway_diagnostics_to_result(result, spec.config)
+    result = _apply_water_budget_diagnostics_to_result(result, spec.config)
 
     emit_progress(progress_callback, "runner", 4, total_stages, "Writing result files")
     timeseries = result.require_timeseries()
@@ -144,6 +380,8 @@ def run_control_vs_seeding(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run paired control and seeding simulations and save a comparison directory.
@@ -173,10 +411,11 @@ def run_control_vs_seeding(
     emit_progress(progress_callback, "comparison", 1, total_stages, "Preparing control and seeding configurations")
     cfg = normalize_config(config)
 
-    experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_id = f"{timestamp}_{experiment_name}_control_vs_seeding"
-    run_dir = output_dir / run_id
+    experiment_name = str(cfg.get("experiment", {}).get("name", "experiment"))
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
+    run_id = f"{timestamp}_{filesystem_token(experiment_name)}_control_vs_seeding"
+    run_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     control_cfg = copy.deepcopy(cfg)
@@ -192,16 +431,18 @@ def run_control_vs_seeding(
     emit_progress(progress_callback, "comparison", 2, total_stages, "Running control simulation")
     control_dir = run_dir / "control"
     control_spec = build_run_spec(control_cfg)
-    control_result = run_adapter(control_spec, progress_callback=progress_callback)
+    control_result = _run_adapter_timed(control_spec, progress_callback=progress_callback)
     control_result = _apply_growth_pathway_diagnostics_to_result(control_result, control_spec.config)
+    control_result = _apply_water_budget_diagnostics_to_result(control_result, control_spec.config)
     _write_single_result_files(control_dir, control_spec, control_result)
     emit_progress(progress_callback, "model_run_complete", 1, 1, "Completed control run")
 
     emit_progress(progress_callback, "comparison", 3, total_stages, "Running seeding simulation")
     seeding_dir = run_dir / "seeding"
     seeding_spec = build_run_spec(seeding_cfg)
-    seeding_result = run_adapter(seeding_spec, progress_callback=progress_callback)
+    seeding_result = _run_adapter_timed(seeding_spec, progress_callback=progress_callback)
     seeding_result = _apply_growth_pathway_diagnostics_to_result(seeding_result, seeding_spec.config)
+    seeding_result = _apply_water_budget_diagnostics_to_result(seeding_result, seeding_spec.config)
     _write_single_result_files(seeding_dir, seeding_spec, seeding_result)
     emit_progress(progress_callback, "model_run_complete", 1, 1, "Completed seeding run")
 
@@ -210,17 +451,76 @@ def run_control_vs_seeding(
     seeding_df = seeding_result.require_timeseries()
     difference_df = build_difference_dataframe(control_df, seeding_df)
 
+    spectrum_comparison = build_wet_radius_spectrum_comparison(
+        control_result.tables.get("wet_radius_spectrum", pd.DataFrame()),
+        seeding_result.tables.get("wet_radius_spectrum", pd.DataFrame()),
+    )
+    threshold_comparison = build_threshold_robustness_comparison(
+        control_result.tables.get("threshold_robustness", pd.DataFrame()),
+        seeding_result.tables.get("threshold_robustness", pd.DataFrame()),
+    )
+    water_budget_comparison = build_water_budget_comparison(
+        control_result.tables.get(WATER_BUDGET_TABLE_NAME, pd.DataFrame()),
+        seeding_result.tables.get(WATER_BUDGET_TABLE_NAME, pd.DataFrame()),
+    )
+    transition_table = build_spectrum_transition_table(threshold_comparison, cfg)
+    transition_robustness = build_transition_onset_robustness(threshold_comparison, cfg)
+
     emit_progress(progress_callback, "comparison", 5, total_stages, "Computing comparison summary")
     comparison_summary = summarize_comparison(control_df, seeding_df, difference_df)
+    comparison_summary["research_quality"] = {
+        "water_budget": {
+            "control": control_result.summary.get("water_budget", {}),
+            "seeding": seeding_result.summary.get("water_budget", {}),
+        },
+        "wet_radius_spectrum": summarize_spectrum_comparison(spectrum_comparison),
+        "spectrum_transition": summarize_spectrum_transition(
+            transition_table,
+            transition_robustness,
+        ),
+    }
 
     emit_progress(progress_callback, "comparison", 6, total_stages, "Writing comparison files")
     _write_yaml(run_dir / "config.yaml", cfg)
     difference_df.to_csv(run_dir / "comparison.csv", index=False)
     _write_json(run_dir / "validation_report.json", validation_report_rows(cfg))
 
+    diagnostic_comparison_files: Dict[str, str] = {}
+    for table_name, table, filename in (
+        (
+            "wet_radius_spectrum_comparison",
+            spectrum_comparison,
+            "wet_radius_spectrum_comparison.csv",
+        ),
+        (
+            "threshold_robustness_comparison",
+            threshold_comparison,
+            "threshold_robustness_comparison.csv",
+        ),
+        (
+            "water_budget_comparison",
+            water_budget_comparison,
+            "water_budget_comparison.csv",
+        ),
+        (
+            "spectrum_transition",
+            transition_table,
+            "spectrum_transition.csv",
+        ),
+        (
+            "spectrum_transition_onset_robustness",
+            transition_robustness,
+            "spectrum_transition_onset_robustness.csv",
+        ),
+    ):
+        if table.empty:
+            continue
+        table.to_csv(run_dir / filename, index=False)
+        diagnostic_comparison_files[table_name] = filename
+
     metadata_payload = {
         "run_id": run_id,
-        "created_at": timestamp,
+        "created_at": now.isoformat(timespec="seconds"),
         "experiment_name": experiment_name,
         "experiment_mode": "control_vs_seeding",
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
@@ -234,7 +534,26 @@ def run_control_vs_seeding(
             "validation_report": "validation_report.json",
             "control": "control/",
             "seeding": "seeding/",
+            "report": "report.md",
+            "report_html": "report.html",
+            "report_pdf": "report.pdf",
+            "result_manifest": "result_manifest.json",
+            **diagnostic_comparison_files,
         },
+        "file_roles": describe_result_files(
+            [
+                "config.yaml",
+                "comparison.csv",
+                "summary.json",
+                "metadata.json",
+                "validation_report.json",
+                "report.md",
+                "report.html",
+                "report.pdf",
+                "result_manifest.json",
+                *diagnostic_comparison_files.values(),
+            ]
+        ),
     }
 
     summary_payload = {
@@ -249,6 +568,50 @@ def run_control_vs_seeding(
 
     _write_json(run_dir / "metadata.json", metadata_payload)
     _write_json(run_dir / "summary.json", summary_payload)
+    (run_dir / "report.md").write_text(
+        build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "report.html").write_text(
+        build_html_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    comparison_figures = []
+    if not transition_table.empty:
+        comparison_figures.append(
+            _figure_payload(
+                "Spectrum-based cloud-to-rain transition",
+                plot_spectrum_transition(transition_table),
+            )
+        )
+    (run_dir / "report.pdf").write_bytes(
+        build_pdf_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+            figures=comparison_figures,
+        )
+    )
+    _write_json(
+        run_dir / "result_manifest.json",
+        build_result_manifest(
+            result_type="comparison",
+            primary_data="comparison.csv",
+            result_files=metadata_payload["result_files"],
+            run_id=run_id,
+        ),
+    )
 
     emit_progress(progress_callback, "comparison", 7, total_stages, "Comparison run files completed")
     emit_progress(progress_callback, "comparison", 8, total_stages, f"Finished: {run_dir}")
@@ -265,8 +628,8 @@ def _with_ensemble_disabled(config: Dict[str, Any]) -> Dict[str, Any]:
     return cfg
 
 
-def _read_primary_member_dataframe(member_dir: Path, mode: str) -> pd.DataFrame:
-    """Read the dataframe that should be aggregated for one ensemble member."""
+def _primary_member_data_path(member_dir: Path, mode: str) -> Path:
+    """Return the CSV that should be aggregated for one ensemble member."""
     if mode == "control_vs_seeding":
         path = member_dir / "comparison.csv"
     else:
@@ -275,13 +638,15 @@ def _read_primary_member_dataframe(member_dir: Path, mode: str) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"Missing ensemble aggregation source: {path}")
 
-    return pd.read_csv(path)
+    return path
 
 
 def run_ensemble_experiment(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run an ensemble for either single or control_vs_seeding mode.
@@ -308,11 +673,12 @@ def run_ensemble_experiment(
     seeds = member_seed_list(cfg)
     n_members = len(seeds)
 
-    experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_id = f"{timestamp}_{experiment_name}_{mode}_ensemble"
+    experiment_name = str(cfg.get("experiment", {}).get("name", "experiment"))
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
+    run_id = f"{timestamp}_{filesystem_token(experiment_name)}_{mode}_ensemble"
 
-    run_dir = output_dir / run_id
+    run_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
     members_dir = run_dir / "members"
     run_dir.mkdir(parents=True, exist_ok=True)
     members_dir.mkdir(parents=True, exist_ok=True)
@@ -320,7 +686,7 @@ def run_ensemble_experiment(
     emit_progress(progress_callback, "ensemble", 1, n_members + 2, f"Running ensemble with {n_members} members")
 
     member_records = []
-    member_dfs = []
+    member_data_paths: list[Path] = []
 
     for idx, seed in enumerate(seeds, start=1):
         emit_progress(progress_callback, "ensemble", idx + 1, n_members + 2, f"Running ensemble member {idx}/{n_members}")
@@ -334,22 +700,35 @@ def run_ensemble_experiment(
 
         try:
             if mode == "control_vs_seeding":
-                member_result_dir = run_control_vs_seeding(member_cfg, member_parent, progress_callback=progress_callback)
+                member_result_dir = run_control_vs_seeding(
+                    member_cfg,
+                    member_parent,
+                    progress_callback=progress_callback,
+                    result_dir_name="comparison",
+                )
             else:
-                member_result_dir = run_single_experiment(member_cfg, member_parent, progress_callback=progress_callback)
+                member_result_dir = run_single_experiment(
+                    member_cfg,
+                    member_parent,
+                    progress_callback=progress_callback,
+                    result_dir_name="single",
+                )
 
-            member_df = _read_primary_member_dataframe(member_result_dir, mode)
-            member_dfs.append(member_df)
+            member_data_paths.append(_primary_member_data_path(member_result_dir, mode))
 
-            member_records.append(
-                {
-                    "member_index": idx,
-                    "random_seed": int(seed),
-                    "success": True,
-                    "result_dir": str(member_result_dir.relative_to(run_dir)),
-                    "error": "",
-                }
-            )
+            member_record = {
+                "member_index": idx,
+                "random_seed": int(seed),
+                "success": True,
+                "result_dir": str(member_result_dir.relative_to(run_dir)),
+                "error": "",
+                "error_type": "",
+                "error_message": "",
+                "error_errno": None,
+                "error_winerror": None,
+            }
+            member_record.update(_member_result_metrics(member_result_dir))
+            member_records.append(member_record)
         except Exception as exc:
             member_records.append(
                 {
@@ -357,26 +736,49 @@ def run_ensemble_experiment(
                     "random_seed": int(seed),
                     "success": False,
                     "result_dir": "",
-                    "error": repr(exc),
+                    **_exception_fields(exc),
                 }
             )
 
     emit_progress(progress_callback, "ensemble", n_members + 2, n_members + 2, "Writing ensemble statistics")
 
     member_summary_df = member_summary_rows(member_records)
-    stats_df = build_ensemble_statistics(member_dfs)
+    stats_df, aggregation_diagnostics = benchmark_ensemble_statistics_from_paths(
+        member_data_paths
+    )
 
     _write_yaml(run_dir / "config.yaml", cfg)
     member_summary_df.to_csv(run_dir / "member_summary.csv", index=False)
     stats_df.to_csv(run_dir / "ensemble_statistics.csv", index=False)
     _write_json(run_dir / "validation_report.json", validation_report_rows(cfg))
+    _write_json(run_dir / "ensemble_aggregation_diagnostics.json", aggregation_diagnostics)
 
     n_success = int(member_summary_df["success"].sum()) if "success" in member_summary_df.columns else 0
     n_failed = int(len(member_summary_df) - n_success)
+    member_metric_summary = _summarize_member_metrics(member_summary_df)
+    execution_status = (
+        "failed"
+        if n_success == 0
+        else "partial"
+        if n_failed > 0
+        else "success"
+    )
+    first_member_errors = [
+        str(record.get("error_message") or record.get("error") or "")
+        for record in member_records
+        if not record.get("success")
+    ][:5]
+    execution_payload = {
+        "status": execution_status,
+        "requested_members": n_members,
+        "successful_members": n_success,
+        "failed_members": n_failed,
+        "first_errors": first_member_errors,
+    }
 
     metadata_payload = {
         "run_id": run_id,
-        "created_at": timestamp,
+        "created_at": now.isoformat(timespec="seconds"),
         "experiment_name": experiment_name,
         "experiment_mode": mode,
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
@@ -385,6 +787,12 @@ def run_ensemble_experiment(
         "n_members_requested": n_members,
         "n_success": n_success,
         "n_failed": n_failed,
+        "execution_status": execution_status,
+        "execution": execution_payload,
+        "member_metric_summary": member_metric_summary,
+        "ensemble_statistics_build_id": ENSEMBLE_BUILD_ID,
+        "ensemble_aggregation_method": "column_streaming_from_member_csv",
+        "ensemble_aggregation_diagnostics": aggregation_diagnostics,
         "result_files": {
             "config": "config.yaml",
             "ensemble_statistics": "ensemble_statistics.csv",
@@ -393,7 +801,27 @@ def run_ensemble_experiment(
             "metadata": "metadata.json",
             "validation_report": "validation_report.json",
             "members": "members/",
+            "report": "report.md",
+            "report_html": "report.html",
+            "report_pdf": "report.pdf",
+            "ensemble_aggregation_diagnostics": "ensemble_aggregation_diagnostics.json",
+            "result_manifest": "result_manifest.json",
         },
+        "file_roles": describe_result_files(
+            [
+                "config.yaml",
+                "ensemble_statistics.csv",
+                "member_summary.csv",
+                "summary.json",
+                "metadata.json",
+                "validation_report.json",
+                "report.md",
+                "report.html",
+                "report.pdf",
+                "ensemble_aggregation_diagnostics.json",
+                "result_manifest.json",
+            ]
+        ),
     }
 
     summary_payload = {
@@ -403,11 +831,15 @@ def run_ensemble_experiment(
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
         "case_name": "ensemble",
         "result_type": "ensemble",
+        "execution": execution_payload,
         "ensemble": {
             "n_members_requested": n_members,
             "n_success": n_success,
             "n_failed": n_failed,
+            "aggregation_method": "column_streaming_from_member_csv",
+            "aggregation": aggregation_diagnostics,
             "member_seeds": seeds,
+            "member_metrics": member_metric_summary,
             "metrics": ensemble_summary_metrics(stats_df),
         },
         "validation": validation_summary(cfg),
@@ -415,13 +847,58 @@ def run_ensemble_experiment(
 
     _write_json(run_dir / "metadata.json", metadata_payload)
     _write_json(run_dir / "summary.json", summary_payload)
+    (run_dir / "report.md").write_text(
+        build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "report.html").write_text(
+        build_html_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "report.pdf").write_bytes(
+        build_pdf_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        )
+    )
+    _write_json(
+        run_dir / "result_manifest.json",
+        build_result_manifest(
+            result_type="ensemble",
+            primary_data="ensemble_statistics.csv",
+            result_files=metadata_payload["result_files"],
+            run_id=run_id,
+        ),
+    )
+
+    if n_success == 0:
+        first_error = first_member_errors[0] if first_member_errors else "unknown member failure"
+        raise ExperimentExecutionError(
+            f"All {n_members} ensemble members failed. First error: {first_error}",
+            result_dir=run_dir,
+        )
 
     return run_dir
+
 
 def run_parameter_sweep(
     config: Dict[str, Any],
     output_dir: Path,
     progress_callback: ProgressCallback = None,
+    *,
+    result_dir_name: str | None = None,
 ) -> Path:
     """
     Run a parameter sweep.
@@ -455,11 +932,12 @@ def run_parameter_sweep(
     cases = generate_sweep_cases(cfg)
     total_cases = len(cases)
 
-    experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_id = f"{timestamp}_{experiment_name}_parameter_sweep"
+    experiment_name = str(cfg.get("experiment", {}).get("name", "experiment"))
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
+    run_id = f"{timestamp}_{filesystem_token(experiment_name)}_parameter_sweep"
 
-    sweep_dir = output_dir / run_id
+    sweep_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
     cases_dir = sweep_dir / "cases"
     sweep_dir.mkdir(parents=True, exist_ok=True)
     cases_dir.mkdir(parents=True, exist_ok=True)
@@ -483,11 +961,25 @@ def run_parameter_sweep(
             f"Running sweep case {idx}/{total_cases}: {case.case_name}",
         )
 
-        case_result_dir = run_experiment(
-            case.config,
-            cases_dir,
-            progress_callback=progress_callback,
-        )
+        case_directory_name = f"case_{idx:03d}"
+        case_status = "success"
+        case_error = ""
+        try:
+            case_result_dir = run_experiment(
+                case.config,
+                cases_dir,
+                progress_callback=progress_callback,
+                result_dir_name=case_directory_name,
+            )
+        except ExperimentExecutionError as exc:
+            case_result_dir = exc.result_dir
+            case_status = "failed"
+            case_error = str(exc)
+        except Exception as exc:
+            case_result_dir = cases_dir / case_directory_name
+            case_result_dir.mkdir(parents=True, exist_ok=True)
+            case_status = "failed"
+            case_error = repr(exc)
 
         summary_path = case_result_dir / "summary.json"
         if summary_path.exists():
@@ -496,14 +988,27 @@ def run_parameter_sweep(
         else:
             case_summary = {}
 
-        rows.append(
-            build_sweep_row(
-                case=case,
-                result_dir=str(case_result_dir.relative_to(sweep_dir)),
-                summary=case_summary,
-                ranking_metric=ranking_metric,
-            )
+        nested_status = str(case_summary.get("execution", {}).get("status", "")).lower()
+        if case_status == "success" and nested_status in {"partial", "failed"}:
+            case_status = nested_status
+        if not case_error and nested_status == "failed":
+            first_errors = case_summary.get("execution", {}).get("first_errors", [])
+            case_error = str(first_errors[0]) if first_errors else "Nested case execution failed."
+
+        row = build_sweep_row(
+            case=case,
+            result_dir=str(case_result_dir.relative_to(sweep_dir)),
+            summary=case_summary,
+            ranking_metric=ranking_metric,
         )
+        row.update(
+            {
+                "case_status": case_status,
+                "case_success": case_status == "success",
+                "case_error": case_error,
+            }
+        )
+        rows.append(row)
 
     sweep_df = pd.DataFrame(rows)
 
@@ -515,6 +1020,37 @@ def run_parameter_sweep(
         ).reset_index(drop=True)
         sweep_df.insert(0, "rank", range(1, len(sweep_df) + 1))
 
+    status_counts = (
+        sweep_df["case_status"].value_counts().to_dict()
+        if "case_status" in sweep_df.columns
+        else {"success": len(sweep_df)}
+    )
+    n_successful_cases = int(status_counts.get("success", 0))
+    n_partial_cases = int(status_counts.get("partial", 0))
+    n_failed_cases = int(status_counts.get("failed", 0))
+    sweep_execution_status = (
+        "failed"
+        if n_failed_cases == total_cases
+        else "partial"
+        if n_failed_cases > 0 or n_partial_cases > 0
+        else "success"
+    )
+    execution_payload = {
+        "status": sweep_execution_status,
+        "requested_cases": total_cases,
+        "successful_cases": n_successful_cases,
+        "partial_cases": n_partial_cases,
+        "failed_cases": n_failed_cases,
+    }
+    convergence_input = (
+        sweep_df[sweep_df["case_status"] != "failed"].copy()
+        if "case_status" in sweep_df.columns
+        else sweep_df
+    )
+    convergence_table = build_numerical_convergence_table(convergence_input, cfg)
+    convergence_summary = summarize_numerical_convergence(convergence_table)
+    qualification_evidence = build_qualification_evidence(convergence_table, cfg)
+
     emit_progress(
         progress_callback,
         "sweep",
@@ -524,22 +1060,35 @@ def run_parameter_sweep(
     )
 
     sweep_df.to_csv(sweep_dir / "sweep_summary.csv", index=False)
+    if not convergence_table.empty:
+        convergence_table.to_csv(sweep_dir / "numerical_convergence.csv", index=False)
     _write_yaml(sweep_dir / "config.yaml", cfg)
     _write_json(sweep_dir / "validation_report.json", validation_report_rows(cfg))
+    qualification_payload = cfg.get("qualification")
+    if isinstance(qualification_payload, dict) and qualification_payload:
+        _write_json(sweep_dir / "qualification_plan.json", qualification_payload)
+        _write_json(sweep_dir / "qualification_evidence.json", qualification_evidence)
 
     best_case = None
-    if len(sweep_df) > 0:
-        best_case = sweep_df.iloc[0].to_dict()
+    usable_cases = (
+        sweep_df[sweep_df["case_status"] != "failed"]
+        if "case_status" in sweep_df.columns
+        else sweep_df
+    )
+    if len(usable_cases) > 0:
+        best_case = usable_cases.iloc[0].to_dict()
 
     metadata_payload = {
         "run_id": run_id,
-        "created_at": timestamp,
+        "created_at": now.isoformat(timespec="seconds"),
         "experiment_name": experiment_name,
         "experiment_mode": "parameter_sweep",
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
         "case_name": "parameter_sweep",
         "result_type": "parameter_sweep",
         "n_cases": total_cases,
+        "execution_status": sweep_execution_status,
+        "execution": execution_payload,
         "ranking_metric": ranking_metric,
         "result_files": {
             "config": "config.yaml",
@@ -548,7 +1097,50 @@ def run_parameter_sweep(
             "metadata": "metadata.json",
             "validation_report": "validation_report.json",
             "cases": "cases/",
+            "report": "report.md",
+            "report_html": "report.html",
+            "report_pdf": "report.pdf",
+            "result_manifest": "result_manifest.json",
+            **(
+                {"qualification_plan": "qualification_plan.json"}
+                if isinstance(qualification_payload, dict) and qualification_payload
+                else {}
+            ),
+            **(
+                {"qualification_evidence": "qualification_evidence.json"}
+                if isinstance(qualification_payload, dict) and qualification_payload
+                else {}
+            ),
+            **(
+                {"numerical_convergence": "numerical_convergence.csv"}
+                if not convergence_table.empty
+                else {}
+            ),
         },
+        "file_roles": describe_result_files(
+            [
+                "config.yaml",
+                "sweep_summary.csv",
+                "summary.json",
+                "metadata.json",
+                "validation_report.json",
+                "report.md",
+                "report.html",
+                "report.pdf",
+                "result_manifest.json",
+                *(
+                    ["qualification_plan.json"]
+                    if isinstance(qualification_payload, dict) and qualification_payload
+                    else []
+                ),
+                *(
+                    ["qualification_evidence.json"]
+                    if isinstance(qualification_payload, dict) and qualification_payload
+                    else []
+                ),
+                *(["numerical_convergence.csv"] if not convergence_table.empty else []),
+            ]
+        ),
     }
 
     summary_payload = {
@@ -558,13 +1150,69 @@ def run_parameter_sweep(
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
         "case_name": "parameter_sweep",
         "n_cases": total_cases,
+        "execution": execution_payload,
         "ranking_metric": ranking_metric,
         "best_case": best_case,
+        "numerical_convergence": convergence_summary,
+        "numerical_convergence_evidence": qualification_evidence,
         "validation": validation_summary(cfg),
     }
 
     _write_json(sweep_dir / "metadata.json", metadata_payload)
     _write_json(sweep_dir / "summary.json", summary_payload)
+    (sweep_dir / "report.md").write_text(
+        build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    (sweep_dir / "report.html").write_text(
+        build_html_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    sweep_figures = []
+    available_convergence_metrics = convergence_metrics(convergence_table)
+    if available_convergence_metrics:
+        selected_metric = available_convergence_metrics[0]
+        sweep_figures.append(
+            _figure_payload(
+                f"Numerical convergence - {selected_metric}",
+                plot_numerical_convergence(convergence_table, metric=selected_metric),
+            )
+        )
+    (sweep_dir / "report.pdf").write_bytes(
+        build_pdf_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+            figures=sweep_figures,
+        )
+    )
+    _write_json(
+        sweep_dir / "result_manifest.json",
+        build_result_manifest(
+            result_type="parameter_sweep",
+            primary_data="sweep_summary.csv",
+            result_files=metadata_payload["result_files"],
+            run_id=run_id,
+        ),
+    )
+
+    if n_failed_cases == total_cases:
+        raise ExperimentExecutionError(
+            f"All {total_cases} sweep cases failed. Review case_status and case_error in "
+            "sweep_summary.csv.",
+            result_dir=sweep_dir,
+        )
 
     return sweep_dir
 
@@ -584,12 +1232,21 @@ def _write_single_result_files(
     metadata_path = run_dir / "metadata.json"
     validation_path = run_dir / "validation_report.json"
     diagnostic_health_path = run_dir / "diagnostic_health.json"
+    diagnostic_provenance_path = run_dir / "diagnostic_provenance.json"
+    report_path = run_dir / "report.md"
+    html_report_path = run_dir / "report.html"
+    pdf_report_path = run_dir / "report.pdf"
+    manifest_path = run_dir / "result_manifest.json"
 
     _write_yaml(config_path, spec.config)
     timeseries.to_csv(timeseries_path, index=False)
 
     metrics_summary = summarize_timeseries(timeseries)
     validation_summary_payload = validation_summary(spec.config)
+    # Populated by _apply_growth_pathway_diagnostics_to_result(); absent when
+    # growth-pathway diagnostics are disabled for this run.
+    provenance_rows = result.summary.get("growth_pathway_diagnostic_provenance", [])
+
     summary_payload = {
         "run_id": spec.run_id,
         "experiment_name": spec.experiment_name,
@@ -601,21 +1258,88 @@ def _write_single_result_files(
         "validation": validation_summary_payload,
     }
 
+    result_file_names = {
+        "config": str(config_path.name),
+        "timeseries": str(timeseries_path.name),
+        "summary": str(summary_path.name),
+        "metadata": str(metadata_path.name),
+        "validation_report": str(validation_path.name),
+        "diagnostic_health": str(diagnostic_health_path.name),
+        "diagnostic_provenance": str(diagnostic_provenance_path.name),
+        "report": str(report_path.name),
+        "report_html": str(html_report_path.name),
+        "report_pdf": str(pdf_report_path.name),
+        "result_manifest": str(manifest_path.name),
+    }
+
+    table_file_names = {
+        "wet_radius_spectrum": "wet_radius_spectrum.csv",
+        "threshold_robustness": "threshold_robustness.csv",
+        "water_budget": "water_budget.csv",
+    }
+    for table_name, filename in table_file_names.items():
+        table = result.tables.get(table_name)
+        if table is None:
+            continue
+        table_path = run_dir / filename
+        table.to_csv(table_path, index=False)
+        result_file_names[table_name] = filename
+
     metadata_payload = {
         **spec.metadata,
         **result.metadata,
         "result_type": "single",
-        "result_files": {
-            "config": str(config_path.name),
-            "timeseries": str(timeseries_path.name),
-            "summary": str(summary_path.name),
-            "metadata": str(metadata_path.name),
-            "validation_report": str(validation_path.name),
-            "diagnostic_health": str(diagnostic_health_path.name),
-        },
+        "result_files": result_file_names,
+        # Self-documenting: explains what each file in result_files is *for*,
+        # so summary.json / metadata.json / validation_report.json don't have
+        # to be reverse-engineered later. See analysis/result_files.py.
+        "file_roles": describe_result_files(list(result_file_names.values())),
     }
 
     _write_json(summary_path, summary_payload)
     _write_json(metadata_path, metadata_payload)
     _write_json(validation_path, validation_report_rows(spec.config))
     _write_json(diagnostic_health_path, diagnostic_health_rows(timeseries))
+    _write_json(diagnostic_provenance_path, provenance_rows)
+    report_path.write_text(
+        build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(spec.config),
+            config=spec.config,
+        ),
+        encoding="utf-8",
+    )
+    html_report_path.write_text(
+        build_html_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(spec.config),
+            config=spec.config,
+        ),
+        encoding="utf-8",
+    )
+    report_figures = []
+    water_budget_table = result.tables.get(WATER_BUDGET_TABLE_NAME, pd.DataFrame())
+    if not water_budget_table.empty:
+        report_figures.append(
+            _figure_payload("Total-water budget", plot_water_budget(water_budget_table))
+        )
+    pdf_report_path.write_bytes(
+        build_pdf_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(spec.config),
+            config=spec.config,
+            figures=report_figures,
+        )
+    )
+    _write_json(
+        manifest_path,
+        build_result_manifest(
+            result_type="single",
+            primary_data="timeseries.csv",
+            result_files=metadata_payload["result_files"],
+            run_id=spec.run_id,
+        ),
+    )

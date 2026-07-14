@@ -21,6 +21,7 @@ environment:
 background_aerosol:
   distribution_type: single_lognormal
   number_concentration: 100.0
+  number_superdroplets: 100
   dry_radius: 7.5e-08
   geometric_sigma: 1.4
   kappa: 0.5
@@ -53,6 +54,31 @@ microphysics:
   condensation: true
   collision: false
   sedimentation: false
+diagnostics:
+  growth_pathway_mode: true
+  activation_radius_threshold: 5.0e-07
+  rain_radius_threshold: 2.5e-05
+  wet_radius_spectrum:
+    enabled: true
+    min_radius: 5.0e-08
+    max_radius: 0.001
+    n_bins: 32
+    checkpoint_times: []
+    threshold_factors:
+    - 0.8
+    - 1.0
+    - 1.2
+  water_budget:
+    enabled: true
+    warning_relative_drift_percent: 0.01
+    failure_relative_drift_percent: 0.1
+  numerical_convergence:
+    enabled: true
+    relative_tolerance_percent: 5.0
+    metrics: []
+  spectrum_transition:
+    enabled: true
+    rain_volume_fraction_threshold: 0.01
 output:
   base_dir: results
   save_config: true

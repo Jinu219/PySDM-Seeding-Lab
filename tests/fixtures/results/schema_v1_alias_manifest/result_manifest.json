@@ -1,0 +1,9 @@
+{
+  "result_schema_version": 1,
+  "type": "single",
+  "primary_file": "timeseries.csv",
+  "run_id": "fixture_schema_v1_aliases",
+  "artifacts": {
+    "timeseries": "timeseries.csv"
+  }
+}

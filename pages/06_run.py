@@ -6,8 +6,10 @@ import streamlit as st
 
 from simulation.config import load_config
 from simulation.experiment_manager import apply_scenario_identity, list_scenarios, load_scenario_config, read_scenario
-from simulation.runner import run_experiment
+from simulation.runner import ExperimentExecutionError, run_experiment
 from simulation.run_plan import estimate_run_plan, run_plan_rows
+from simulation.run_timing import format_seconds
+from simulation.schema import diagnostic_radius_thresholds
 from simulation.validation import (
     validate_config,
     validation_report_rows,
@@ -17,7 +19,7 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "accurate-progress-safe-read-20260713"
+UI_BUILD_ID = "execution-health-run-plan-20260714"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
@@ -77,13 +79,34 @@ p2.metric("Ensemble members", plan.ensemble_members)
 p3.metric("Control/seeding factor", plan.control_factor)
 p4.metric("Estimated model runs", plan.total_model_runs)
 
+t1, t2 = st.columns(2)
+t1.metric("Estimated time per run", format_seconds(plan.estimated_seconds_per_run))
+t2.metric("Estimated total runtime", plan.estimated_total_duration)
+st.caption(f"Runtime estimate basis: {plan.runtime_basis}")
+
 st.caption(plan.description)
 
-if plan.total_model_runs >= 100:
+if plan.runtime_warning:
+    st.warning(plan.runtime_warning)
+elif plan.total_model_runs >= 100:
     st.warning("This run is large. Consider testing with fewer sweep cases or ensemble members first.")
 
 with st.expander("Run plan details"):
-    st.dataframe(pd.DataFrame(run_plan_rows(cfg)), use_container_width=True)
+    run_plan_df = pd.DataFrame(run_plan_rows(cfg)).astype(
+        {"item": "string", "value": "string"}
+    )
+    st.dataframe(run_plan_df, width="stretch")
+
+activation_radius_m, rain_radius_m = diagnostic_radius_thresholds(cfg)
+with st.expander("Native diagnostic definitions", expanded=False):
+    diagnostic_cols = st.columns(3)
+    diagnostic_cols[0].metric("Activation cutoff", f"{activation_radius_m * 1.0e6:g} µm")
+    diagnostic_cols[1].metric("Rain cutoff", f"{rain_radius_m * 1.0e6:g} µm")
+    diagnostic_cols[2].metric("Range convention", "lower ≤ r < upper")
+    st.caption(
+        "pysdm_parcel은 이 wet-radius 경계로 unactivated/cloud/rain water, concentration, "
+        "effective radius를 native product로 분리합니다. 경계값은 result metadata에도 저장됩니다."
+    )
 
 st.subheader("Configuration Validation")
 
@@ -113,7 +136,7 @@ if report_rows:
     )
     if severity_filter:
         report_df = report_df[report_df["severity"].isin(severity_filter)]
-    st.dataframe(report_df, use_container_width=True)
+    st.dataframe(report_df, width="stretch")
 else:
     st.info("No validation issues found.")
 
@@ -122,7 +145,7 @@ with st.expander("Current configuration"):
 
 run_disabled = summary["error"] > 0
 
-if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
+if st.button("Run Experiment", disabled=run_disabled, width="stretch"):
     plan = estimate_run_plan(cfg)
 
     st.subheader("Live Progress")
@@ -183,7 +206,7 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
         if progress_state["events"]:
             event_box.dataframe(
                 pd.DataFrame({"Recent events": progress_state["events"][-8:][::-1]}),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -234,6 +257,11 @@ if st.button("Run Experiment", disabled=run_disabled, use_container_width=True):
 
         st.success(f"Experiment finished. Result directory: {result_path}")
         st.info("Open 07. Results Dashboard and select the result folder with this scenario name.")
+    except ExperimentExecutionError as exc:
+        st.error("Simulation failed, but diagnostic artifacts were preserved.")
+        st.warning(f"Failure result directory: {exc.result_dir}")
+        st.info("Open 07. Results Dashboard to inspect failed case/member details before rerunning.")
+        st.exception(exc)
     except Exception as exc:
         st.error("Simulation failed.")
         st.exception(exc)

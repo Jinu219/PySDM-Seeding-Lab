@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from simulation.schema import normalize_config
+from simulation.path_policy import filesystem_token
 from simulation.types import SimulationRunSpec
 
 
@@ -23,6 +24,7 @@ def build_simulation_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         "seeding": deepcopy(cfg.get("seeding", {})),
         "dynamics": deepcopy(cfg.get("dynamics", {})),
         "microphysics": deepcopy(cfg.get("microphysics", {})),
+        "diagnostics": deepcopy(cfg.get("diagnostics", {})),
         "simulation": deepcopy(cfg.get("simulation", {})),
     }
 
@@ -42,12 +44,16 @@ def build_run_spec(config: Dict[str, Any]) -> SimulationRunSpec:
     adapter_name = str(simulation.get("adapter", "placeholder_warm_cloud"))
     case_name = str(simulation.get("case_name", "base"))
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_id = f"{timestamp}_{experiment_name}_{case_name}"
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
+    run_id = (
+        f"{timestamp}_{filesystem_token(experiment_name)}_"
+        f"{filesystem_token(case_name, max_length=32)}"
+    )
 
     metadata = {
         "run_id": run_id,
-        "created_at": timestamp,
+        "created_at": now.isoformat(timespec="seconds"),
         "experiment_name": experiment_name,
         "experiment_mode": experiment_mode,
         "adapter_name": adapter_name,

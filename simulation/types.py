@@ -27,6 +27,7 @@ class AdapterResult:
     timeseries: pd.DataFrame
     metadata: Dict[str, Any] = field(default_factory=dict)
     summary: Dict[str, Any] = field(default_factory=dict)
+    tables: Dict[str, pd.DataFrame] = field(default_factory=dict)
 
     def require_timeseries(self) -> pd.DataFrame:
         """Return timeseries after checking the required time column."""
