@@ -728,6 +728,25 @@ microphysics.collision = OFF / ON
 
 This is needed to reproduce the growth-pathway finding that rain-water response is strongly tied to collision/coalescence.
 
+### Publication plots
+
+`07. Results Dashboard → Publication Plots` provides 300 dpi figures for:
+
+```text
+Growth Pathway four-panel (seeding - control or control vs seeding)
+Ensemble mean ± std four-panel
+Ensemble median + IQR four-panel
+Dry radius / κ / injection-time one-factor sensitivity panel
+Matched collision OFF / ON panel
+```
+
+Each panel includes units and diagnostic provenance codes (`N` native, `D`
+derived, `P` proxy, `?` unavailable). The OFAT panel fixes every non-x sweep
+parameter at a visible reference value, and the collision panel only includes
+conditions having an exact OFF/ON pair. Response-surface plots do not silently
+average across additional varying parameters; fix those parameters in the case
+filter first.
+
 ## Ensemble Statistics
 
 The platform now supports ensemble execution for `single` and `control_vs_seeding` runs, including each parameter-sweep case.

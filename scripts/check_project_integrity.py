@@ -35,6 +35,26 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "diagnostic_provenance_dataframe",
     "diagnostic_provenance_summary_counts",
     "result_file_roles_dataframe",
+    "filter_sweep_dataframe",
+    "build_sweep_overlay_dataframe_relative_time",
+    "sweep_case_metrics_table",
+    "varying_sweep_parameters",
+    "plot_parameter_sensitivity",
+    "add_kappa_koehler_collapse_variable",
+    "plot_collapse_variable_response",
+    "plot_response_surface_heatmap",
+    "plot_ensemble_uncertainty",
+    "ensemble_available_bases",
+    "load_sweep_case_publication_data",
+    "sweep_case_display_label",
+    "matched_collision_cases",
+    "plot_growth_pathway_four_panel",
+    "plot_ensemble_uncertainty_panel",
+    "plot_one_factor_sensitivity_panel",
+    "plot_collision_off_on_panel",
+    "publication_parameter_label",
+    "publication_variable_label",
+    "comparison_seeding_intervals",
 ]
 
 
@@ -96,6 +116,7 @@ def check_safe_read_csv_no_recursion() -> None:
 
 def main() -> None:
     check_safe_read_csv_no_recursion()
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "publication_plots.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
 

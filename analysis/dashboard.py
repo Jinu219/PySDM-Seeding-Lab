@@ -17,8 +17,21 @@ from analysis.growth_pathway_diagnostics import (
     PROVENANCE_LABELS_KO,
 )
 from analysis.result_files import describe_result_files
+from analysis.publication_plots import (
+    DEFAULT_PATHWAY_VARIABLES,
+    PUBLICATION_PLOTS_BUILD_ID,
+    matched_collision_cases,
+    one_factor_sensitivity_slices,
+    plot_collision_off_on_panel,
+    plot_ensemble_uncertainty_panel,
+    plot_growth_pathway_four_panel,
+    plot_one_factor_sensitivity_panel,
+    publication_parameter_label,
+    publication_provenance_note,
+    publication_variable_label,
+)
 
-DASHBOARD_BUILD_ID = "diagnostic-provenance-runtime-estimate-20260713"
+DASHBOARD_BUILD_ID = "publication-diagnostic-panels-20260714"
 
 
 @dataclass(frozen=True)
@@ -29,6 +42,23 @@ class ResultEntry:
     label: str
     is_run_directory: bool
     result_type: str
+
+
+def _representative_diagnostic_provenance_path(result_root: Path) -> Path | None:
+    """Find one diagnostic provenance file representative of a structured result."""
+    direct_candidates = [
+        result_root / "diagnostic_provenance.json",
+        result_root / "control" / "diagnostic_provenance.json",
+        result_root / "seeding" / "diagnostic_provenance.json",
+    ]
+    for candidate in direct_candidates:
+        if candidate.exists():
+            return candidate
+
+    try:
+        return next(iter(sorted(result_root.rglob("diagnostic_provenance.json"))), None)
+    except OSError:
+        return None
 
 
 def discover_results(result_dir: Path) -> List[ResultEntry]:
@@ -97,6 +127,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
+        diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         stats_df = safe_read_csv(stats_path)
         member_summary_df = safe_read_csv(member_summary_path)
@@ -114,7 +145,9 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
-            "diagnostic_provenance": [],
+            "diagnostic_provenance": (
+                _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
+            ) or [],
             "files": {
                 "ensemble_statistics": stats_path,
                 "member_summary": member_summary_path,
@@ -122,6 +155,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "metadata": metadata_path,
                 "config": config_path,
                 "validation": validation_path,
+                "diagnostic_provenance": diagnostic_provenance_path,
             },
         }
 
@@ -131,6 +165,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
+        diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         sweep_df = safe_read_csv(sweep_path)
 
@@ -145,13 +180,16 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
-            "diagnostic_provenance": [],
+            "diagnostic_provenance": (
+                _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
+            ) or [],
             "files": {
                 "sweep_summary": sweep_path,
                 "summary": summary_path,
                 "metadata": metadata_path,
                 "config": config_path,
                 "validation": validation_path,
+                "diagnostic_provenance": diagnostic_provenance_path,
             },
         }
 
@@ -167,7 +205,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         # comparison (same adapter, same diagnostics config), so either
         # subdirectory's provenance file is representative; control is used
         # because it always exists when a comparison result exists.
-        diagnostic_provenance_path = entry.path / "control" / "diagnostic_provenance.json"
+        diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         comparison_df = safe_read_csv(comparison_path)
         control_df = safe_read_csv(control_path)
@@ -184,7 +222,9 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
-            "diagnostic_provenance": _read_json(diagnostic_provenance_path) or [],
+            "diagnostic_provenance": (
+                _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
+            ) or [],
             "files": {
                 "comparison": comparison_path,
                 "summary": summary_path,
@@ -453,6 +493,11 @@ def _seeding_intervals_from_comparison(comparison_df: pd.DataFrame) -> List[tupl
     return []
 
 
+def comparison_seeding_intervals(comparison_df: pd.DataFrame) -> List[tuple[float, float]]:
+    """Public wrapper returning seeding-active intervals from comparison data."""
+    return _seeding_intervals_from_comparison(comparison_df)
+
+
 
 
 def _curve_palette(n: int) -> List[str]:
@@ -636,7 +681,11 @@ def _format_sweep_case_label(row: pd.Series) -> str:
 
     collision_key = "param.microphysics.collision"
     if collision_key in row and pd.notna(row[collision_key]):
-        collision_value = bool(row[collision_key])
+        raw_collision = row[collision_key]
+        if isinstance(raw_collision, str):
+            collision_value = raw_collision.strip().lower() in {"true", "1", "yes", "on"}
+        else:
+            collision_value = bool(raw_collision)
         parts.append("coll=ON" if collision_value else "coll=OFF")
 
     if parts:
@@ -646,6 +695,11 @@ def _format_sweep_case_label(row: pd.Series) -> str:
         return str(row["case_name"])
 
     return "case"
+
+
+def sweep_case_display_label(row: pd.Series) -> str:
+    """Public wrapper for the compact sweep-case label used by the Results UI."""
+    return _format_sweep_case_label(row)
 
 
 
@@ -698,6 +752,23 @@ def _read_sweep_case_dataframe(case_dir: Path, curve_source: str) -> pd.DataFram
         return pd.DataFrame()
 
     return safe_read_csv(path)
+
+
+def load_sweep_case_publication_data(
+    sweep_dir: Path,
+    row: pd.Series,
+) -> tuple[str, pd.DataFrame]:
+    """Load one sweep case as either a comparison or ensemble-statistics dataset."""
+    case_dir = _resolve_sweep_case_dir(sweep_dir, row)
+    comparison_path = case_dir / "comparison.csv"
+    if comparison_path.exists():
+        return "comparison", safe_read_csv(comparison_path)
+
+    ensemble_path = case_dir / "ensemble_statistics.csv"
+    if ensemble_path.exists():
+        return "ensemble", safe_read_csv(ensemble_path)
+
+    return "unavailable", pd.DataFrame()
 
 
 def sweep_base_variables(
@@ -820,7 +891,11 @@ def format_sweep_param_value(column: str, value: Any) -> str:
             return str(value)
 
     if column.endswith("collision"):
-        return "ON" if bool(value) else "OFF"
+        if isinstance(value, str):
+            enabled = value.strip().lower() in {"true", "1", "yes", "on"}
+        else:
+            enabled = bool(value)
+        return "ON" if enabled else "OFF"
 
     if column.endswith("kappa"):
         try:
@@ -1333,10 +1408,10 @@ def result_file_roles_dataframe(metadata: Dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(file_roles)
 
 
-def figure_to_png_bytes(fig) -> bytes:
-    """Serialize a matplotlib figure to PNG bytes for Streamlit download buttons."""
+def figure_to_png_bytes(fig, *, dpi: int = 300) -> bytes:
+    """Serialize a matplotlib figure to a publication-ready PNG byte stream."""
     buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=220, bbox_inches="tight")
+    fig.savefig(buffer, format="png", dpi=dpi, bbox_inches="tight")
     buffer.seek(0)
     return buffer.getvalue()
 
@@ -1542,16 +1617,23 @@ def _time_integral(x: np.ndarray, y: np.ndarray) -> float:
     return float(np.trapz(y, x=x))
 
 
-def build_sweep_effect_summary(
+def sweep_case_metrics_table(
     sweep_dir: Path,
     sweep_df: pd.DataFrame,
     *,
     variable: str,
     curve_source: str = "comparison",
     comparison_mode: str = "diff",
-    x_parameter: str = "param.seeding.injection_start",
 ) -> pd.DataFrame:
-    """Summarize each sweep case into final/max/min/integral values."""
+    """
+    Summarize each sweep case's time-series into scalar final/max/min/integral/peak_time_s
+    values, alongside every param.* column for that case.
+
+    This is the shared building block for both the fixed-parameter sensitivity
+    summary and the collapse-variable analysis below: both need "one row per
+    case, with param columns plus a scalar response", they just plot it
+    differently.
+    """
     if sweep_df.empty:
         return pd.DataFrame()
 
@@ -1594,35 +1676,48 @@ def build_sweep_effect_summary(
             if col.startswith("param."):
                 metric_row[col] = row[col]
 
-        if x_parameter in row:
-            metric_row["x_parameter"] = row[x_parameter]
-        else:
-            metric_row["x_parameter"] = None
-
         rows.append(metric_row)
 
     return pd.DataFrame(rows)
 
 
-def plot_sweep_effect_summary(
-    summary_df: pd.DataFrame,
+def varying_sweep_parameters(metrics_df: pd.DataFrame, param_cols: List[str]) -> List[str]:
+    """Return which param.* columns still have more than one distinct value in metrics_df."""
+    if metrics_df.empty:
+        return []
+    varying = []
+    for col in param_cols:
+        if col not in metrics_df.columns:
+            continue
+        if metrics_df[col].nunique(dropna=True) > 1:
+            varying.append(col)
+    return varying
+
+
+def plot_parameter_sensitivity(
+    metrics_df: pd.DataFrame,
     *,
     x_parameter: str,
     statistic: str,
     variable: str,
 ):
-    """Plot compact parameter effect summary instead of many overlapping time curves."""
+    """
+    Plot statistic vs. one sweep parameter, using only cases already filtered so
+    every other swept parameter is held fixed. Callers are responsible for the
+    filtering (see varying_sweep_parameters) -- this function does not check it,
+    since it is also useful as a raw plotting primitive.
+    """
     fig, ax = plt.subplots(figsize=(8.8, 4.8))
 
-    if summary_df.empty or statistic not in summary_df.columns or x_parameter not in summary_df.columns:
-        ax.set_title("No parameter effect summary data")
+    if metrics_df.empty or statistic not in metrics_df.columns or x_parameter not in metrics_df.columns:
+        ax.set_title("No sensitivity summary data")
         return fig
 
-    plot_df = summary_df.copy()
+    plot_df = metrics_df.copy()
     plot_df = plot_df.dropna(subset=[x_parameter, statistic])
 
     if plot_df.empty:
-        ax.set_title("No parameter effect summary data")
+        ax.set_title("No sensitivity summary data")
         return fig
 
     try:
@@ -1633,10 +1728,171 @@ def plot_sweep_effect_summary(
         plot_df[x_parameter] = plot_df[x_parameter].astype(str)
         ax.bar(plot_df[x_parameter], plot_df[statistic])
 
-    ax.set_xlabel(x_parameter)
+    ax.set_xlabel(short_sweep_param_name(x_parameter))
     ax.set_ylabel(f"{statistic} of {variable}")
-    ax.set_title(f"{variable}: {statistic} by {x_parameter}", fontsize=12)
+    ax.set_title(f"{variable}: {statistic} vs {short_sweep_param_name(x_parameter)}\n(other swept parameters held fixed)", fontsize=11)
     ax.grid(alpha=0.22)
+    fig.tight_layout()
+
+    return fig
+
+
+COLLAPSE_VARIABLE_COLUMN = "log10_kappa_r_dry3"
+
+
+def add_kappa_koehler_collapse_variable(
+    metrics_df: pd.DataFrame,
+    *,
+    dry_radius_col: str = "param.seeding.dry_radius",
+    kappa_col: str = "param.seeding.kappa",
+) -> pd.DataFrame:
+    """
+    Add log10(kappa * (dry_radius / 1 m)^3), a dimensionless diagnostic based
+    on the kappa-times-dry-volume term in kappa-Koehler theory. A collapse onto
+    this coordinate is a hypothesis to test, not a guaranteed property: the
+    response can still depend on supersaturation history, injection timing,
+    collisions, size-distribution width, and other conditions.
+
+    Returns metrics_df unchanged (no new column) if either parameter column is
+    absent, e.g. for sweeps that don't vary dry_radius/kappa.
+    """
+    if dry_radius_col not in metrics_df.columns or kappa_col not in metrics_df.columns:
+        return metrics_df
+
+    out = metrics_df.copy()
+    dry_radius = pd.to_numeric(out[dry_radius_col], errors="coerce")
+    kappa = pd.to_numeric(out[kappa_col], errors="coerce")
+    product = kappa * (dry_radius ** 3)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out[COLLAPSE_VARIABLE_COLUMN] = np.where(product > 0, np.log10(product), np.nan)
+
+    return out
+
+
+def plot_collapse_variable_response(
+    metrics_df: pd.DataFrame,
+    *,
+    statistic: str,
+    variable: str,
+    color_by: str | None = None,
+):
+    """
+    Scatter statistic vs. the kappa-Koehler collapse variable across all
+    dry_radius x kappa sweep cases at once (unlike plot_parameter_sensitivity,
+    this intentionally does NOT require fixing other parameters -- collapsing
+    onto log10(kappa * r_dry^3) is the point: if the physics holds, cases with
+    different dry_radius/kappa combinations but the same collapse-variable
+    value should show a similar response).
+    """
+    fig, ax = plt.subplots(figsize=(8.8, 4.8))
+
+    if (
+        metrics_df.empty
+        or COLLAPSE_VARIABLE_COLUMN not in metrics_df.columns
+        or statistic not in metrics_df.columns
+    ):
+        ax.set_title("No collapse-variable data (sweep does not vary both dry_radius and kappa)")
+        return fig
+
+    plot_df = metrics_df.dropna(subset=[COLLAPSE_VARIABLE_COLUMN, statistic]).copy()
+    if plot_df.empty:
+        ax.set_title("No collapse-variable data")
+        return fig
+
+    if color_by and color_by in plot_df.columns:
+        groups = list(plot_df.groupby(color_by))
+        cmap = plt.get_cmap("viridis", max(len(groups), 1))
+        for idx, (group_value, group_df) in enumerate(groups):
+            ax.scatter(
+                group_df[COLLAPSE_VARIABLE_COLUMN],
+                group_df[statistic],
+                color=cmap(idx),
+                label=f"{short_sweep_param_name(color_by)}={format_sweep_param_value(color_by, group_value)}",
+                s=42,
+                alpha=0.85,
+                edgecolors="white",
+                linewidths=0.4,
+            )
+        ax.legend(fontsize=8, loc="best")
+    else:
+        ax.scatter(plot_df[COLLAPSE_VARIABLE_COLUMN], plot_df[statistic], s=42, alpha=0.85, color="#2f6fb0")
+
+    ax.set_xlabel(r"$\log_{10}[\kappa \cdot (r_{dry}/1\,\mathrm{m})^3]$")
+    ax.set_ylabel(f"{statistic} of {variable}")
+    ax.set_title(f"{variable}: response vs κ–dry-volume coordinate", fontsize=11)
+    ax.grid(alpha=0.22)
+    fig.tight_layout()
+
+    return fig
+
+
+def plot_response_surface_heatmap(
+    metrics_df: pd.DataFrame,
+    *,
+    x_param: str,
+    y_param: str,
+    statistic: str,
+    variable: str,
+    agg: str | None = None,
+):
+    """
+    2D response-surface heatmap of `statistic` over two swept parameters
+    (e.g. dry_radius x kappa). By default, the plot refuses to average across
+    additional varying parameters because that would confound the response
+    surface. Callers may explicitly provide an aggregation only when pooling is
+    scientifically intended.
+    """
+    fig, ax = plt.subplots(figsize=(7.2, 5.6))
+
+    required = [x_param, y_param, statistic]
+    if metrics_df.empty or any(col not in metrics_df.columns for col in required):
+        ax.set_title("No response-surface data")
+        return fig
+
+    plot_df = metrics_df.dropna(subset=required).copy()
+    if plot_df.empty:
+        ax.set_title("No response-surface data")
+        return fig
+
+    other_parameter_columns = [
+        col
+        for col in plot_df.columns
+        if col.startswith("param.") and col not in {x_param, y_param}
+    ]
+    confounders = [
+        col for col in other_parameter_columns if plot_df[col].nunique(dropna=True) > 1
+    ]
+    if confounders and agg is None:
+        ax.set_title(
+            "Fix other swept parameters before plotting this response surface:\n"
+            + ", ".join(short_sweep_param_name(col) for col in confounders),
+            fontsize=10,
+        )
+        return fig
+
+    try:
+        plot_df[x_param] = pd.to_numeric(plot_df[x_param])
+        plot_df[y_param] = pd.to_numeric(plot_df[y_param])
+    except Exception:
+        ax.set_title("Response surface requires numeric parameters")
+        return fig
+
+    aggregate = agg or "mean"
+    pivot = plot_df.pivot_table(index=y_param, columns=x_param, values=statistic, aggfunc=aggregate)
+    if pivot.empty:
+        ax.set_title("No response-surface data")
+        return fig
+
+    mesh = ax.pcolormesh(pivot.columns, pivot.index, pivot.to_numpy(), cmap="viridis", shading="nearest")
+    fig.colorbar(mesh, ax=ax, label=f"{statistic} of {variable}")
+
+    ax.set_xlabel(short_sweep_param_name(x_param))
+    ax.set_ylabel(short_sweep_param_name(y_param))
+    ax.set_title(
+        f"{variable}: {statistic} response surface\n({short_sweep_param_name(x_param)} x {short_sweep_param_name(y_param)})",
+        fontsize=11,
+    )
     fig.tight_layout()
 
     return fig

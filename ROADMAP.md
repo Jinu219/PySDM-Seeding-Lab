@@ -80,14 +80,17 @@ rain 유효반경 재사용)을 실제 물리 계산으로 교체.
 
 ### Step 15. Publication-style diagnostic plots (구 Step 13)
 
-Step 13~14 이후에 진행한다. 이 시점에는 대부분의 pathway 변수가 native/derived이므로
-발표/논문용 plot을 한 번만 만들면 된다.
+**Status: first implementation completed.** 원래는 Step 13~14 이후에 진행할
+계획이었지만, 현재도 proxy를 숨기지 않고 각 panel 제목과 footer에 provenance를
+표시하는 조건으로 먼저 구현했다. 향후 native extraction이 개선되어도 plot API와
+레이아웃은 그대로 두고 provenance 분류만 자연스럽게 갱신된다.
 
-- mean ± std panel
-- median + IQR panel
-- collision OFF vs ON panel
-- dry radius / κ / injection time별 separated plot
-- Growth Pathway four-panel plot
+- [x] mean ± std panel
+- [x] median + IQR panel
+- [x] collision OFF vs ON matched-condition panel
+- [x] dry radius / κ / injection time별 OFAT separated plot
+- [x] Growth Pathway four-panel plot
+- [ ] vector export(PDF/SVG)와 journal-specific style preset
 
 각 plot 하단에 `diagnostic_provenance.json` 기반으로 "이 변수는 native/proxy입니다"
 배지를 함께 표시하는 것을 권장 (완전히 native가 아닌 상태에서 발표해야 한다면, 최소한

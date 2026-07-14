@@ -687,3 +687,90 @@ Recommended commit message:
 ```bash
 git commit -m "Add diagnostic provenance tracking, runtime estimation, and result-file docs"
 ```
+
+## Step 14. Replace Quick Parameter Effect Summary with sound sensitivity analysis
+
+`Quick Parameter Effect Summary` connected sweep cases into a single line ordered
+by one chosen parameter, even when other swept parameters (e.g. kappa) varied
+at the same time between those cases. For a multi-parameter sweep this silently
+mixes several effects into one curve. Removed and replaced with tools that are
+correct by construction or explicit about what they assume.
+
+Changes:
+- Removed `analysis.dashboard.build_sweep_effect_summary` / `plot_sweep_effect_summary`
+  and the "Quick Parameter Effect Summary" UI block.
+- Added `analysis.dashboard.sweep_case_metrics_table()`: shared per-case
+  final/max/min/integral/peak_time_s summary (same computation as before,
+  factored out so multiple analyses can reuse it).
+- Added "Fixed-Parameter Sensitivity Summary": uses the existing Case
+  filter/focus view so the user explicitly fixes every other swept parameter
+  before viewing a 1D sensitivity curve. `varying_sweep_parameters()` checks
+  the filtered case set and warns if more than the chosen x-axis parameter is
+  still varying, instead of silently plotting a mixed-effects curve.
+- Added "Warm-Seeding Collapse Variable Analysis": `add_kappa_koehler_collapse_variable()`
+  computes log10(kappa * dry_radius^3), the kappa-Koehler collapse variable
+  used in warm hygroscopic seeding sensitivity analysis (Petters & Kreidenweis
+  2007). `plot_collapse_variable_response()` scatters response vs. this single
+  variable across all dry_radius x kappa cases at once (deliberately not
+  requiring other parameters to be fixed, since collapsing onto one variable is
+  the point), optionally colored by a third parameter (e.g. injection_start).
+- Added `plot_response_surface_heatmap()`: 2D dry_radius x kappa response
+  surface for the same on-the-fly variable/statistic choice (complements the
+  existing `plot_sweep_heatmap`, which only reads pre-aggregated
+  sweep_summary.csv columns and can't compute final/max/integral on demand).
+- Registered all new functions in `pages/07_results.py`'s
+  `REQUIRED_DASHBOARD_FUNCTIONS`.
+
+Recommended commit message:
+
+```bash
+git commit -m "Replace quick parameter summary with fixed-parameter sensitivity and kappa-Koehler collapse analysis"
+```
+
+## Step 15 (original Step 13). Publication-style diagnostic plots
+
+Started the publication-plot stage requested in the original project prompt.
+`ROADMAP.md` renamed this stage Step 15 after placing native diagnostic
+extraction first; both names refer to the same publication-plot work here.
+
+Changes:
+- Added `analysis/publication_plots.py`, keeping publication-specific styling,
+  units, provenance marks, and conditioning rules separate from result loading.
+- Added a Results Dashboard `Publication Plots` tab for comparison, sweep, and
+  ensemble results.
+- Added a Growth Pathway 2×2 panel with one explicitly selected variable from
+  each pathway group. It supports `seeding - control` and control/seeding views.
+- Added ensemble 2×2 panels for both mean ± standard deviation and median + IQR.
+- Added one-factor-at-a-time dry-radius / kappa / injection-time panels. Every
+  non-x parameter is fixed at a user-visible reference condition, so unrelated
+  sweep effects are not silently mixed.
+- Added a collision OFF / ON panel that keeps only parameter conditions having
+  an exact OFF/ON pair and uses shared y limits and matched curve colors.
+- Added native/derived/proxy provenance codes directly to panel titles and a
+  provenance footer to every exported publication figure.
+- Changed PNG export to 300 dpi by default.
+- Sweep and ensemble result loading now finds a representative nested
+  `diagnostic_provenance.json`, so provenance is also available outside a
+  top-level comparison result.
+- Tightened the kappa–dry-volume analysis language: the combined coordinate is
+  treated as a hypothesis to test rather than a guaranteed collapse.
+- Response-surface heatmaps no longer average over additional varying sweep
+  parameters by default. The UI asks the user to fix those confounders first.
+- Added publication exports to `scripts/check_project_integrity.py` and compiled
+  `analysis/publication_plots.py` as part of the integrity check.
+
+Validation performed:
+- `python -m py_compile` passed for the new module, dashboard, Results page, and
+  integrity script in the local PySDM environment.
+- `python scripts/check_project_integrity.py` passed.
+- Synthetic tests covered all four publication plot builders, OFAT slicing,
+  exact collision pairing, 300-dpi serialization, and confounder rejection.
+- A real placeholder 2×2 sweep was run in a temporary directory and verified
+  end-to-end through runner → result discovery/loading → provenance loading →
+  selected-case four-panel rendering.
+
+Recommended commit message:
+
+```bash
+git commit -m "Add publication-style warm-cloud seeding diagnostic panels"
+```

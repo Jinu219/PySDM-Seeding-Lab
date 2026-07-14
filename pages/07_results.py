@@ -36,6 +36,29 @@ def render_plot_grid(plot_items, *, n_cols: int = 2) -> None:
                 )
 
 
+def select_publication_pathway_variables(
+    available_variables,
+    *,
+    key_prefix: str,
+):
+    """Select exactly one variable per growth-pathway panel."""
+    groups = dash.growth_pathway_variable_groups(list(available_variables))
+    selected = {}
+    columns = st.columns(2)
+    for idx, (group, variables) in enumerate(groups.items()):
+        preferred = dash.DEFAULT_PATHWAY_VARIABLES.get(group)
+        default = preferred if preferred in variables else variables[0]
+        with columns[idx % 2]:
+            selected[group] = st.selectbox(
+                group,
+                variables,
+                index=variables.index(default),
+                key=f"{key_prefix}_{idx}",
+                format_func=dash.publication_variable_label,
+            )
+    return selected
+
+
 REQUIRED_DASHBOARD_FUNCTIONS = [
     "discover_results",
     "load_result",
@@ -62,8 +85,12 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "filter_sweep_dataframe",
     "result_is_readable",
     "likely_injection_time_sweep",
-    "plot_sweep_effect_summary",
-    "build_sweep_effect_summary",
+    "sweep_case_metrics_table",
+    "varying_sweep_parameters",
+    "plot_parameter_sensitivity",
+    "add_kappa_koehler_collapse_variable",
+    "plot_collapse_variable_response",
+    "plot_response_surface_heatmap",
     "build_sweep_overlay_dataframe_relative_time",
     "plot_ensemble_uncertainty",
     "ensemble_available_bases",
@@ -73,6 +100,16 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "diagnostic_provenance_dataframe",
     "diagnostic_provenance_summary_counts",
     "result_file_roles_dataframe",
+    "load_sweep_case_publication_data",
+    "sweep_case_display_label",
+    "matched_collision_cases",
+    "plot_growth_pathway_four_panel",
+    "plot_ensemble_uncertainty_panel",
+    "plot_one_factor_sensitivity_panel",
+    "plot_collision_off_on_panel",
+    "publication_parameter_label",
+    "publication_variable_label",
+    "comparison_seeding_intervals",
 ]
 
 missing = [name for name in REQUIRED_DASHBOARD_FUNCTIONS if not hasattr(dash, name)]
@@ -83,7 +120,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "diagnostic-provenance-file-roles-20260713"
+RESULTS_UI_BUILD_ID = "publication-diagnostic-panels-20260714"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -140,6 +177,7 @@ metadata = loaded["metadata"]
 config = loaded["config"]
 validation = loaded["validation"]
 files = loaded["files"]
+diagnostic_provenance_rows = loaded.get("diagnostic_provenance", [])
 
 is_ensemble = selected_entry.result_type == "ensemble"
 is_sweep = selected_entry.result_type == "parameter_sweep"
@@ -202,23 +240,23 @@ if is_placeholder:
 st.divider()
 
 if is_ensemble:
-    tab_dashboard, tab_growth, tab_ensemble, tab_tables, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Growth Pathway Diagnostics", "Ensemble Statistics", "Tables", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_growth, tab_publication, tab_ensemble, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Ensemble Statistics", "Tables", "Files & Metadata", "Config / Validation"]
     )
     tab_exper2 = tab_growth
     tab_comparison = None
     tab_timeseries = None
     tab_ranking = None
 elif is_sweep:
-    tab_dashboard, tab_growth, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Growth Pathway Diagnostics", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_growth, tab_publication, tab_timeseries, tab_ranking, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Sweep Time Series", "Sweep Ranking Table", "Files & Metadata", "Config / Validation"]
     )
     tab_exper2 = tab_growth
     tab_comparison = None
     tab_tables = tab_ranking
 elif is_comparison:
-    tab_dashboard, tab_exper2, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Growth Pathway Diagnostics", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_exper2, tab_publication, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
     )
 else:
     tab_dashboard, tab_tables, tab_files, tab_config = st.tabs(
@@ -228,6 +266,7 @@ else:
     tab_exper2 = None
     tab_timeseries = None
     tab_ranking = None
+    tab_publication = None
 
 with tab_dashboard:
     st.subheader("Summary Metrics")
@@ -320,81 +359,6 @@ with tab_dashboard:
         render_plot_grid(ensemble_items, n_cols=matrix_cols)
 
     elif is_sweep:
-        st.subheader("Quick Parameter Effect Summary")
-        st.caption("겹쳐 보이는 time-series를 보기 전에, 각 case를 final/max/integral 값으로 요약해서 parameter 효과를 먼저 봅니다.")
-
-        available_vars_for_summary = dash.sweep_base_variables(selected_entry.path, sweep_df, curve_source="comparison")
-        param_cols_for_summary = dash.sweep_param_columns(sweep_df)
-
-        if available_vars_for_summary and param_cols_for_summary:
-            default_var_candidates = [
-                "rain_water_mixing_ratio_diff",
-                "rain_water_mixing_ratio",
-                "cloud_water_mixing_ratio_diff",
-                "all_activated_water_mixing_ratio_diff",
-                "supersaturation_percent_diff",
-            ]
-            default_var = next((var for var in default_var_candidates if var in available_vars_for_summary), available_vars_for_summary[0])
-
-            default_param = (
-                "param.seeding.injection_start"
-                if "param.seeding.injection_start" in param_cols_for_summary
-                else param_cols_for_summary[0]
-            )
-
-            s_col1, s_col2, s_col3 = st.columns(3)
-            with s_col1:
-                summary_variable = st.selectbox(
-                    "Response variable",
-                    available_vars_for_summary,
-                    index=available_vars_for_summary.index(default_var),
-                    key="quick_summary_variable",
-                )
-            with s_col2:
-                summary_parameter = st.selectbox(
-                    "Sweep parameter",
-                    param_cols_for_summary,
-                    index=param_cols_for_summary.index(default_param),
-                    key="quick_summary_parameter",
-                )
-            with s_col3:
-                summary_statistic = st.selectbox(
-                    "Statistic",
-                    ["final", "max", "integral", "peak_time_s", "min"],
-                    index=1,
-                    key="quick_summary_statistic",
-                )
-
-            quick_summary_df = dash.build_sweep_effect_summary(
-                selected_entry.path,
-                sweep_df,
-                variable=summary_variable,
-                curve_source="comparison",
-                comparison_mode="diff",
-                x_parameter=summary_parameter,
-            )
-            quick_fig = dash.plot_sweep_effect_summary(
-                quick_summary_df,
-                x_parameter=summary_parameter,
-                statistic=summary_statistic,
-                variable=summary_variable,
-            )
-            st.pyplot(quick_fig, use_container_width=True)
-            st.download_button(
-                "Download parameter summary plot",
-                data=dash.figure_to_png_bytes(quick_fig),
-                file_name=f"parameter_summary_{summary_variable}_{summary_statistic}.png",
-                mime="image/png",
-                use_container_width=True,
-            )
-            with st.expander("Parameter summary table", expanded=False):
-                st.dataframe(quick_summary_df, use_container_width=True)
-
-            if dash.likely_injection_time_sweep(sweep_df):
-                st.info("Injection-time sweep detected. Use `Sweep Time Series` → `Time axis = relative to injection start` to compare post-seeding responses more clearly.")
-        else:
-            st.info("No compact parameter summary is available for this result.")
-
         st.subheader("Sweep Case Time-Series Matrix")
         st.caption(
             "각 sweep case의 시간 변화 곡선을 한 그래프에 겹쳐서 보여줍니다. "
@@ -455,6 +419,198 @@ with tab_dashboard:
             st.metric("Selected cases", len(filtered_sweep_df))
             if len(filtered_sweep_df) == 0:
                 st.warning("No cases selected. Adjust filters.")
+
+        st.subheader("Fixed-Parameter Sensitivity Summary")
+        st.caption(
+            "선택된(필터링된) case들을 final/max/integral 등 scalar 값으로 요약해서 하나의 parameter에 대한 "
+            "순수한 sensitivity curve를 봅니다. 다른 parameter가 함께 변하고 있으면 곡선이 여러 효과가 섞인 "
+            "것일 수 있으므로, 위 Case filter에서 나머지 parameter를 고정한 뒤 사용하세요."
+        )
+
+        param_cols_for_summary = dash.sweep_param_columns(sweep_df)
+
+        if available_vars and param_cols_for_summary and len(filtered_sweep_df) > 0:
+            default_var_candidates = [
+                "rain_water_mixing_ratio",
+                "cloud_water_mixing_ratio",
+                "all_activated_water_mixing_ratio",
+                "supersaturation_percent",
+            ]
+            default_var = next((var for var in default_var_candidates if var in available_vars), available_vars[0])
+
+            s_col1, s_col2, s_col3 = st.columns(3)
+            with s_col1:
+                sensitivity_variable = st.selectbox(
+                    "Response variable",
+                    available_vars,
+                    index=available_vars.index(default_var),
+                    key="sensitivity_variable",
+                )
+            with s_col2:
+                sensitivity_parameter = st.selectbox(
+                    "Parameter (x-axis)",
+                    param_cols_for_summary,
+                    index=0,
+                    key="sensitivity_parameter",
+                    format_func=dash.short_sweep_param_name,
+                )
+            with s_col3:
+                sensitivity_statistic = st.selectbox(
+                    "Statistic",
+                    ["final", "max", "integral", "peak_time_s", "min"],
+                    index=1,
+                    key="sensitivity_statistic",
+                )
+
+            sensitivity_metrics_df = dash.sweep_case_metrics_table(
+                selected_entry.path,
+                filtered_sweep_df,
+                variable=sensitivity_variable,
+                curve_source="comparison",
+                comparison_mode="diff",
+            )
+
+            other_param_cols = [c for c in param_cols_for_summary if c != sensitivity_parameter]
+            still_varying = dash.varying_sweep_parameters(sensitivity_metrics_df, other_param_cols)
+
+            if still_varying:
+                st.warning(
+                    "이 필터링된 case 집합에서 아직 함께 변하고 있는 parameter가 있습니다: "
+                    + ", ".join(dash.short_sweep_param_name(c) for c in still_varying)
+                    + ". 아래 곡선은 여러 parameter의 효과가 섞여 있을 수 있습니다. "
+                    "위 Case filter에서 해당 parameter들을 하나의 값으로 고정하는 것을 권장합니다."
+                )
+            else:
+                st.success(f"다른 parameter는 모두 고정되어 있습니다. {dash.short_sweep_param_name(sensitivity_parameter)}에 대한 순수한 sensitivity curve입니다.")
+
+            sensitivity_fig = dash.plot_parameter_sensitivity(
+                sensitivity_metrics_df,
+                x_parameter=sensitivity_parameter,
+                statistic=sensitivity_statistic,
+                variable=sensitivity_variable,
+            )
+            st.pyplot(sensitivity_fig, use_container_width=True)
+            st.download_button(
+                "Download sensitivity plot",
+                data=dash.figure_to_png_bytes(sensitivity_fig),
+                file_name=f"sensitivity_{sensitivity_variable}_{sensitivity_statistic}_vs_{dash.short_sweep_param_name(sensitivity_parameter)}.png",
+                mime="image/png",
+                use_container_width=True,
+                key="sensitivity_download",
+            )
+            with st.expander("Sensitivity summary table", expanded=False):
+                st.dataframe(sensitivity_metrics_df, use_container_width=True)
+
+            if dash.likely_injection_time_sweep(sweep_df):
+                st.info("Injection-time sweep detected. Use `Sweep Time Series` → `Time axis = relative to injection start` to compare post-seeding responses more clearly.")
+        else:
+            st.info("No sensitivity summary available. Select at least one case and make sure the sweep varies at least one parameter.")
+
+        st.subheader("Warm-Seeding Collapse Variable Analysis")
+        st.caption(
+            r"κ-Köhler의 κ·dry-volume 항에서 유도한 $\log_{10}[\kappa(r_{dry}/1m)^3]$ 좌표에 "
+            "서로 다른 dry radius–κ 조합이 실제로 수렴하는지 검정합니다. 수렴을 전제하지 않으며, "
+            "주입 시각·collision 등 다른 조건은 위 Case filter로 고정해야 합니다."
+        )
+
+        collapse_default_var_candidates = [
+            "rain_water_mixing_ratio",
+            "cloud_water_mixing_ratio",
+            "all_activated_water_mixing_ratio",
+            "supersaturation_percent",
+        ]
+        collapse_default_variable = next(
+            (var for var in collapse_default_var_candidates if var in available_vars),
+            available_vars[0] if available_vars else None,
+        )
+        collapse_variable_name = (
+            st.selectbox(
+                "Collapse-analysis response variable",
+                available_vars,
+                index=available_vars.index(collapse_default_variable),
+                key="collapse_response_variable",
+            )
+            if collapse_default_variable
+            else None
+        )
+
+        collapse_metrics_df = (
+            dash.add_kappa_koehler_collapse_variable(
+                dash.sweep_case_metrics_table(
+                    selected_entry.path,
+                    filtered_sweep_df,
+                    variable=collapse_variable_name,
+                    curve_source="comparison",
+                    comparison_mode="diff",
+                )
+            )
+            if collapse_variable_name
+            else pd.DataFrame()
+        )
+
+        if not collapse_metrics_df.empty and dash.COLLAPSE_VARIABLE_COLUMN in collapse_metrics_df.columns:
+            collapse_confounders = dash.varying_sweep_parameters(
+                collapse_metrics_df,
+                [
+                    col
+                    for col in param_cols_for_summary
+                    if col not in {"param.seeding.dry_radius", "param.seeding.kappa"}
+                ],
+            )
+            if collapse_confounders:
+                st.warning(
+                    "Collapse 좌표 외에 함께 변하는 조건이 남아 있습니다: "
+                    + ", ".join(dash.short_sweep_param_name(col) for col in collapse_confounders)
+                    + ". 색상 하나로 구분할 수는 있지만, 정량적 collapse 판정 전에는 모두 고정하거나 facet으로 분리하세요."
+                )
+
+            c_col1, c_col2 = st.columns(2)
+            with c_col1:
+                collapse_statistic = st.selectbox(
+                    "Statistic",
+                    ["final", "max", "integral", "peak_time_s", "min"],
+                    index=1,
+                    key="collapse_statistic",
+                )
+            with c_col2:
+                color_by_options = ["(none)"] + collapse_confounders
+                color_by_choice = st.selectbox(
+                    "Color by",
+                    color_by_options,
+                    index=0,
+                    key="collapse_color_by",
+                    format_func=lambda c: "(none)" if c == "(none)" else dash.short_sweep_param_name(c),
+                )
+
+            collapse_fig = dash.plot_collapse_variable_response(
+                collapse_metrics_df,
+                statistic=collapse_statistic,
+                variable=collapse_variable_name,
+                color_by=None if color_by_choice == "(none)" else color_by_choice,
+            )
+            st.pyplot(collapse_fig, use_container_width=True)
+            st.download_button(
+                "Download collapse-variable plot",
+                data=dash.figure_to_png_bytes(collapse_fig),
+                file_name=f"collapse_variable_{collapse_variable_name}_{collapse_statistic}.png",
+                mime="image/png",
+                use_container_width=True,
+                key="collapse_download",
+            )
+
+            if "param.seeding.dry_radius" in param_cols_for_summary and "param.seeding.kappa" in param_cols_for_summary:
+                with st.expander("2D response surface (dry_radius x kappa)", expanded=False):
+                    st.caption("동일한 데이터를 dry_radius × κ 격자 위에 표시합니다. 다른 parameter가 변하면 평균으로 섞지 않고, 먼저 Case filter에서 고정하라는 안내를 표시합니다.")
+                    surface_fig = dash.plot_response_surface_heatmap(
+                        collapse_metrics_df,
+                        x_param="param.seeding.dry_radius",
+                        y_param="param.seeding.kappa",
+                        statistic=collapse_statistic,
+                        variable=collapse_variable_name,
+                    )
+                    st.pyplot(surface_fig, use_container_width=True)
+        else:
+            st.info("이 sweep은 dry_radius와 kappa를 함께 변화시키지 않아 collapse variable을 계산할 수 없습니다.")
 
         default_vars = [
             var
@@ -676,6 +832,376 @@ if is_ensemble:
             with col2:
                 st.subheader("Ensemble Summary JSON")
                 st.json(summary.get("ensemble", {}))
+
+
+if tab_publication is not None:
+    with tab_publication:
+        st.subheader("Publication-style Diagnostic Plots")
+        build_badge("Publication plots build", getattr(dash, "PUBLICATION_PLOTS_BUILD_ID", "unknown"))
+        st.caption(
+            "300 dpi PNG로 내보낼 수 있는 패널입니다. 축 단위와 diagnostic provenance를 그림 안에 기록하며, "
+            "sweep 패널은 다른 조건을 고정하거나 정확히 짝지은 case만 비교합니다."
+        )
+
+        provenance_counts = dash.diagnostic_provenance_summary_counts(diagnostic_provenance_rows)
+        if provenance_counts.get("proxy", 0) > 0:
+            st.warning(
+                f"이 결과에는 proxy diagnostic {provenance_counts['proxy']}개가 포함되어 있습니다. "
+                "그림의 [P] 표시는 근사값이며, 정량적 논문 결론 전에 native extraction을 확인하세요."
+            )
+        elif not diagnostic_provenance_rows:
+            st.info("이 결과에는 provenance 파일이 없어 그림에 [?]로 표시됩니다. 최신 코드로 다시 실행하면 기록됩니다.")
+
+        if is_comparison:
+            st.markdown("#### Growth Pathway Four-panel")
+            publication_bases = dash.comparison_base_variables(comparison_df)
+            selected_pathway_variables = select_publication_pathway_variables(
+                publication_bases,
+                key_prefix="publication_comparison_pathway",
+            )
+            publication_mode = st.radio(
+                "Curve mode",
+                ["diff", "control_vs_seeding"],
+                horizontal=True,
+                key="publication_comparison_mode",
+                format_func=lambda value: "Seeding − control" if value == "diff" else "Control vs seeding",
+            )
+            if selected_pathway_variables:
+                publication_fig = dash.plot_growth_pathway_four_panel(
+                    comparison_df,
+                    variables_by_group=selected_pathway_variables,
+                    mode=publication_mode,
+                    provenance_rows=diagnostic_provenance_rows,
+                    seeding_intervals=dash.comparison_seeding_intervals(comparison_df),
+                )
+                st.pyplot(publication_fig, use_container_width=True)
+                st.download_button(
+                    "Download four-panel PNG (300 dpi)",
+                    data=dash.figure_to_png_bytes(publication_fig, dpi=300),
+                    file_name=f"growth_pathway_four_panel_{publication_mode}.png",
+                    mime="image/png",
+                    use_container_width=True,
+                    key="publication_comparison_download",
+                )
+            else:
+                st.info("Four-panel에 사용할 Growth Pathway 변수가 없습니다.")
+
+        elif is_ensemble:
+            st.markdown("#### Ensemble Uncertainty Four-panel")
+            ensemble_publication_bases = dash.ensemble_available_bases(ensemble_df)
+            preferred_ensemble_bases = [
+                value
+                for value in [
+                    "supersaturation_percent_diff",
+                    "all_activated_water_mixing_ratio_diff",
+                    "all_activated_concentration_diff",
+                    "effective_radius_all_um_diff",
+                    "rain_water_mixing_ratio_diff",
+                ]
+                if value in ensemble_publication_bases
+            ]
+            selected_ensemble_bases = st.multiselect(
+                "Variables (maximum 4)",
+                ensemble_publication_bases,
+                default=(preferred_ensemble_bases or ensemble_publication_bases)[:4],
+                key="publication_ensemble_variables",
+                format_func=dash.publication_variable_label,
+            )
+            if len(selected_ensemble_bases) > 4:
+                st.warning("앞의 4개 변수만 패널에 표시됩니다.")
+            ensemble_publication_mode = st.radio(
+                "Uncertainty summary",
+                ["mean_std", "median_iqr"],
+                horizontal=True,
+                key="publication_ensemble_mode",
+                format_func=lambda value: "Mean ± std" if value == "mean_std" else "Median + IQR",
+            )
+            if selected_ensemble_bases:
+                ensemble_publication_fig = dash.plot_ensemble_uncertainty_panel(
+                    ensemble_df,
+                    base_variables=selected_ensemble_bases[:4],
+                    mode=ensemble_publication_mode,
+                    provenance_rows=diagnostic_provenance_rows,
+                )
+                st.pyplot(ensemble_publication_fig, use_container_width=True)
+                st.download_button(
+                    "Download ensemble four-panel PNG (300 dpi)",
+                    data=dash.figure_to_png_bytes(ensemble_publication_fig, dpi=300),
+                    file_name=f"ensemble_four_panel_{ensemble_publication_mode}.png",
+                    mime="image/png",
+                    use_container_width=True,
+                    key="publication_ensemble_download",
+                )
+            else:
+                st.info("Ensemble publication panel에 사용할 변수가 없습니다.")
+
+        elif is_sweep:
+            publication_available_variables = dash.sweep_base_variables(
+                selected_entry.path,
+                sweep_df,
+                curve_source="comparison",
+            )
+
+            st.markdown("#### Selected-case Growth Pathway Four-panel")
+            st.caption("Sweep case 하나를 선택해 조건이 섞이지 않은 control–seeding 성장 경로를 그립니다.")
+            publication_case_df = filtered_sweep_df if len(filtered_sweep_df) else sweep_df
+            if len(publication_case_df):
+                publication_case_index = st.selectbox(
+                    "Sweep case",
+                    list(publication_case_df.index),
+                    key="publication_sweep_case",
+                    format_func=lambda index: dash.sweep_case_display_label(publication_case_df.loc[index]),
+                )
+                publication_case_kind, publication_case_data = dash.load_sweep_case_publication_data(
+                    selected_entry.path,
+                    publication_case_df.loc[publication_case_index],
+                )
+                if publication_case_kind == "comparison":
+                    case_bases = dash.comparison_base_variables(publication_case_data)
+                    selected_case_pathway_variables = select_publication_pathway_variables(
+                        case_bases,
+                        key_prefix="publication_sweep_case_pathway",
+                    )
+                    case_mode = st.radio(
+                        "Selected-case curve mode",
+                        ["diff", "control_vs_seeding"],
+                        horizontal=True,
+                        key="publication_sweep_case_mode",
+                        format_func=lambda value: "Seeding − control" if value == "diff" else "Control vs seeding",
+                    )
+                    if selected_case_pathway_variables:
+                        case_publication_fig = dash.plot_growth_pathway_four_panel(
+                            publication_case_data,
+                            variables_by_group=selected_case_pathway_variables,
+                            mode=case_mode,
+                            provenance_rows=diagnostic_provenance_rows,
+                            seeding_intervals=dash.comparison_seeding_intervals(publication_case_data),
+                        )
+                        st.pyplot(case_publication_fig, use_container_width=True)
+                        st.download_button(
+                            "Download selected-case four-panel PNG (300 dpi)",
+                            data=dash.figure_to_png_bytes(case_publication_fig, dpi=300),
+                            file_name=f"sweep_case_growth_pathway_{case_mode}.png",
+                            mime="image/png",
+                            use_container_width=True,
+                            key="publication_sweep_case_download",
+                        )
+                elif publication_case_kind == "ensemble":
+                    case_ensemble_bases = dash.ensemble_available_bases(publication_case_data)
+                    selected_case_ensemble_bases = st.multiselect(
+                        "Selected-case ensemble variables (maximum 4)",
+                        case_ensemble_bases,
+                        default=case_ensemble_bases[:4],
+                        key="publication_sweep_case_ensemble_variables",
+                        format_func=dash.publication_variable_label,
+                    )
+                    case_ensemble_mode = st.radio(
+                        "Selected-case uncertainty summary",
+                        ["mean_std", "median_iqr"],
+                        horizontal=True,
+                        key="publication_sweep_case_ensemble_mode",
+                        format_func=lambda value: "Mean ± std" if value == "mean_std" else "Median + IQR",
+                    )
+                    if selected_case_ensemble_bases:
+                        case_publication_fig = dash.plot_ensemble_uncertainty_panel(
+                            publication_case_data,
+                            base_variables=selected_case_ensemble_bases[:4],
+                            mode=case_ensemble_mode,
+                            provenance_rows=diagnostic_provenance_rows,
+                        )
+                        st.pyplot(case_publication_fig, use_container_width=True)
+                        st.download_button(
+                            "Download selected-case ensemble panel PNG (300 dpi)",
+                            data=dash.figure_to_png_bytes(case_publication_fig, dpi=300),
+                            file_name=f"sweep_case_ensemble_{case_ensemble_mode}.png",
+                            mime="image/png",
+                            use_container_width=True,
+                            key="publication_sweep_case_ensemble_download",
+                        )
+                else:
+                    st.info("선택한 sweep case에서 comparison.csv 또는 ensemble_statistics.csv를 찾지 못했습니다.")
+
+            st.divider()
+            st.markdown("#### Dry radius / κ / Injection-time Separated Panel")
+            st.caption(
+                "One-factor-at-a-time(OFAT) 방식입니다. 각 패널의 x축 parameter만 변화시키고, "
+                "나머지는 아래 기준 조건으로 고정합니다."
+            )
+            if publication_available_variables:
+                ofat_default_candidates = [
+                    "rain_water_mixing_ratio_diff",
+                    "rain_water_mixing_ratio",
+                    "all_activated_water_mixing_ratio_diff",
+                    "all_activated_water_mixing_ratio",
+                    "supersaturation_percent_diff",
+                    "supersaturation_percent",
+                ]
+                ofat_default_variable = next(
+                    (var for var in ofat_default_candidates if var in publication_available_variables),
+                    publication_available_variables[0],
+                )
+                ofat_col1, ofat_col2 = st.columns(2)
+                with ofat_col1:
+                    ofat_variable = st.selectbox(
+                        "Response variable",
+                        publication_available_variables,
+                        index=publication_available_variables.index(ofat_default_variable),
+                        key="publication_ofat_variable",
+                        format_func=dash.publication_variable_label,
+                    )
+                with ofat_col2:
+                    ofat_statistic = st.selectbox(
+                        "Response statistic",
+                        ["final", "max", "integral", "peak_time_s", "min"],
+                        index=1,
+                        key="publication_ofat_statistic",
+                    )
+
+                ofat_metrics_df = dash.sweep_case_metrics_table(
+                    selected_entry.path,
+                    sweep_df,
+                    variable=ofat_variable,
+                    curve_source="comparison",
+                    comparison_mode="diff",
+                )
+                ofat_parameter_columns = dash.sweep_param_columns(ofat_metrics_df)
+                preferred_ofat_parameters = [
+                    parameter
+                    for parameter in [
+                        "param.seeding.dry_radius",
+                        "param.seeding.kappa",
+                        "param.seeding.injection_start",
+                    ]
+                    if parameter in ofat_parameter_columns
+                ]
+                selected_ofat_parameters = st.multiselect(
+                    "Panel x-axes (maximum 3)",
+                    ofat_parameter_columns,
+                    default=preferred_ofat_parameters[:3],
+                    key="publication_ofat_parameters",
+                    format_func=dash.publication_parameter_label,
+                )
+                if len(selected_ofat_parameters) > 3:
+                    st.warning("앞의 3개 parameter만 패널에 표시됩니다.")
+
+                reference_values = {}
+                if ofat_parameter_columns:
+                    st.caption("Reference condition (각 패널에서 해당 x축 parameter 값은 무시됩니다)")
+                    reference_columns = st.columns(min(3, len(ofat_parameter_columns)))
+                    for idx, parameter in enumerate(ofat_parameter_columns):
+                        values = list(ofat_metrics_df[parameter].dropna().unique())
+                        try:
+                            values = sorted(values)
+                        except Exception:
+                            pass
+                        if not values:
+                            continue
+                        default_index = 0 if parameter.endswith("collision") else len(values) // 2
+                        with reference_columns[idx % len(reference_columns)]:
+                            reference_values[parameter] = st.selectbox(
+                                dash.publication_parameter_label(parameter),
+                                values,
+                                index=default_index,
+                                key=f"publication_ofat_reference_{parameter}",
+                                format_func=lambda value, col=parameter: dash.format_sweep_param_value(col, value),
+                            )
+
+                if selected_ofat_parameters:
+                    display_ofat_variable = (
+                        ofat_variable
+                        if ofat_variable.endswith("_diff")
+                        else f"{ofat_variable}_diff"
+                    )
+                    ofat_fig = dash.plot_one_factor_sensitivity_panel(
+                        ofat_metrics_df,
+                        parameters=selected_ofat_parameters[:3],
+                        all_parameter_columns=ofat_parameter_columns,
+                        reference_values=reference_values,
+                        statistic=ofat_statistic,
+                        variable=display_ofat_variable,
+                        provenance_rows=diagnostic_provenance_rows,
+                    )
+                    st.pyplot(ofat_fig, use_container_width=True)
+                    st.download_button(
+                        "Download separated sensitivity panel PNG (300 dpi)",
+                        data=dash.figure_to_png_bytes(ofat_fig, dpi=300),
+                        file_name=f"ofat_sensitivity_{ofat_variable}_{ofat_statistic}.png",
+                        mime="image/png",
+                        use_container_width=True,
+                        key="publication_ofat_download",
+                    )
+            else:
+                st.info("OFAT panel에 사용할 sweep 변수가 없습니다.")
+
+            st.divider()
+            st.markdown("#### Collision OFF / ON Panel")
+            collision_column = "param.microphysics.collision"
+            if collision_column in sweep_df.columns and sweep_df[collision_column].nunique(dropna=True) >= 2:
+                st.caption("동일한 나머지 parameter 조합에 OFF와 ON case가 모두 존재할 때만 짝으로 포함합니다.")
+                matched_collision_df, collision_pairing_df = dash.matched_collision_cases(sweep_df)
+                matched_pair_count = int(collision_pairing_df["matched"].sum()) if not collision_pairing_df.empty else 0
+                st.metric("Matched OFF/ON conditions", matched_pair_count)
+                with st.expander("Collision pairing audit", expanded=False):
+                    st.dataframe(collision_pairing_df, use_container_width=True, hide_index=True)
+
+                if matched_pair_count and publication_available_variables:
+                    collision_variable = st.selectbox(
+                        "Collision response variable",
+                        publication_available_variables,
+                        key="publication_collision_variable",
+                        format_func=dash.publication_variable_label,
+                    )
+                    collision_max_pairs = st.slider(
+                        "Maximum matched conditions",
+                        min_value=1,
+                        max_value=max(matched_pair_count, 1),
+                        value=min(6, matched_pair_count),
+                        key="publication_collision_max_pairs",
+                    )
+                    collision_text = matched_collision_df[collision_column].astype(str).str.strip().str.lower()
+                    collision_off_df = matched_collision_df[collision_text.isin(["false", "0", "off", "no"])]
+                    collision_on_df = matched_collision_df[collision_text.isin(["true", "1", "on", "yes"])]
+                    collision_off_overlay = dash.build_sweep_overlay_dataframe(
+                        selected_entry.path,
+                        collision_off_df,
+                        variable=collision_variable,
+                        curve_source="comparison",
+                        comparison_mode="diff",
+                        max_cases=collision_max_pairs,
+                    )
+                    collision_on_overlay = dash.build_sweep_overlay_dataframe(
+                        selected_entry.path,
+                        collision_on_df,
+                        variable=collision_variable,
+                        curve_source="comparison",
+                        comparison_mode="diff",
+                        max_cases=collision_max_pairs,
+                    )
+                    display_collision_variable = (
+                        collision_variable
+                        if collision_variable.endswith("_diff")
+                        else f"{collision_variable}_diff"
+                    )
+                    collision_fig = dash.plot_collision_off_on_panel(
+                        collision_off_overlay,
+                        collision_on_overlay,
+                        variable=display_collision_variable,
+                        provenance_rows=diagnostic_provenance_rows,
+                        shaded_intervals=dash.sweep_seeding_intervals(selected_entry.path, matched_collision_df),
+                    )
+                    st.pyplot(collision_fig, use_container_width=True)
+                    st.download_button(
+                        "Download collision panel PNG (300 dpi)",
+                        data=dash.figure_to_png_bytes(collision_fig, dpi=300),
+                        file_name=f"collision_off_on_{collision_variable}.png",
+                        mime="image/png",
+                        use_container_width=True,
+                        key="publication_collision_download",
+                    )
+                else:
+                    st.info("동일 조건으로 짝지을 수 있는 collision OFF/ON case가 없습니다.")
+            else:
+                st.info("이 sweep에는 collision OFF와 ON이 모두 포함되어 있지 않습니다.")
 
 
 if (is_sweep or is_comparison) and tab_exper2 is not None:
