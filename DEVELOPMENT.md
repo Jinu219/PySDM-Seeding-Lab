@@ -1,5 +1,37 @@
 # Development Notes
 
+## Portable PDF reports, sampled RSS, and numerical qualification
+
+Changes:
+- Added ReportLab-based `report.pdf` generation for single, comparison, sweep,
+  and ensemble outputs. Available water-budget, spectrum-transition, and
+  convergence plots are embedded automatically.
+- Added PDF download support and optional legacy-safe loading in Results Dashboard.
+- Added sampled whole-process RSS monitoring around streaming ensemble aggregation,
+  retaining tracemalloc as a separate allocation scope.
+- Added `scripts/run_numerical_qualification.py` with dry-run, `pilot`, and
+  `standard` profiles plus a stored `qualification_plan.json` evidence contract.
+- Changed generated run IDs from second to microsecond resolution and shortened
+  qualification experiment names, preventing rapid sweep collisions and Windows
+  path-length failures.
+- Added `psutil` and `reportlab` as explicit runtime dependencies.
+
+Validation performed:
+- The eight-case placeholder pilot completed all 16 control/seeding model executions
+  and wrote numerical convergence, plan, manifest, and report artifacts.
+- The generated A4 PDF contained two pages; Poppler rendering and page-by-page visual
+  inspection found no clipping, overlap, or missing figure content.
+- PDF text extraction confirmed the build ID and numerical-convergence figure caption.
+- All 17 unit/integration tests passed in 231 seconds, including real PySDM
+  native and control-versus-seeding runs. Aerosol, Run, and Results AppTests
+  each rendered with zero exceptions, and project integrity passed.
+
+Recommended commit message:
+
+```bash
+git commit -m "Add portable reports and qualification workflow"
+```
+
 ## Step 0. Clean project scaffold
 
 Legacy experiment traces were removed to start PySDM Seeding Lab as a new independent simulation platform.

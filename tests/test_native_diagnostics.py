@@ -25,6 +25,7 @@ from analysis.numerical_convergence import (
     summarize_numerical_convergence,
 )
 from analysis.result_manifest import inspect_result_compatibility
+from analysis.reporting import REPORT_BUILD_ID, build_pdf_report
 from analysis.spectrum_transition import (
     build_spectrum_transition_table,
     build_transition_onset_robustness,
@@ -44,6 +45,10 @@ from simulation.wet_radius_spectrum import (
     build_threshold_robustness_table,
     build_wet_radius_spectrum_table,
     resolve_spectrum_checkpoint_times,
+)
+from scripts.run_numerical_qualification import (
+    build_qualification_config,
+    qualification_plan,
 )
 
 
@@ -202,6 +207,10 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertEqual(benchmark["aggregated_variables"], 2)
         self.assertGreater(benchmark["total_input_bytes"], 0)
         self.assertGreaterEqual(benchmark["python_peak_traced_bytes"], 0)
+        process_rss = benchmark["process_rss"]
+        self.assertTrue(process_rss["available"])
+        self.assertGreaterEqual(process_rss["n_samples"], 2)
+        self.assertGreaterEqual(process_rss["peak_rss_bytes"], process_rss["rss_before_bytes"])
 
     def test_placeholder_ensemble_uses_streaming_aggregation(self):
         cfg = default_config()
@@ -225,6 +234,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
                 )
             )
             html_report = (result_dir / "report.html").read_text(encoding="utf-8")
+            pdf_report = (result_dir / "report.pdf").read_bytes()
 
         self.assertFalse(statistics.empty)
         self.assertEqual(
@@ -238,6 +248,49 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertEqual(compatibility["status"], "current")
         self.assertEqual(aggregation["n_member_files"], 3)
         self.assertIn("<!doctype html>", html_report.lower())
+        self.assertTrue(pdf_report.startswith(b"%PDF"))
+        self.assertTrue(aggregation["process_rss"]["available"])
+
+    def test_pdf_report_and_qualification_plan_contracts(self):
+        cfg = default_config()
+        metadata = {
+            "run_id": "pdf-test",
+            "experiment_name": "Unicode warm cloud 실험",
+            "result_type": "single",
+            "result_files": {"summary": "summary.json", "report_pdf": "report.pdf"},
+        }
+        report = build_pdf_report(
+            summary={"metrics": {"final_rain_water_mixing_ratio": 1.0e-5}},
+            metadata=metadata,
+            validation_rows=[{"severity": "warning"}],
+            config=cfg,
+        )
+        self.assertTrue(report.startswith(b"%PDF"))
+        self.assertGreater(len(report), 2_000)
+        self.assertIn("research-report-v3", REPORT_BUILD_ID)
+
+        pilot = build_qualification_config(
+            cfg,
+            profile="pilot",
+            adapter="placeholder_warm_cloud",
+        )
+        plan = qualification_plan(pilot, profile="pilot")
+        self.assertEqual(plan["case_count"], 8)
+        self.assertEqual(plan["model_execution_count"], 16)
+        self.assertEqual(pilot["environment"]["duration"], 60)
+        self.assertEqual(pilot["seeding"]["injection_start"], 20)
+        self.assertTrue(pilot["diagnostics"]["numerical_convergence"]["enabled"])
+
+        pilot_with_duration = build_qualification_config(
+            cfg,
+            profile="pilot",
+            duration_seconds=120,
+        )
+        self.assertEqual(pilot_with_duration["seeding"]["injection_start"], 20)
+        first_spec = build_run_spec(cfg)
+        second_spec = build_run_spec(cfg)
+        self.assertNotEqual(first_spec.run_id, second_spec.run_id)
+        self.assertIn("T", first_spec.metadata["created_at"])
 
     def test_spectrum_transition_onset_is_interpolated_and_audited(self):
         cfg = default_config()
@@ -386,6 +439,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             {"name": "seeding.number_superdroplets", "values": [100, 200]},
             {"name": "background_aerosol.number_superdroplets", "values": [100, 200]},
         ]
+        cfg["qualification"] = {"build_id": "qualification-test", "profile": "pilot"}
         with tempfile.TemporaryDirectory() as tmp_dir:
             sweep_dir = run_experiment(cfg, Path(tmp_dir))
             convergence_path = sweep_dir / "numerical_convergence.csv"
@@ -393,20 +447,32 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             convergence = pd.read_csv(convergence_path)
             report = (sweep_dir / "report.md").read_text(encoding="utf-8")
             html_report = (sweep_dir / "report.html").read_text(encoding="utf-8")
+            pdf_report = (sweep_dir / "report.pdf").read_bytes()
             manifest = json.loads(
                 (sweep_dir / "result_manifest.json").read_text(encoding="utf-8")
             )
             compatibility = inspect_result_compatibility(sweep_dir)
+            case_directories = list((sweep_dir / "cases").iterdir())
+            stored_plan = json.loads(
+                (sweep_dir / "qualification_plan.json").read_text(encoding="utf-8")
+            )
 
         self.assertFalse(convergence.empty)
         self.assertTrue(summary["numerical_convergence"]["available"])
         self.assertIn("Research quality gates", report)
         self.assertIn("numerical_convergence.status", report)
         self.assertIn("<!doctype html>", html_report.lower())
+        self.assertTrue(pdf_report.startswith(b"%PDF"))
         self.assertEqual(manifest["result_schema_version"], 2)
         self.assertEqual(manifest["primary_data"], "sweep_summary.csv")
         self.assertEqual(compatibility["status"], "current")
         self.assertTrue(compatibility["readable"])
+        self.assertEqual(len(case_directories), 8)
+        self.assertEqual(stored_plan["build_id"], "qualification-test")
+        self.assertEqual(
+            manifest["files"]["qualification_plan"],
+            "qualification_plan.json",
+        )
 
     def test_legacy_result_without_manifest_is_inferred(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

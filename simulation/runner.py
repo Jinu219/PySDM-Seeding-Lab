@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 import pandas as pd
 import yaml
+from matplotlib import pyplot as plt
 
 from analysis.comparison import build_difference_dataframe, summarize_comparison
 from analysis.case_diagnostic_comparison import (
@@ -25,19 +26,28 @@ from analysis.growth_pathway_diagnostics import (
 from analysis.metrics import summarize_timeseries
 from analysis.numerical_convergence import (
     build_numerical_convergence_table,
+    convergence_metrics,
+    plot_numerical_convergence,
     summarize_numerical_convergence,
 )
 from analysis.result_files import describe_result_files
-from analysis.reporting import build_html_report, build_markdown_report
+from analysis.reporting import (
+    build_html_report,
+    build_markdown_report,
+    build_pdf_report,
+    figure_to_png_bytes,
+)
 from analysis.result_manifest import build_result_manifest
 from analysis.spectrum_transition import (
     build_spectrum_transition_table,
     build_transition_onset_robustness,
+    plot_spectrum_transition,
     summarize_spectrum_transition,
 )
 from analysis.water_budget import (
     WATER_BUDGET_TABLE_NAME,
     build_water_budget_table,
+    plot_water_budget,
     summarize_water_budget,
 )
 from analysis.ensemble_statistics import (
@@ -126,6 +136,14 @@ def _write_json(path: Path, payload: Dict[str, Any] | list[Dict[str, Any]]) -> N
 def _write_yaml(path: Path, payload: Dict[str, Any]) -> None:
     with path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(payload, f, sort_keys=False, allow_unicode=True)
+
+
+def _figure_payload(title: str, figure: Any) -> tuple[str, bytes]:
+    """Convert a report figure to PNG and always release its Matplotlib resources."""
+    try:
+        return title, figure_to_png_bytes(figure)
+    finally:
+        plt.close(figure)
 
 
 def _safe_name(value: str) -> str:
@@ -307,7 +325,8 @@ def run_control_vs_seeding(
     cfg = normalize_config(config)
 
     experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{experiment_name}_control_vs_seeding"
     run_dir = output_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -414,7 +433,7 @@ def run_control_vs_seeding(
 
     metadata_payload = {
         "run_id": run_id,
-        "created_at": timestamp,
+        "created_at": now.isoformat(timespec="seconds"),
         "experiment_name": experiment_name,
         "experiment_mode": "control_vs_seeding",
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
@@ -430,6 +449,7 @@ def run_control_vs_seeding(
             "seeding": "seeding/",
             "report": "report.md",
             "report_html": "report.html",
+            "report_pdf": "report.pdf",
             "result_manifest": "result_manifest.json",
             **diagnostic_comparison_files,
         },
@@ -442,6 +462,7 @@ def run_control_vs_seeding(
                 "validation_report.json",
                 "report.md",
                 "report.html",
+                "report.pdf",
                 "result_manifest.json",
                 *diagnostic_comparison_files.values(),
             ]
@@ -477,6 +498,23 @@ def run_control_vs_seeding(
             config=cfg,
         ),
         encoding="utf-8",
+    )
+    comparison_figures = []
+    if not transition_table.empty:
+        comparison_figures.append(
+            _figure_payload(
+                "Spectrum-based cloud-to-rain transition",
+                plot_spectrum_transition(transition_table),
+            )
+        )
+    (run_dir / "report.pdf").write_bytes(
+        build_pdf_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+            figures=comparison_figures,
+        )
     )
     _write_json(
         run_dir / "result_manifest.json",
@@ -547,7 +585,8 @@ def run_ensemble_experiment(
     n_members = len(seeds)
 
     experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{experiment_name}_{mode}_ensemble"
 
     run_dir = output_dir / run_id
@@ -616,7 +655,7 @@ def run_ensemble_experiment(
 
     metadata_payload = {
         "run_id": run_id,
-        "created_at": timestamp,
+        "created_at": now.isoformat(timespec="seconds"),
         "experiment_name": experiment_name,
         "experiment_mode": mode,
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
@@ -638,6 +677,7 @@ def run_ensemble_experiment(
             "members": "members/",
             "report": "report.md",
             "report_html": "report.html",
+            "report_pdf": "report.pdf",
             "ensemble_aggregation_diagnostics": "ensemble_aggregation_diagnostics.json",
             "result_manifest": "result_manifest.json",
         },
@@ -651,6 +691,7 @@ def run_ensemble_experiment(
                 "validation_report.json",
                 "report.md",
                 "report.html",
+                "report.pdf",
                 "ensemble_aggregation_diagnostics.json",
                 "result_manifest.json",
             ]
@@ -695,6 +736,14 @@ def run_ensemble_experiment(
             config=cfg,
         ),
         encoding="utf-8",
+    )
+    (run_dir / "report.pdf").write_bytes(
+        build_pdf_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        )
     )
     _write_json(
         run_dir / "result_manifest.json",
@@ -746,7 +795,8 @@ def run_parameter_sweep(
     total_cases = len(cases)
 
     experiment_name = _safe_name(str(cfg.get("experiment", {}).get("name", "experiment")))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{experiment_name}_parameter_sweep"
 
     sweep_dir = output_dir / run_id
@@ -821,6 +871,9 @@ def run_parameter_sweep(
         convergence_table.to_csv(sweep_dir / "numerical_convergence.csv", index=False)
     _write_yaml(sweep_dir / "config.yaml", cfg)
     _write_json(sweep_dir / "validation_report.json", validation_report_rows(cfg))
+    qualification_payload = cfg.get("qualification")
+    if isinstance(qualification_payload, dict) and qualification_payload:
+        _write_json(sweep_dir / "qualification_plan.json", qualification_payload)
 
     best_case = None
     if len(sweep_df) > 0:
@@ -828,7 +881,7 @@ def run_parameter_sweep(
 
     metadata_payload = {
         "run_id": run_id,
-        "created_at": timestamp,
+        "created_at": now.isoformat(timespec="seconds"),
         "experiment_name": experiment_name,
         "experiment_mode": "parameter_sweep",
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
@@ -845,7 +898,13 @@ def run_parameter_sweep(
             "cases": "cases/",
             "report": "report.md",
             "report_html": "report.html",
+            "report_pdf": "report.pdf",
             "result_manifest": "result_manifest.json",
+            **(
+                {"qualification_plan": "qualification_plan.json"}
+                if isinstance(qualification_payload, dict) and qualification_payload
+                else {}
+            ),
             **(
                 {"numerical_convergence": "numerical_convergence.csv"}
                 if not convergence_table.empty
@@ -861,7 +920,13 @@ def run_parameter_sweep(
                 "validation_report.json",
                 "report.md",
                 "report.html",
+                "report.pdf",
                 "result_manifest.json",
+                *(
+                    ["qualification_plan.json"]
+                    if isinstance(qualification_payload, dict) and qualification_payload
+                    else []
+                ),
                 *(["numerical_convergence.csv"] if not convergence_table.empty else []),
             ]
         ),
@@ -900,6 +965,25 @@ def run_parameter_sweep(
         ),
         encoding="utf-8",
     )
+    sweep_figures = []
+    available_convergence_metrics = convergence_metrics(convergence_table)
+    if available_convergence_metrics:
+        selected_metric = available_convergence_metrics[0]
+        sweep_figures.append(
+            _figure_payload(
+                f"Numerical convergence - {selected_metric}",
+                plot_numerical_convergence(convergence_table, metric=selected_metric),
+            )
+        )
+    (sweep_dir / "report.pdf").write_bytes(
+        build_pdf_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+            figures=sweep_figures,
+        )
+    )
     _write_json(
         sweep_dir / "result_manifest.json",
         build_result_manifest(
@@ -931,6 +1015,7 @@ def _write_single_result_files(
     diagnostic_provenance_path = run_dir / "diagnostic_provenance.json"
     report_path = run_dir / "report.md"
     html_report_path = run_dir / "report.html"
+    pdf_report_path = run_dir / "report.pdf"
     manifest_path = run_dir / "result_manifest.json"
 
     _write_yaml(config_path, spec.config)
@@ -963,6 +1048,7 @@ def _write_single_result_files(
         "diagnostic_provenance": str(diagnostic_provenance_path.name),
         "report": str(report_path.name),
         "report_html": str(html_report_path.name),
+        "report_pdf": str(pdf_report_path.name),
         "result_manifest": str(manifest_path.name),
     }
 
@@ -1012,6 +1098,21 @@ def _write_single_result_files(
             config=spec.config,
         ),
         encoding="utf-8",
+    )
+    report_figures = []
+    water_budget_table = result.tables.get(WATER_BUDGET_TABLE_NAME, pd.DataFrame())
+    if not water_budget_table.empty:
+        report_figures.append(
+            _figure_payload("Total-water budget", plot_water_budget(water_budget_table))
+        )
+    pdf_report_path.write_bytes(
+        build_pdf_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(spec.config),
+            config=spec.config,
+            figures=report_figures,
+        )
     )
     _write_json(
         manifest_path,

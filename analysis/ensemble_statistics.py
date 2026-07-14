@@ -9,8 +9,10 @@ from typing import Any, Dict, Iterable, List
 import numpy as np
 import pandas as pd
 
+from analysis.resource_monitor import ProcessRSSMonitor
 
-ENSEMBLE_BUILD_ID = "streaming-ensemble-statistics-20260714"
+
+ENSEMBLE_BUILD_ID = "streaming-ensemble-statistics-rss-20260714"
 
 
 def member_seed_list(config: Dict[str, Any]) -> List[int]:
@@ -178,21 +180,23 @@ def build_ensemble_statistics_from_paths(member_paths: List[Path]) -> pd.DataFra
 def benchmark_ensemble_statistics_from_paths(
     member_paths: List[Path],
 ) -> tuple[pd.DataFrame, Dict[str, Any]]:
-    """Run streaming aggregation and return lightweight runtime/memory diagnostics."""
+    """Run streaming aggregation and return allocation plus process-RSS diagnostics."""
     paths = [Path(path) for path in member_paths]
     total_input_bytes = sum(path.stat().st_size for path in paths if path.exists())
     tracing_was_active = tracemalloc.is_tracing()
     if not tracing_was_active:
         tracemalloc.start()
         tracemalloc.reset_peak()
-    started = time.perf_counter()
-    try:
-        statistics = build_ensemble_statistics_from_paths(paths)
-        elapsed_seconds = time.perf_counter() - started
-        _, peak_traced_bytes = tracemalloc.get_traced_memory()
-    finally:
-        if not tracing_was_active:
-            tracemalloc.stop()
+    rss_monitor = ProcessRSSMonitor()
+    with rss_monitor:
+        started = time.perf_counter()
+        try:
+            statistics = build_ensemble_statistics_from_paths(paths)
+            elapsed_seconds = time.perf_counter() - started
+            _, peak_traced_bytes = tracemalloc.get_traced_memory()
+        finally:
+            if not tracing_was_active:
+                tracemalloc.stop()
 
     n_statistic_columns = max(0, len(statistics.columns) - 1)
     n_variables = n_statistic_columns // 7
@@ -206,10 +210,11 @@ def benchmark_ensemble_statistics_from_paths(
         "output_rows": int(len(statistics)),
         "output_columns": int(len(statistics.columns)),
         "aggregated_variables": int(n_variables),
+        "process_rss": rss_monitor.summary(),
         "memory_scope": (
             "Python and NumPy allocations visible to tracemalloc during aggregation; "
-            "this is not whole-process RSS. If an outer trace was already active, its peak "
-            "scope is retained."
+            "whole-process RSS is reported separately under process_rss. If an outer trace "
+            "was already active, its peak scope is retained."
         ),
     }
     return statistics, diagnostics

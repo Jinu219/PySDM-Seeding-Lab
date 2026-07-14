@@ -43,12 +43,13 @@ def build_run_spec(config: Dict[str, Any]) -> SimulationRunSpec:
     adapter_name = str(simulation.get("adapter", "placeholder_warm_cloud"))
     case_name = str(simulation.get("case_name", "base"))
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{experiment_name}_{case_name}"
 
     metadata = {
         "run_id": run_id,
-        "created_at": timestamp,
+        "created_at": now.isoformat(timespec="seconds"),
         "experiment_name": experiment_name,
         "experiment_mode": experiment_mode,
         "adapter_name": adapter_name,

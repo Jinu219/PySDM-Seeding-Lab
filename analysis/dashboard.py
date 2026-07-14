@@ -50,7 +50,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "transition-report-performance-panels-20260714"
+DASHBOARD_BUILD_ID = "portable-pdf-rss-qualification-20260714"
 
 
 @dataclass(frozen=True)
@@ -149,6 +149,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         validation_path = entry.path / "validation_report.json"
         report_path = entry.path / "report.md"
         html_report_path = entry.path / "report.html"
+        pdf_report_path = entry.path / "report.pdf"
         aggregation_diagnostics_path = entry.path / "ensemble_aggregation_diagnostics.json"
         diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
@@ -175,6 +176,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             ) or [],
             "report_markdown": _read_text(report_path),
             "report_html": _read_text(html_report_path),
+            "report_pdf": _read_bytes(pdf_report_path),
             "ensemble_aggregation_diagnostics": _read_json(aggregation_diagnostics_path),
             "result_compatibility": compatibility,
             "files": {
@@ -187,6 +189,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "diagnostic_provenance": diagnostic_provenance_path,
                 "report": report_path,
                 "report_html": html_report_path,
+                "report_pdf": pdf_report_path,
                 "ensemble_aggregation_diagnostics": aggregation_diagnostics_path,
             },
         }
@@ -196,6 +199,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         convergence_path = entry.path / "numerical_convergence.csv"
         report_path = entry.path / "report.md"
         html_report_path = entry.path / "report.html"
+        pdf_report_path = entry.path / "report.pdf"
         summary_path = entry.path / "summary.json"
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
@@ -223,6 +227,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             ) or [],
             "report_markdown": _read_text(report_path),
             "report_html": _read_text(html_report_path),
+            "report_pdf": _read_bytes(pdf_report_path),
             "result_compatibility": compatibility,
             "files": {
                 "sweep_summary": sweep_path,
@@ -234,6 +239,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "diagnostic_provenance": diagnostic_provenance_path,
                 "report": report_path,
                 "report_html": html_report_path,
+                "report_pdf": pdf_report_path,
             },
         }
 
@@ -258,6 +264,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         transition_robustness_path = entry.path / "spectrum_transition_onset_robustness.csv"
         report_path = entry.path / "report.md"
         html_report_path = entry.path / "report.html"
+        pdf_report_path = entry.path / "report.pdf"
         # Provenance is identical for control and seeding runs of the same
         # comparison (same adapter, same diagnostics config), so either
         # subdirectory's provenance file is representative; control is used
@@ -295,6 +302,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             ) or [],
             "report_markdown": _read_text(report_path),
             "report_html": _read_text(html_report_path),
+            "report_pdf": _read_bytes(pdf_report_path),
             "result_compatibility": compatibility,
             "files": {
                 "comparison": comparison_path,
@@ -318,6 +326,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "diagnostic_provenance": diagnostic_provenance_path,
                 "report": report_path,
                 "report_html": html_report_path,
+                "report_pdf": pdf_report_path,
             },
         }
 
@@ -333,6 +342,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         water_budget_path = entry.path / "water_budget.csv"
         report_path = entry.path / "report.md"
         html_report_path = entry.path / "report.html"
+        pdf_report_path = entry.path / "report.pdf"
 
         df = safe_read_csv(timeseries_path)
 
@@ -355,6 +365,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "diagnostic_provenance": _read_json(diagnostic_provenance_path) or [],
             "report_markdown": _read_text(report_path),
             "report_html": _read_text(html_report_path),
+            "report_pdf": _read_bytes(pdf_report_path),
             "result_compatibility": compatibility,
             "files": {
                 "timeseries": timeseries_path,
@@ -368,6 +379,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "water_budget": water_budget_path,
                 "report": report_path,
                 "report_html": html_report_path,
+                "report_pdf": pdf_report_path,
             },
         }
 
@@ -390,6 +402,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         "diagnostic_provenance": [],
         "report_markdown": "",
         "report_html": "",
+        "report_pdf": b"",
         "result_compatibility": compatibility,
         "files": {
             "timeseries": entry.path,
@@ -418,6 +431,15 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except OSError:
         return ""
+
+
+def _read_bytes(path: Path) -> bytes:
+    if not path.exists():
+        return b""
+    try:
+        return path.read_bytes()
+    except OSError:
+        return b""
 
 
 def safe_read_csv(path: Path) -> pd.DataFrame:

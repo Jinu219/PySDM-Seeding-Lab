@@ -23,6 +23,22 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
             "quality, validation, artifact, and reproduction information."
         ),
     },
+    "report.pdf": {
+        "when": "After all result files are finalized",
+        "answers": "Can the report be shared as a paginated document with diagnostic figures?",
+        "description": (
+            "Portable research report containing run identity, quality gates, metrics, "
+            "validation, artifact provenance, reproduction notes, and available figures."
+        ),
+    },
+    "qualification_plan.json": {
+        "when": "Before a numerical-qualification sweep",
+        "answers": "Which resolution levels, acceptance rule, and evidence scope were planned?",
+        "description": (
+            "Machine-readable numerical-qualification contract containing profile, case count, "
+            "resolution axes, tolerance, and the distinction between workflow and physical evidence."
+        ),
+    },
     "result_manifest.json": {
         "when": "After all result files are finalized",
         "answers": "Which result schema and primary data file should a reader use?",
@@ -162,10 +178,10 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
     },
     "ensemble_aggregation_diagnostics.json": {
         "when": "After streaming ensemble aggregation",
-        "answers": "How much input, time, and traced peak memory did ensemble aggregation use?",
+        "answers": "How much input, time, traced allocation, and process RSS did aggregation use?",
         "description": (
             "Aggregation benchmark metadata including member bytes, elapsed time, output shape, "
-            "and tracemalloc-visible peak allocation. It is not whole-process RSS."
+            "tracemalloc-visible peak allocation, and sampled whole-process RSS."
         ),
     },
     "sweep_summary.csv": {

@@ -2,6 +2,15 @@
 
 ## Current milestone snapshot (2026-07-14)
 
+Portable-report and qualification status:
+- Every new result writes `report.pdf`, with water-budget, spectrum-transition,
+  or numerical-convergence figures embedded when available.
+- Ensemble aggregation records both tracemalloc allocation and sampled process RSS.
+- The numerical-qualification CLI provides dry-run, `pilot`, and `standard` profiles
+  plus a stored `qualification_plan.json`.
+- The placeholder pilot is complete. The next scientific gate is a standard
+  `pysdm_parcel` qualification and evidence-based tolerance review.
+
 The canonical current-state view is [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 Step 13 native scalar diagnostics, the first Step 14–16 research-quality
 bundle, Step 17 instrumented streaming aggregation, Step 18 Markdown/HTML

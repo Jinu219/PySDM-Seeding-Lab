@@ -237,6 +237,7 @@ def main() -> None:
         py_compile.compile(str(page_path), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "publication_plots.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "ensemble_statistics.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "resource_monitor.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "wet_radius_plots.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "water_budget.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "numerical_convergence.py"), doraise=True)
@@ -246,6 +247,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_numerical_qualification.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 

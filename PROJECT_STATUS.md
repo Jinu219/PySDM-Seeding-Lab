@@ -4,7 +4,29 @@ Last updated: 2026-07-14
 
 Active branch: `develop`
 
-Current milestone: Research-quality second pass completed for Steps 16-18
+Current milestone: Portable reporting and numerical-qualification workflow completed
+
+## Latest portable report and qualification update
+
+Completed:
+- Every new result writes `report.pdf`. Single runs embed a water-budget figure,
+  comparisons embed spectrum transition, and numerical sweeps embed convergence
+  when those diagnostics are available.
+- Results Dashboard downloads Markdown, HTML, and PDF reports.
+- Ensemble aggregation separates tracemalloc-visible allocation from sampled
+  whole-process RSS.
+- `scripts/run_numerical_qualification.py` provides dry-run, `pilot`, and
+  `standard` profiles and stores `qualification_plan.json`.
+- Generated run IDs use microsecond resolution, preventing rapid sweep collisions.
+
+Next scientific priority:
+1. Run `standard` qualification with `pysdm_parcel` and justify or revise the
+   default 5% tolerance.
+2. Benchmark sampled RSS and streaming CSV I/O on a genuinely large PySDM ensemble.
+3. Add migration fixtures when the result schema first changes beyond version 2.
+
+The completed placeholder pilot validates software orchestration only; it is not
+physical cloud-seeding evidence.
 
 이 문서는 프로젝트의 현재 상태를 한 화면에서 확인하는 운영 문서다. 세부 변경 이력은
 `DEVELOPMENT.md`, 우선순위와 완료 조건은 `ROADMAP.md`, 설치와 사용법은 `README.md`를

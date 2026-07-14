@@ -2,6 +2,22 @@
 
 PySDM Seeding Lab is a research-oriented simulation platform for designing, running, and visualizing cloud seeding experiments based on PySDM.
 
+New results include Markdown, self-contained HTML, and paginated PDF research
+reports. The PDF embeds the most relevant available water-budget,
+spectrum-transition, or numerical-convergence figure. Results Dashboard downloads
+all three formats.
+
+Run a reproducible numerical qualification plan from the CLI:
+
+```powershell
+& .\.conda\python.exe scripts\run_numerical_qualification.py --profile pilot --adapter placeholder_warm_cloud --dry-run
+& .\.conda\python.exe scripts\run_numerical_qualification.py --profile standard --adapter pysdm_parcel --output-dir artifacts\numerical_qualification
+```
+
+`pilot` is a fast software-workflow check. Only the `pysdm_parcel` standard run
+can provide physical numerical-convergence evidence. Each completed workflow stores
+`qualification_plan.json` beside `numerical_convergence.csv` and the reports.
+
 This project starts from a clean scaffold and does not depend on previous experiment folders or legacy experiment names.  
 The goal is to build a reusable platform where cloud environment settings, background aerosol properties, seeding particle parameters, and microphysical options can be configured through YAML files and an interactive Streamlit interface.
 
@@ -160,8 +176,8 @@ editable SVG, and PDF with screen, single-column, and double-column presets.
 Every new single, comparison, sweep, and ensemble result also includes an
 automatic `report.md` summarizing quality gates, outcome metrics, validation,
 artifacts, reproduction steps, and interpretation constraints.
-It also includes a self-contained, print-friendly `report.html` with the same
-research audit information.
+It also includes a self-contained, print-friendly `report.html` and a paginated
+`report.pdf` with available diagnostic figures.
 The same result directories include a versioned `result_manifest.json` that
 declares the result type, primary data file, and artifact map. The Results
 Dashboard also infers older directories that predate the manifest and labels
@@ -169,7 +185,7 @@ their compatibility explicitly.
 Large ensembles are aggregated from stored member CSVs one variable at a time,
 so the runner no longer retains every full member dataframe simultaneously.
 `ensemble_aggregation_diagnostics.json` records input size, elapsed aggregation
-time, output shape, and tracemalloc-visible peak allocation.
+time, output shape, tracemalloc-visible peak allocation, and sampled process RSS.
 
 Control-versus-seeding results also include `spectrum_transition.csv` and
 `spectrum_transition_onset_robustness.csv`. Transition onset is the first

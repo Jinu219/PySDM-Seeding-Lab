@@ -231,6 +231,7 @@ files = loaded["files"]
 diagnostic_provenance_rows = loaded.get("diagnostic_provenance", [])
 report_markdown = loaded.get("report_markdown", "")
 report_html = loaded.get("report_html", "")
+report_pdf = loaded.get("report_pdf", b"")
 result_compatibility = loaded.get("result_compatibility", {})
 
 is_ensemble = selected_entry.result_type == "ensemble"
@@ -864,7 +865,7 @@ if is_ensemble:
 
         if ensemble_aggregation_diagnostics:
             st.markdown("#### Streaming aggregation benchmark")
-            benchmark_cols = st.columns(4)
+            benchmark_cols = st.columns(5)
             benchmark_cols[0].metric(
                 "Member input",
                 f"{ensemble_aggregation_diagnostics.get('total_input_bytes', 0) / 1.0e6:.3f} MB",
@@ -878,10 +879,17 @@ if is_ensemble:
                 f"{ensemble_aggregation_diagnostics.get('python_peak_traced_bytes', 0) / 1.0e6:.3f} MB",
             )
             benchmark_cols[3].metric(
+                "Process RSS peak",
+                f"{(ensemble_aggregation_diagnostics.get('process_rss', {}).get('peak_rss_bytes') or 0) / 1.0e6:.3f} MB",
+            )
+            benchmark_cols[4].metric(
                 "Variables",
                 ensemble_aggregation_diagnostics.get("aggregated_variables", 0),
             )
             st.caption(str(ensemble_aggregation_diagnostics.get("memory_scope", "")))
+            process_rss_scope = ensemble_aggregation_diagnostics.get("process_rss", {}).get("scope", "")
+            if process_rss_scope:
+                st.caption(str(process_rss_scope))
 
         bases = dash.ensemble_available_bases(ensemble_df)
         if not bases:
@@ -2016,6 +2024,15 @@ with tab_files:
         )
         with st.expander("Preview print-friendly HTML report", expanded=False):
             st.html(report_html)
+
+    if report_pdf:
+        st.download_button(
+            "Download report.pdf",
+            data=report_pdf,
+            file_name=f"{selected_entry.path.name}_report.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
 
     st.subheader("What is each file for?")
     st.caption(
