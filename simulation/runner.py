@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -10,8 +11,13 @@ import pandas as pd
 import yaml
 
 from analysis.comparison import build_difference_dataframe, summarize_comparison
-from analysis.growth_pathway_diagnostics import add_growth_pathway_diagnostics, diagnostic_health_rows
+from analysis.growth_pathway_diagnostics import (
+    add_growth_pathway_diagnostics,
+    diagnostic_health_rows,
+    diagnostic_provenance_rows,
+)
 from analysis.metrics import summarize_timeseries
+from analysis.result_files import describe_result_files
 from analysis.ensemble_statistics import (
     build_ensemble_statistics,
     ensemble_summary_metrics,
@@ -21,10 +27,71 @@ from analysis.ensemble_statistics import (
 from simulation.builder import build_run_spec
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.pysdm_adapter import run_adapter
+from simulation.run_timing import record_run_timing
 from simulation.schema import normalize_config
 from simulation.sweep import build_sweep_row, generate_sweep_cases
 from simulation.validation import validation_report_rows, validation_summary
-from simulation.types import AdapterResult
+from simulation.types import AdapterResult, SimulationRunSpec
+
+
+# Timing history is intentionally centralized at the project's top-level results
+# directory (not per-sweep-case or per-ensemble-member subfolders), so that
+# runtime estimates in simulation/run_plan.py stay meaningful regardless of
+# where an individual run's output_dir happens to point.
+TIMING_HISTORY_ROOT = Path("results")
+
+
+def _estimate_n_sd_total(spec: SimulationRunSpec) -> int | None:
+    """Best-effort super-droplet count for a run, used only as timing metadata."""
+    try:
+        aero = spec.settings.get("background_aerosol", {}) or {}
+        seed = spec.settings.get("seeding", {}) or {}
+        n_initial = int(aero.get("number_superdroplets", 0) or 0)
+        n_seed = int(seed.get("number_superdroplets", 0) or 0) if seed.get("enabled", True) else 0
+        return n_initial + n_seed
+    except (TypeError, ValueError):
+        return None
+
+
+def _run_adapter_timed(
+    spec: SimulationRunSpec,
+    progress_callback: ProgressCallback = None,
+) -> AdapterResult:
+    """
+    Run the adapter while measuring wall-clock duration.
+
+    The measured duration is (a) attached to the result summary so it is
+    visible per-run in summary.json, and (b) recorded to the local timing
+    history so that `simulation.run_plan.estimate_run_plan` can give a
+    grounded runtime estimate for upcoming sweep/ensemble runs.
+    """
+    started_at = time.perf_counter()
+    result = run_adapter(spec, progress_callback=progress_callback)
+    elapsed_seconds = time.perf_counter() - started_at
+
+    n_sd_total = _estimate_n_sd_total(spec)
+
+    record_run_timing(
+        TIMING_HISTORY_ROOT,
+        adapter=spec.adapter_name,
+        mode=spec.experiment_mode,
+        elapsed_seconds=elapsed_seconds,
+        n_sd_total=n_sd_total,
+    )
+
+    timed_summary = {
+        **result.summary,
+        "timing": {
+            "elapsed_seconds": round(elapsed_seconds, 3),
+            "n_superdroplets_total": n_sd_total,
+        },
+    }
+
+    return AdapterResult(
+        timeseries=result.timeseries,
+        metadata=result.metadata,
+        summary=timed_summary,
+    )
 
 
 def _write_json(path: Path, payload: Dict[str, Any] | list[Dict[str, Any]]) -> None:
@@ -49,6 +116,12 @@ def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: D
     if not enabled:
         return result
 
+    # Capture raw adapter columns *before* enrichment fills in proxy columns,
+    # so provenance classification can tell native output apart from
+    # heuristics added by add_growth_pathway_diagnostics().
+    raw_columns = list(result.require_timeseries().columns)
+    provenance_rows = diagnostic_provenance_rows(raw_columns, config)
+
     enriched = add_growth_pathway_diagnostics(result.require_timeseries(), config)
 
     summary = {
@@ -59,6 +132,7 @@ def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: D
             for column in enriched.columns
             if column not in result.timeseries.columns
         ],
+        "growth_pathway_diagnostic_provenance": provenance_rows,
     }
 
     metadata = {
@@ -126,7 +200,7 @@ def run_single_experiment(
     run_dir.mkdir(parents=True, exist_ok=True)
 
     emit_progress(progress_callback, "runner", 3, total_stages, f"Running adapter: {spec.adapter_name}")
-    result = run_adapter(spec, progress_callback=progress_callback)
+    result = _run_adapter_timed(spec, progress_callback=progress_callback)
     result = _apply_growth_pathway_diagnostics_to_result(result, spec.config)
 
     emit_progress(progress_callback, "runner", 4, total_stages, "Writing result files")
@@ -192,7 +266,7 @@ def run_control_vs_seeding(
     emit_progress(progress_callback, "comparison", 2, total_stages, "Running control simulation")
     control_dir = run_dir / "control"
     control_spec = build_run_spec(control_cfg)
-    control_result = run_adapter(control_spec, progress_callback=progress_callback)
+    control_result = _run_adapter_timed(control_spec, progress_callback=progress_callback)
     control_result = _apply_growth_pathway_diagnostics_to_result(control_result, control_spec.config)
     _write_single_result_files(control_dir, control_spec, control_result)
     emit_progress(progress_callback, "model_run_complete", 1, 1, "Completed control run")
@@ -200,7 +274,7 @@ def run_control_vs_seeding(
     emit_progress(progress_callback, "comparison", 3, total_stages, "Running seeding simulation")
     seeding_dir = run_dir / "seeding"
     seeding_spec = build_run_spec(seeding_cfg)
-    seeding_result = run_adapter(seeding_spec, progress_callback=progress_callback)
+    seeding_result = _run_adapter_timed(seeding_spec, progress_callback=progress_callback)
     seeding_result = _apply_growth_pathway_diagnostics_to_result(seeding_result, seeding_spec.config)
     _write_single_result_files(seeding_dir, seeding_spec, seeding_result)
     emit_progress(progress_callback, "model_run_complete", 1, 1, "Completed seeding run")
@@ -235,6 +309,9 @@ def run_control_vs_seeding(
             "control": "control/",
             "seeding": "seeding/",
         },
+        "file_roles": describe_result_files(
+            ["config.yaml", "comparison.csv", "summary.json", "metadata.json", "validation_report.json"]
+        ),
     }
 
     summary_payload = {
@@ -394,6 +471,16 @@ def run_ensemble_experiment(
             "validation_report": "validation_report.json",
             "members": "members/",
         },
+        "file_roles": describe_result_files(
+            [
+                "config.yaml",
+                "ensemble_statistics.csv",
+                "member_summary.csv",
+                "summary.json",
+                "metadata.json",
+                "validation_report.json",
+            ]
+        ),
     }
 
     summary_payload = {
@@ -549,6 +636,9 @@ def run_parameter_sweep(
             "validation_report": "validation_report.json",
             "cases": "cases/",
         },
+        "file_roles": describe_result_files(
+            ["config.yaml", "sweep_summary.csv", "summary.json", "metadata.json", "validation_report.json"]
+        ),
     }
 
     summary_payload = {
@@ -584,12 +674,17 @@ def _write_single_result_files(
     metadata_path = run_dir / "metadata.json"
     validation_path = run_dir / "validation_report.json"
     diagnostic_health_path = run_dir / "diagnostic_health.json"
+    diagnostic_provenance_path = run_dir / "diagnostic_provenance.json"
 
     _write_yaml(config_path, spec.config)
     timeseries.to_csv(timeseries_path, index=False)
 
     metrics_summary = summarize_timeseries(timeseries)
     validation_summary_payload = validation_summary(spec.config)
+    # Populated by _apply_growth_pathway_diagnostics_to_result(); absent when
+    # growth-pathway diagnostics are disabled for this run.
+    provenance_rows = result.summary.get("growth_pathway_diagnostic_provenance", [])
+
     summary_payload = {
         "run_id": spec.run_id,
         "experiment_name": spec.experiment_name,
@@ -601,21 +696,29 @@ def _write_single_result_files(
         "validation": validation_summary_payload,
     }
 
+    result_file_names = {
+        "config": str(config_path.name),
+        "timeseries": str(timeseries_path.name),
+        "summary": str(summary_path.name),
+        "metadata": str(metadata_path.name),
+        "validation_report": str(validation_path.name),
+        "diagnostic_health": str(diagnostic_health_path.name),
+        "diagnostic_provenance": str(diagnostic_provenance_path.name),
+    }
+
     metadata_payload = {
         **spec.metadata,
         **result.metadata,
         "result_type": "single",
-        "result_files": {
-            "config": str(config_path.name),
-            "timeseries": str(timeseries_path.name),
-            "summary": str(summary_path.name),
-            "metadata": str(metadata_path.name),
-            "validation_report": str(validation_path.name),
-            "diagnostic_health": str(diagnostic_health_path.name),
-        },
+        "result_files": result_file_names,
+        # Self-documenting: explains what each file in result_files is *for*,
+        # so summary.json / metadata.json / validation_report.json don't have
+        # to be reverse-engineered later. See analysis/result_files.py.
+        "file_roles": describe_result_files(list(result_file_names.values())),
     }
 
     _write_json(summary_path, summary_payload)
     _write_json(metadata_path, metadata_payload)
     _write_json(validation_path, validation_report_rows(spec.config))
     _write_json(diagnostic_health_path, diagnostic_health_rows(timeseries))
+    _write_json(diagnostic_provenance_path, provenance_rows)

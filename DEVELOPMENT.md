@@ -648,3 +648,42 @@ Recommended commit message:
 git commit -m "Add sweep case filters and full-range plotting"
 ```
 
+
+## Step 13. Diagnostic provenance, runtime estimation, result-file documentation
+
+Addressed three review items before starting native PySDM diagnostic extraction work
+(see `ROADMAP.md` for why extraction now comes before publication-style plots).
+
+Changes:
+- Added `analysis/growth_pathway_diagnostics.classify_diagnostic_provenance()` /
+  `diagnostic_provenance_rows()`, classifying each Growth Pathway variable as
+  native / derived / proxy based on the adapter's raw output columns.
+- `simulation/runner.py` now captures raw adapter columns before diagnostic
+  enrichment, writes `diagnostic_provenance.json` per run, and embeds the same
+  rows into `summary.json` (`adapter_summary.growth_pathway_diagnostic_provenance`).
+- Added `simulation/run_timing.py`: records measured wall-clock duration per
+  model run to `results/.run_timing_history.json`, and estimates expected
+  runtime for upcoming sweep/ensemble runs from the median of recent same-adapter
+  runs (falling back to a conservative default when no history exists yet).
+- `simulation/run_plan.py` / `pages/06_run.py` Run Plan section now shows
+  estimated time per run, estimated total runtime, the basis for that estimate,
+  and warns before large, unmeasured sweep/ensemble runs.
+- Added `analysis/result_files.py`: a single source of truth describing what
+  `config.yaml` / `validation_report.json` / `summary.json` / `metadata.json` /
+  `diagnostic_health.json` / `diagnostic_provenance.json` are each for. Runner
+  embeds this as `metadata.json["file_roles"]`; dashboard renders it in the
+  Files & Metadata tab.
+- `analysis/dashboard.py` gained `diagnostic_provenance_dataframe()`,
+  `diagnostic_provenance_summary_counts()`, `result_file_roles_dataframe()`,
+  registered in both `pages/07_results.py` and
+  `scripts/check_project_integrity.py`'s required-export checks.
+- Added `ROADMAP.md`, reordering the previously flat "next steps" list so that
+  native diagnostic extraction (old #5) precedes publication-style plots
+  (old #1-3), avoiding rework when diagnostic calculations change later.
+  `README.md`'s stale Step-0-10 roadmap now points to it.
+
+Recommended commit message:
+
+```bash
+git commit -m "Add diagnostic provenance tracking, runtime estimation, and result-file docs"
+```

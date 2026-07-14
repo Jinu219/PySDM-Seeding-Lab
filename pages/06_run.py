@@ -8,6 +8,7 @@ from simulation.config import load_config
 from simulation.experiment_manager import apply_scenario_identity, list_scenarios, load_scenario_config, read_scenario
 from simulation.runner import run_experiment
 from simulation.run_plan import estimate_run_plan, run_plan_rows
+from simulation.run_timing import format_seconds
 from simulation.validation import (
     validate_config,
     validation_report_rows,
@@ -17,7 +18,7 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "accurate-progress-safe-read-20260713"
+UI_BUILD_ID = "runtime-estimate-20260713"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
@@ -77,9 +78,16 @@ p2.metric("Ensemble members", plan.ensemble_members)
 p3.metric("Control/seeding factor", plan.control_factor)
 p4.metric("Estimated model runs", plan.total_model_runs)
 
+t1, t2 = st.columns(2)
+t1.metric("Estimated time per run", format_seconds(plan.estimated_seconds_per_run))
+t2.metric("Estimated total runtime", plan.estimated_total_duration)
+st.caption(f"Runtime estimate basis: {plan.runtime_basis}")
+
 st.caption(plan.description)
 
-if plan.total_model_runs >= 100:
+if plan.runtime_warning:
+    st.warning(plan.runtime_warning)
+elif plan.total_model_runs >= 100:
     st.warning("This run is large. Consider testing with fewer sweep cases or ensemble members first.")
 
 with st.expander("Run plan details"):

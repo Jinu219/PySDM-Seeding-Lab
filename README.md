@@ -102,19 +102,11 @@ The PySDM adapter currently acts as an interface placeholder and will later be c
 
 ## Development Roadmap
 
-```text
-0. Remove legacy experiment traces
-1. Define configuration schema
-2. Stabilize Streamlit input pages
-3. Strengthen validation
-4. Organize runner / adapter structure
-5. Connect the first real PySDM simulation
-6. Improve result storage structure
-7. Build result dashboard
-8. Add control vs seeding comparison
-9. Add efficiency metrics
-10. Add parameter sweep workflow
-```
+Steps 0-12 (scaffold through ensemble statistics) are complete; see `DEVELOPMENT.md`
+for the full changelog. The prioritized plan for what comes next (and why it is
+ordered this way) lives in `ROADMAP.md` -- the short version: native PySDM
+diagnostic extraction (Step 13) comes before publication-style plots, so plots
+are not rebuilt after diagnostic calculations change.
 
 ## Research Direction
 

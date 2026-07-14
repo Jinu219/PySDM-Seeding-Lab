@@ -70,6 +70,9 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "figure_to_png_bytes",
     "growth_pathway_all_variables",
     "growth_pathway_variable_groups",
+    "diagnostic_provenance_dataframe",
+    "diagnostic_provenance_summary_counts",
+    "result_file_roles_dataframe",
 ]
 
 missing = [name for name in REQUIRED_DASHBOARD_FUNCTIONS if not hasattr(dash, name)]
@@ -80,7 +83,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "sweep-case-filter-coverage-20260713"
+RESULTS_UI_BUILD_ID = "diagnostic-provenance-file-roles-20260713"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -1049,6 +1052,39 @@ with tab_files:
     for key, path in files.items():
         if path and Path(path).exists():
             st.write(f"- `{key}`: `{Path(path).name}`")
+
+    st.subheader("What is each file for?")
+    st.caption(
+        "summary.json / metadata.json / validation_report.json은 서로 다른 질문에 답합니다: "
+        "validation_report는 '설정이 타당한가'(실행 전), summary는 '결과적으로 무엇이 나왔는가'(실행 후), "
+        "metadata는 '이 결과가 언제·어떻게 만들어졌는가'입니다."
+    )
+    file_roles_df = dash.result_file_roles_dataframe(metadata)
+    if not file_roles_df.empty:
+        st.dataframe(file_roles_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("이 결과는 file_roles 메타데이터가 기록되기 전 버전으로 생성되었습니다. 다시 실행하면 표시됩니다.")
+
+    diagnostic_provenance_rows_loaded = loaded.get("diagnostic_provenance", [])
+    if diagnostic_provenance_rows_loaded:
+        st.subheader("Growth Pathway Diagnostic Provenance")
+        st.caption(
+            "각 진단 변수가 PySDM adapter의 실측값(native)인지, native 값으로부터 계산된 값(derived)인지, "
+            "adapter가 제공하지 않아 근사한 값(proxy)인지 보여줍니다. 논문/보고서 작성 시 어떤 수치가 "
+            "직접 측정치인지 확인하는 용도입니다."
+        )
+        provenance_counts = dash.diagnostic_provenance_summary_counts(diagnostic_provenance_rows_loaded)
+        pc1, pc2, pc3 = st.columns(3)
+        pc1.metric("Native", provenance_counts.get("native", 0))
+        pc2.metric("Derived", provenance_counts.get("derived", 0))
+        pc3.metric("Proxy", provenance_counts.get("proxy", 0))
+        if provenance_counts.get("proxy", 0) > 0:
+            st.caption("Proxy 변수가 있는 결과는 정성적 경향 파악용으로만 사용하고, 정량적 결론에는 주의하세요.")
+        st.dataframe(
+            dash.diagnostic_provenance_dataframe(diagnostic_provenance_rows_loaded),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     st.subheader("Summary JSON")
     st.json(summary)

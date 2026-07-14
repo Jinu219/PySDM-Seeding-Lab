@@ -30,6 +30,11 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "sweep_param_columns",
     "plot_sweep_heatmap",
     "build_overlay_legend_table",
+    "growth_pathway_all_variables",
+    "growth_pathway_variable_groups",
+    "diagnostic_provenance_dataframe",
+    "diagnostic_provenance_summary_counts",
+    "result_file_roles_dataframe",
 ]
 
 

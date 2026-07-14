@@ -11,9 +11,14 @@ import numpy as np
 import pandas as pd
 import yaml
 from analysis.ensemble_statistics import ensemble_variable_bases
-from analysis.growth_pathway_diagnostics import GROWTH_PATHWAY_VARIABLE_GROUPS, GROWTH_PATHWAY_PREFERRED_ORDER
+from analysis.growth_pathway_diagnostics import (
+    GROWTH_PATHWAY_VARIABLE_GROUPS,
+    GROWTH_PATHWAY_PREFERRED_ORDER,
+    PROVENANCE_LABELS_KO,
+)
+from analysis.result_files import describe_result_files
 
-DASHBOARD_BUILD_ID = "sweep-case-filter-coverage-20260713"
+DASHBOARD_BUILD_ID = "diagnostic-provenance-runtime-estimate-20260713"
 
 
 @dataclass(frozen=True)
@@ -109,6 +114,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
+            "diagnostic_provenance": [],
             "files": {
                 "ensemble_statistics": stats_path,
                 "member_summary": member_summary_path,
@@ -139,6 +145,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
+            "diagnostic_provenance": [],
             "files": {
                 "sweep_summary": sweep_path,
                 "summary": summary_path,
@@ -156,6 +163,11 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         validation_path = entry.path / "validation_report.json"
         control_path = entry.path / "control" / "timeseries.csv"
         seeding_path = entry.path / "seeding" / "timeseries.csv"
+        # Provenance is identical for control and seeding runs of the same
+        # comparison (same adapter, same diagnostics config), so either
+        # subdirectory's provenance file is representative; control is used
+        # because it always exists when a comparison result exists.
+        diagnostic_provenance_path = entry.path / "control" / "diagnostic_provenance.json"
 
         comparison_df = safe_read_csv(comparison_path)
         control_df = safe_read_csv(control_path)
@@ -172,6 +184,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
+            "diagnostic_provenance": _read_json(diagnostic_provenance_path) or [],
             "files": {
                 "comparison": comparison_path,
                 "summary": summary_path,
@@ -180,6 +193,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "validation": validation_path,
                 "control_timeseries": control_path,
                 "seeding_timeseries": seeding_path,
+                "diagnostic_provenance": diagnostic_provenance_path,
             },
         }
 
@@ -189,6 +203,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
+        diagnostic_provenance_path = entry.path / "diagnostic_provenance.json"
 
         df = safe_read_csv(timeseries_path)
 
@@ -205,12 +220,14 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
             "validation": _read_json(validation_path),
+            "diagnostic_provenance": _read_json(diagnostic_provenance_path) or [],
             "files": {
                 "timeseries": timeseries_path,
                 "summary": summary_path,
                 "metadata": metadata_path,
                 "config": config_path,
                 "validation": validation_path,
+                "diagnostic_provenance": diagnostic_provenance_path,
             },
         }
 
@@ -226,6 +243,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         "metadata": {"source": "legacy_csv", "filename": entry.path.name},
         "config": {},
         "validation": [],
+        "diagnostic_provenance": [],
         "files": {
             "timeseries": entry.path,
         },
@@ -1270,6 +1288,49 @@ def growth_pathway_all_variables() -> List[str]:
     """Return preferred Exper2 variable order."""
     return list(GROWTH_PATHWAY_PREFERRED_ORDER)
 
+
+def diagnostic_provenance_dataframe(provenance_rows: List[Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Turn diagnostic_provenance.json rows into a display-ready DataFrame.
+
+    Columns: variable / provenance_label / basis. Rows are already ordered by
+    GROWTH_PATHWAY_PREFERRED_ORDER (see analysis.growth_pathway_diagnostics).
+    """
+    if not provenance_rows:
+        return pd.DataFrame(columns=["variable", "provenance_label", "basis"])
+
+    df = pd.DataFrame(provenance_rows)
+    columns = [c for c in ["variable", "provenance_label", "basis"] if c in df.columns]
+    return df[columns]
+
+
+def diagnostic_provenance_summary_counts(provenance_rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Count how many diagnostic variables are native / derived / proxy."""
+    counts = {"native": 0, "derived": 0, "proxy": 0}
+    for row in provenance_rows:
+        provenance = row.get("provenance")
+        if provenance in counts:
+            counts[provenance] += 1
+    return counts
+
+
+def result_file_roles_dataframe(metadata: Dict[str, Any]) -> pd.DataFrame:
+    """
+    Return the 'what is each output file for' table for a loaded result.
+
+    Prefers the `file_roles` already embedded in metadata.json by the runner
+    (see analysis/result_files.py); falls back to computing it from
+    `result_files` for older result folders written before this feature.
+    """
+    file_roles = metadata.get("file_roles")
+    if not file_roles:
+        result_files = metadata.get("result_files", {})
+        file_roles = describe_result_files(list(result_files.values()))
+
+    if not file_roles:
+        return pd.DataFrame(columns=["file", "생성 시점", "무엇에 대한 답인가", "설명"])
+
+    return pd.DataFrame(file_roles)
 
 
 def figure_to_png_bytes(fig) -> bytes:
