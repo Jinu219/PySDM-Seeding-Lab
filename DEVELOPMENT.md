@@ -1,5 +1,27 @@
 # Development Notes
 
+## Absolute result-path budget hardening
+
+Changes:
+- Extended the compact nested path policy with a 240-character portable absolute
+  path ceiling and workflow-specific descendant reserves for single, comparison,
+  ensemble, and sweep results.
+- Long scenario/result components are shortened with a readable prefix plus stable
+  hash according to the actual remaining absolute-path budget.
+- Output roots that leave insufficient room now raise `ResultPathBudgetError`
+  before an adapter starts, avoiding another empty 24-case/240-member result.
+- Kept full run IDs, scenario names, and sweep parameters in stored metadata rather
+  than using filesystem components as the scientific record.
+
+Regression coverage:
+- Runs a sweep-ensemble under a deliberately deep output parent and long experiment
+  name, then checks every artifact remains within the portable limit.
+- Verifies stable shortening of a very long result name.
+- Verifies an impossibly deep output root fails early with actionable guidance.
+- Project integrity now exercises the complete sweep/case/member/comparison path.
+- All 25 unit/integration tests passed in 213 seconds, including the two real PySDM
+  integration tests, and the project integrity check passed.
+
 ## Full PySDM qualification, transition calibration, and benchmark evidence
 
 Changes:

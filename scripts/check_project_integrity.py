@@ -222,11 +222,46 @@ def check_native_diagnostic_contract() -> None:
         raise RuntimeError("Invalid diagnostic threshold ordering is not rejected.")
 
 
+def check_result_path_policy() -> None:
+    from simulation.path_policy import (
+        COMPARISON_RESULT_DESCENDANT_RESERVE,
+        ENSEMBLE_RESULT_DESCENDANT_RESERVE,
+        SWEEP_RESULT_DESCENDANT_RESERVE,
+        WINDOWS_PORTABLE_PATH_LIMIT,
+        path_character_count,
+        resolve_result_directory,
+    )
+
+    sweep_dir = resolve_result_directory(
+        PROJECT_ROOT / "results",
+        "very_long_scenario_name_" * 20,
+        descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
+    )
+    case_dir = resolve_result_directory(
+        sweep_dir / "cases",
+        "case_001",
+        directory_name="case_001",
+        descendant_reserve=ENSEMBLE_RESULT_DESCENDANT_RESERVE,
+    )
+    comparison_dir = resolve_result_directory(
+        case_dir / "members" / "member_001",
+        "comparison",
+        directory_name="comparison",
+        descendant_reserve=COMPARISON_RESULT_DESCENDANT_RESERVE,
+    )
+    representative_artifact = (
+        comparison_dir / "seeding" / "diagnostic_provenance.json"
+    )
+    if path_character_count(representative_artifact) > WINDOWS_PORTABLE_PATH_LIMIT:
+        raise RuntimeError("Compact nested sweep path exceeds the portable path limit.")
+
+
 def main() -> None:
     check_page_files()
     check_safe_read_csv_no_recursion()
     check_sweep_catalog()
     check_native_diagnostic_contract()
+    check_result_path_policy()
     py_compile.compile(str(PROJECT_ROOT / "app.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "ui_helpers.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
@@ -264,6 +299,7 @@ def main() -> None:
     print("Project integrity check passed.")
     print("Dashboard exports are complete.")
     print("Native diagnostic contract is complete (proxy-free synthetic mapping).")
+    print("Portable result-path budget check passed.")
     print(f"Dashboard build: {getattr(dashboard, 'DASHBOARD_BUILD_ID', 'unknown')}")
 
 

@@ -6,6 +6,24 @@ Active branch: `develop`
 
 Current milestone: Full PySDM qualification and large-ensemble evidence completed
 
+## Portable path-budget hardening
+
+The historical `20260714_190022_727349_0714_18_58_parameter_sweep` failure was
+caused by every nested ensemble member exceeding the Windows path limit before a
+time series could be written. The original compact `case_###/member_###` fix is now
+reinforced by an absolute-path budget:
+
+- all result modes reserve space for their deepest known artifact;
+- result/scenario names are shortened with a stable hash only when required;
+- generated paths target a 240-character portable ceiling rather than relying on
+  the 260-character legacy boundary;
+- an output root that is already too deep fails before model execution with a clear
+  suggestion to choose a shorter result root;
+- full run IDs and scientific parameter labels remain in metadata and configuration.
+
+The original failed result contains no recoverable member time series and must be
+rerun. Ensemble execution remains supported.
+
 ## Latest research-evidence update
 
 Completed:

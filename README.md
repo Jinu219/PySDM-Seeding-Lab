@@ -35,6 +35,12 @@ The latest measured RSS and streaming-I/O record is in
 The spectrum-transition threshold and checkpoint rationale is documented in
 [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md).
 
+Result directories use compact `case_###` and `member_###` components and enforce
+a 240-character portable absolute-path budget. Long scenario names are retained in
+metadata while filesystem components are shortened with a stable hash. If the
+configured output root itself is too deep, execution stops before running the model
+and asks for a shorter location such as `C:\pysdm_results`.
+
 This project starts from a clean scaffold and does not depend on previous experiment folders or legacy experiment names.  
 The goal is to build a reusable platform where cloud environment settings, background aerosol properties, seeding particle parameters, and microphysical options can be configured through YAML files and an interactive Streamlit interface.
 

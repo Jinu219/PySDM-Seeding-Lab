@@ -59,7 +59,14 @@ from analysis.ensemble_statistics import (
     member_summary_rows,
 )
 from simulation.builder import build_run_spec
-from simulation.path_policy import filesystem_token, resolve_result_directory
+from simulation.path_policy import (
+    COMPARISON_RESULT_DESCENDANT_RESERVE,
+    ENSEMBLE_RESULT_DESCENDANT_RESERVE,
+    SINGLE_RESULT_DESCENDANT_RESERVE,
+    SWEEP_RESULT_DESCENDANT_RESERVE,
+    filesystem_token,
+    resolve_result_directory,
+)
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.pysdm_adapter import run_adapter
 from simulation.run_timing import record_run_timing
@@ -357,7 +364,12 @@ def run_single_experiment(
     emit_progress(progress_callback, "runner", 2, total_stages, "Building run specification")
     spec = build_run_spec(cfg)
 
-    run_dir = resolve_result_directory(output_dir, spec.run_id, result_dir_name)
+    run_dir = resolve_result_directory(
+        output_dir,
+        spec.run_id,
+        result_dir_name,
+        descendant_reserve=SINGLE_RESULT_DESCENDANT_RESERVE,
+    )
     run_dir.mkdir(parents=True, exist_ok=True)
 
     emit_progress(progress_callback, "runner", 3, total_stages, f"Running adapter: {spec.adapter_name}")
@@ -415,7 +427,12 @@ def run_control_vs_seeding(
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{filesystem_token(experiment_name)}_control_vs_seeding"
-    run_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
+    run_dir = resolve_result_directory(
+        output_dir,
+        run_id,
+        result_dir_name,
+        descendant_reserve=COMPARISON_RESULT_DESCENDANT_RESERVE,
+    )
     run_dir.mkdir(parents=True, exist_ok=True)
 
     control_cfg = copy.deepcopy(cfg)
@@ -678,7 +695,12 @@ def run_ensemble_experiment(
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{filesystem_token(experiment_name)}_{mode}_ensemble"
 
-    run_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
+    run_dir = resolve_result_directory(
+        output_dir,
+        run_id,
+        result_dir_name,
+        descendant_reserve=ENSEMBLE_RESULT_DESCENDANT_RESERVE,
+    )
     members_dir = run_dir / "members"
     run_dir.mkdir(parents=True, exist_ok=True)
     members_dir.mkdir(parents=True, exist_ok=True)
@@ -937,7 +959,12 @@ def run_parameter_sweep(
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{filesystem_token(experiment_name)}_parameter_sweep"
 
-    sweep_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
+    sweep_dir = resolve_result_directory(
+        output_dir,
+        run_id,
+        result_dir_name,
+        descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
+    )
     cases_dir = sweep_dir / "cases"
     sweep_dir.mkdir(parents=True, exist_ok=True)
     cases_dir.mkdir(parents=True, exist_ok=True)

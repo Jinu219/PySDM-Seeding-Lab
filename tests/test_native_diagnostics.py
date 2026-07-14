@@ -39,7 +39,14 @@ from simulation.pysdm_parcel_adapter import (
     _output_to_dataframe,
     run_pysdm_parcel_simulation,
 )
-from simulation.path_policy import filesystem_token, path_character_count
+from simulation.path_policy import (
+    ResultPathBudgetError,
+    SWEEP_RESULT_DESCENDANT_RESERVE,
+    WINDOWS_PORTABLE_PATH_LIMIT,
+    filesystem_token,
+    path_character_count,
+    resolve_result_directory,
+)
 from simulation.runner import (
     ExperimentExecutionError,
     run_ensemble_experiment,
@@ -98,7 +105,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         cfg["ensemble"]["n_members"] = 2
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            output_dir = Path(tmp_dir) / "deep_parent"
+            output_dir = Path(tmp_dir) / ("deep_parent_" + "x" * 45)
             result_dir = run_experiment(cfg, output_dir)
             sweep = pd.read_csv(result_dir / "sweep_summary.csv")
             compact_case = result_dir / "cases" / "case_001"
@@ -116,9 +123,37 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             "ensemble.member_metrics.seeding_efficiency_score.mean",
         )
         self.assertTrue(comparison_exists)
-        self.assertLess(max(all_path_lengths), 260)
+        self.assertLessEqual(max(all_path_lengths), WINDOWS_PORTABLE_PATH_LIMIT)
         self.assertLessEqual(len(filesystem_token("x" * 200)), 48)
         self.assertEqual(filesystem_token("CON.txt"), "_CON.txt")
+
+    def test_result_path_budget_hashes_long_name_before_execution(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir) / ("portable_parent_" + "x" * 35)
+            result_dir = resolve_result_directory(
+                output_dir,
+                "very_long_scenario_name_" * 20,
+                descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
+            )
+
+        self.assertRegex(result_dir.name, r"_[0-9a-f]{8}$")
+        self.assertLessEqual(
+            path_character_count(result_dir) + SWEEP_RESULT_DESCENDANT_RESERVE,
+            WINDOWS_PORTABLE_PATH_LIMIT,
+        )
+
+    def test_result_path_budget_rejects_output_root_that_is_already_too_deep(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir) / ("x" * 70) / ("y" * 70)
+            with self.assertRaisesRegex(
+                ResultPathBudgetError,
+                "Choose a shorter output root",
+            ):
+                resolve_result_directory(
+                    output_dir,
+                    "scenario",
+                    descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
+                )
 
     def test_all_failed_ensemble_writes_health_then_raises(self):
         cfg = default_config()
