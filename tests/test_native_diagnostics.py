@@ -16,6 +16,7 @@ from analysis.case_diagnostic_comparison import (
 )
 from analysis.growth_pathway_diagnostics import diagnostic_provenance_rows
 from analysis.ensemble_statistics import (
+    benchmark_ensemble_statistics_from_paths,
     build_ensemble_statistics,
     build_ensemble_statistics_from_paths,
 )
@@ -24,6 +25,11 @@ from analysis.numerical_convergence import (
     summarize_numerical_convergence,
 )
 from analysis.result_manifest import inspect_result_compatibility
+from analysis.spectrum_transition import (
+    build_spectrum_transition_table,
+    build_transition_onset_robustness,
+    summarize_spectrum_transition,
+)
 from analysis.water_budget import build_water_budget_table, summarize_water_budget
 from simulation.builder import build_run_spec
 from simulation.pysdm_parcel_adapter import (
@@ -188,8 +194,14 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
                 member.to_csv(path, index=False)
                 paths.append(path)
             actual = build_ensemble_statistics_from_paths(paths)
+            benchmarked, benchmark = benchmark_ensemble_statistics_from_paths(paths)
 
         pd.testing.assert_frame_equal(actual, expected)
+        pd.testing.assert_frame_equal(benchmarked, expected)
+        self.assertEqual(benchmark["n_member_files"], 3)
+        self.assertEqual(benchmark["aggregated_variables"], 2)
+        self.assertGreater(benchmark["total_input_bytes"], 0)
+        self.assertGreaterEqual(benchmark["python_peak_traced_bytes"], 0)
 
     def test_placeholder_ensemble_uses_streaming_aggregation(self):
         cfg = default_config()
@@ -207,6 +219,12 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             )
             summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
             compatibility = inspect_result_compatibility(result_dir)
+            aggregation = json.loads(
+                (result_dir / "ensemble_aggregation_diagnostics.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            html_report = (result_dir / "report.html").read_text(encoding="utf-8")
 
         self.assertFalse(statistics.empty)
         self.assertEqual(
@@ -218,6 +236,46 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             "column_streaming_from_member_csv",
         )
         self.assertEqual(compatibility["status"], "current")
+        self.assertEqual(aggregation["n_member_files"], 3)
+        self.assertIn("<!doctype html>", html_report.lower())
+
+    def test_spectrum_transition_onset_is_interpolated_and_audited(self):
+        cfg = default_config()
+        cfg["diagnostics"]["spectrum_transition"]["rain_volume_fraction_threshold"] = 0.01
+        rows = []
+        for time_s, control, seeding in (
+            (0.0, 0.0, 0.0),
+            (10.0, 0.005, 0.02),
+            (20.0, 0.02, 0.04),
+        ):
+            rows.append(
+                {
+                    "time_s": time_s,
+                    "activation_factor": 1.0,
+                    "rain_factor": 1.0,
+                    "activation_threshold_um": 0.5,
+                    "rain_threshold_um": 25.0,
+                    "rain_volume_fraction_of_activated_control": control,
+                    "rain_volume_fraction_of_activated_seeding": seeding,
+                    "rain_volume_fraction_of_activated_diff": seeding - control,
+                    "rain_number_fraction_of_activated_control": control / 2,
+                    "rain_number_fraction_of_activated_seeding": seeding / 2,
+                    "rain_number_fraction_of_activated_diff": (seeding - control) / 2,
+                    "activated_number_fraction_control": 0.8,
+                    "activated_number_fraction_seeding": 0.8,
+                    "activated_number_fraction_diff": 0.0,
+                }
+            )
+        comparison = pd.DataFrame(rows)
+        transition = build_spectrum_transition_table(comparison, cfg)
+        robustness = build_transition_onset_robustness(comparison, cfg)
+        summary = summarize_spectrum_transition(transition, robustness)
+
+        self.assertAlmostEqual(summary["control_transition_onset_s"], 13.3333333333)
+        self.assertAlmostEqual(summary["seeding_transition_onset_s"], 5.0)
+        self.assertAlmostEqual(summary["transition_onset_shift_s"], -8.3333333333)
+        self.assertTrue(summary["threshold_shift_direction_consistent"])
+        self.assertEqual(summary["status"], "resolved")
 
     def test_diagnostic_comparison_tables_are_aligned(self):
         cfg = _small_native_config()
@@ -298,6 +356,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         cfg["diagnostics"]["water_budget"]["warning_relative_drift_percent"] = 1.0
         cfg["diagnostics"]["water_budget"]["failure_relative_drift_percent"] = 0.1
         cfg["diagnostics"]["numerical_convergence"]["relative_tolerance_percent"] = 0.0
+        cfg["diagnostics"]["spectrum_transition"]["rain_volume_fraction_threshold"] = 1.0
         error_fields = {
             issue.field
             for issue in validate_config_detailed(cfg)
@@ -309,6 +368,10 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         )
         self.assertIn(
             "diagnostics.numerical_convergence.relative_tolerance_percent",
+            error_fields,
+        )
+        self.assertIn(
+            "diagnostics.spectrum_transition.rain_volume_fraction_threshold",
             error_fields,
         )
 
@@ -329,6 +392,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             summary = json.loads((sweep_dir / "summary.json").read_text(encoding="utf-8"))
             convergence = pd.read_csv(convergence_path)
             report = (sweep_dir / "report.md").read_text(encoding="utf-8")
+            html_report = (sweep_dir / "report.html").read_text(encoding="utf-8")
             manifest = json.loads(
                 (sweep_dir / "result_manifest.json").read_text(encoding="utf-8")
             )
@@ -338,6 +402,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertTrue(summary["numerical_convergence"]["available"])
         self.assertIn("Research quality gates", report)
         self.assertIn("numerical_convergence.status", report)
+        self.assertIn("<!doctype html>", html_report.lower())
         self.assertEqual(manifest["result_schema_version"], 2)
         self.assertEqual(manifest["primary_data"], "sweep_summary.csv")
         self.assertEqual(compatibility["status"], "current")
@@ -462,6 +527,11 @@ class NativePySDMIntegrationTests(unittest.TestCase):
                 (result_dir / "summary.json").read_text(encoding="utf-8")
             )
             comparison_report = (result_dir / "report.md").read_text(encoding="utf-8")
+            comparison_html_report = (result_dir / "report.html").read_text(encoding="utf-8")
+            transition_exists = (result_dir / "spectrum_transition.csv").exists()
+            transition_robustness_exists = (
+                result_dir / "spectrum_transition_onset_robustness.csv"
+            ).exists()
             comparison_compatibility = inspect_result_compatibility(result_dir)
 
         self.assertFalse(any(row["provenance"] == "proxy" for row in provenance))
@@ -485,6 +555,14 @@ class NativePySDMIntegrationTests(unittest.TestCase):
             ]
         )
         self.assertIn("water_budget", comparison_report)
+        self.assertIn("Research quality gates", comparison_html_report)
+        self.assertTrue(transition_exists)
+        self.assertTrue(transition_robustness_exists)
+        self.assertTrue(
+            comparison_summary["comparison"]["research_quality"]["spectrum_transition"][
+                "available"
+            ]
+        )
         self.assertEqual(comparison_compatibility["status"], "current")
         self.assertEqual(comparison_compatibility["result_type"], "comparison")
         self.assertTrue(comparison_compatibility["readable"])

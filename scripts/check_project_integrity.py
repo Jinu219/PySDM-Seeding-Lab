@@ -60,6 +60,7 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "threshold_robustness_metrics",
     "plot_water_budget",
     "plot_numerical_convergence",
+    "plot_spectrum_transition",
     "convergence_metrics",
     "figure_to_svg_bytes",
     "figure_to_pdf_bytes",
@@ -240,6 +241,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "water_budget.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "numerical_convergence.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "case_diagnostic_comparison.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "spectrum_transition.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "reporting.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)

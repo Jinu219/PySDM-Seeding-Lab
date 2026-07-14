@@ -76,6 +76,9 @@ diagnostics:
     enabled: true
     relative_tolerance_percent: 5.0
     metrics: []
+  spectrum_transition:
+    enabled: true
+    rain_volume_fraction_threshold: 0.01
 output:
   base_dir: results
   save_config: true

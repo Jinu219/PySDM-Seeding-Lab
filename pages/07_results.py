@@ -138,6 +138,7 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "threshold_robustness_metrics",
     "plot_water_budget",
     "plot_numerical_convergence",
+    "plot_spectrum_transition",
     "convergence_metrics",
     "publication_parameter_label",
     "publication_variable_label",
@@ -217,6 +218,11 @@ control_water_budget_df = loaded.get("control_water_budget", pd.DataFrame())
 seeding_water_budget_df = loaded.get("seeding_water_budget", pd.DataFrame())
 water_budget_comparison_df = loaded.get("water_budget_comparison", pd.DataFrame())
 numerical_convergence_df = loaded.get("numerical_convergence", pd.DataFrame())
+spectrum_transition_df = loaded.get("spectrum_transition", pd.DataFrame())
+spectrum_transition_robustness_df = loaded.get(
+    "spectrum_transition_onset_robustness", pd.DataFrame()
+)
+ensemble_aggregation_diagnostics = loaded.get("ensemble_aggregation_diagnostics", {})
 summary = loaded["summary"]
 metadata = loaded["metadata"]
 config = loaded["config"]
@@ -224,6 +230,7 @@ validation = loaded["validation"]
 files = loaded["files"]
 diagnostic_provenance_rows = loaded.get("diagnostic_provenance", [])
 report_markdown = loaded.get("report_markdown", "")
+report_html = loaded.get("report_html", "")
 result_compatibility = loaded.get("result_compatibility", {})
 
 is_ensemble = selected_entry.result_type == "ensemble"
@@ -854,6 +861,27 @@ if is_ensemble:
     with tab_ensemble:
         st.subheader("Ensemble Statistics")
         st.caption("Mean ± std and median + IQR uncertainty views for repeated random seeds.")
+
+        if ensemble_aggregation_diagnostics:
+            st.markdown("#### Streaming aggregation benchmark")
+            benchmark_cols = st.columns(4)
+            benchmark_cols[0].metric(
+                "Member input",
+                f"{ensemble_aggregation_diagnostics.get('total_input_bytes', 0) / 1.0e6:.3f} MB",
+            )
+            benchmark_cols[1].metric(
+                "Aggregation time",
+                f"{ensemble_aggregation_diagnostics.get('elapsed_seconds', 0.0):.3f} s",
+            )
+            benchmark_cols[2].metric(
+                "Traced peak",
+                f"{ensemble_aggregation_diagnostics.get('python_peak_traced_bytes', 0) / 1.0e6:.3f} MB",
+            )
+            benchmark_cols[3].metric(
+                "Variables",
+                ensemble_aggregation_diagnostics.get("aggregated_variables", 0),
+            )
+            st.caption(str(ensemble_aggregation_diagnostics.get("memory_scope", "")))
 
         bases = dash.ensemble_available_bases(ensemble_df)
         if not bases:
@@ -1672,6 +1700,49 @@ if tab_spectrum is not None:
                         use_container_width=True,
                     )
 
+            if is_comparison and not spectrum_transition_df.empty:
+                st.divider()
+                st.markdown("#### Spectrum-based transition onset")
+                transition_summary = (
+                    summary.get("comparison", {})
+                    .get("research_quality", {})
+                    .get("spectrum_transition", {})
+                )
+                transition_cols = st.columns(4)
+                transition_cols[0].metric(
+                    "Control onset",
+                    dash.format_metric_value(transition_summary.get("control_transition_onset_s"))
+                    + " s",
+                )
+                transition_cols[1].metric(
+                    "Seeding onset",
+                    dash.format_metric_value(transition_summary.get("seeding_transition_onset_s"))
+                    + " s",
+                )
+                transition_cols[2].metric(
+                    "Onset shift",
+                    dash.format_metric_value(transition_summary.get("transition_onset_shift_s"))
+                    + " s",
+                )
+                transition_cols[3].metric(
+                    "Threshold-direction stable",
+                    str(
+                        transition_summary.get(
+                            "threshold_shift_direction_consistent", "unresolved"
+                        )
+                    ),
+                )
+                st.caption(str(transition_summary.get("onset_method", "")))
+                st.pyplot(
+                    dash.plot_spectrum_transition(spectrum_transition_df),
+                    use_container_width=True,
+                )
+                with st.expander("Transition onset threshold audit"):
+                    st.dataframe(
+                        spectrum_transition_robustness_df,
+                        use_container_width=True,
+                    )
+
             with st.expander("Checkpoint data tables"):
                 if is_comparison:
                     st.markdown("**Control spectrum**")
@@ -1934,6 +2005,17 @@ with tab_files:
         )
         with st.expander("Preview report", expanded=False):
             st.markdown(report_markdown)
+
+    if report_html:
+        st.download_button(
+            "Download report.html",
+            data=report_html.encode("utf-8"),
+            file_name=f"{selected_entry.path.name}_report.html",
+            mime="text/html",
+            use_container_width=True,
+        )
+        with st.expander("Preview print-friendly HTML report", expanded=False):
+            st.html(report_html)
 
     st.subheader("What is each file for?")
     st.caption(

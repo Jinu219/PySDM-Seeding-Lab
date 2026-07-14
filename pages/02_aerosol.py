@@ -205,6 +205,7 @@ with st.expander("Research quality gates", expanded=False):
     )
     water_budget_cfg = diagnostics.setdefault("water_budget", {})
     convergence_cfg = diagnostics.setdefault("numerical_convergence", {})
+    transition_cfg = diagnostics.setdefault("spectrum_transition", {})
 
     quality_col1, quality_col2 = st.columns(2)
     with quality_col1.container(border=True):
@@ -246,6 +247,25 @@ with st.expander("Research quality gates", expanded=False):
         st.caption(
             "Leave diagnostics.numerical_convergence.metrics empty to analyze the available "
             "default rain-response metrics."
+        )
+
+    with st.container(border=True):
+        st.markdown("##### Spectrum transition onset")
+        transition_cfg["enabled"] = st.toggle(
+            "Analyze spectrum-based transition onset",
+            value=bool(transition_cfg.get("enabled", True)),
+        )
+        transition_cfg["rain_volume_fraction_threshold"] = st.number_input(
+            "Rain-size liquid fraction threshold [-]",
+            min_value=0.0001,
+            max_value=0.9999,
+            value=float(transition_cfg.get("rain_volume_fraction_threshold", 0.01)),
+            step=0.005,
+            format="%.4f",
+            help=(
+                "Onset is the first interpolated checkpoint where rain-size liquid volume "
+                "exceeds this fraction of activated liquid volume."
+            ),
         )
 
 config_actions(cfg, "Save Aerosol Settings")

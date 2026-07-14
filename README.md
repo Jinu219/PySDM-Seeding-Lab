@@ -160,20 +160,30 @@ editable SVG, and PDF with screen, single-column, and double-column presets.
 Every new single, comparison, sweep, and ensemble result also includes an
 automatic `report.md` summarizing quality gates, outcome metrics, validation,
 artifacts, reproduction steps, and interpretation constraints.
+It also includes a self-contained, print-friendly `report.html` with the same
+research audit information.
 The same result directories include a versioned `result_manifest.json` that
 declares the result type, primary data file, and artifact map. The Results
 Dashboard also infers older directories that predate the manifest and labels
 their compatibility explicitly.
 Large ensembles are aggregated from stored member CSVs one variable at a time,
 so the runner no longer retains every full member dataframe simultaneously.
+`ensemble_aggregation_diagnostics.json` records input size, elapsed aggregation
+time, output shape, and tracemalloc-visible peak allocation.
+
+Control-versus-seeding results also include `spectrum_transition.csv` and
+`spectrum_transition_onset_robustness.csv`. Transition onset is the first
+linearly interpolated checkpoint where rain-size liquid exceeds the configured
+fraction of activated liquid (default 0.01). It is a radius-bin diagnostic, not
+a particle-history activation event.
 
 ## Development Roadmap
 
 Steps 0-12 and the first Step 13 native scalar-product pass are complete; see
 `DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: benchmark the new streaming ensemble aggregation next; Markdown
-reporting and the first result-schema compatibility layer are already connected
-to every result type.
+`ROADMAP.md`: build full PySDM convergence evidence and large-run RSS/I/O
+benchmarks next; Markdown/HTML reporting and result-schema compatibility are
+already connected to every result type.
 
 ## Research Direction
 

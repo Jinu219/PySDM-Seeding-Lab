@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+import tracemalloc
 import warnings
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
@@ -171,6 +173,46 @@ def build_ensemble_statistics_from_paths(member_paths: List[Path]) -> pd.DataFra
         output_columns.update(_column_statistics(column, np.vstack(member_values)))
 
     return pd.DataFrame(output_columns)
+
+
+def benchmark_ensemble_statistics_from_paths(
+    member_paths: List[Path],
+) -> tuple[pd.DataFrame, Dict[str, Any]]:
+    """Run streaming aggregation and return lightweight runtime/memory diagnostics."""
+    paths = [Path(path) for path in member_paths]
+    total_input_bytes = sum(path.stat().st_size for path in paths if path.exists())
+    tracing_was_active = tracemalloc.is_tracing()
+    if not tracing_was_active:
+        tracemalloc.start()
+        tracemalloc.reset_peak()
+    started = time.perf_counter()
+    try:
+        statistics = build_ensemble_statistics_from_paths(paths)
+        elapsed_seconds = time.perf_counter() - started
+        _, peak_traced_bytes = tracemalloc.get_traced_memory()
+    finally:
+        if not tracing_was_active:
+            tracemalloc.stop()
+
+    n_statistic_columns = max(0, len(statistics.columns) - 1)
+    n_variables = n_statistic_columns // 7
+    diagnostics = {
+        "build_id": ENSEMBLE_BUILD_ID,
+        "method": "column_streaming_from_member_csv",
+        "n_member_files": len(paths),
+        "total_input_bytes": int(total_input_bytes),
+        "elapsed_seconds": float(elapsed_seconds),
+        "python_peak_traced_bytes": int(peak_traced_bytes),
+        "output_rows": int(len(statistics)),
+        "output_columns": int(len(statistics.columns)),
+        "aggregated_variables": int(n_variables),
+        "memory_scope": (
+            "Python and NumPy allocations visible to tracemalloc during aggregation; "
+            "this is not whole-process RSS. If an outer trace was already active, its peak "
+            "scope is retained."
+        ),
+    }
+    return statistics, diagnostics
 
 
 def final_stat(stats_df: pd.DataFrame, base_column: str, stat: str = "mean") -> float | None:

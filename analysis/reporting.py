@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-"""Automatic Markdown research report generation for every result type."""
+"""Automatic Markdown and HTML research report generation for every result type."""
 
+from html import escape
 from typing import Any, Dict, Iterable
 
 
-REPORT_BUILD_ID = "research-report-v1-20260714"
+REPORT_BUILD_ID = "research-report-v2-20260714"
 
 
 def _flatten(payload: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
@@ -56,6 +57,8 @@ def _selected_metrics(summary: Dict[str, Any]) -> list[tuple[str, Any]]:
         "comparison.efficiency.cloud_to_rain_conversion_delta",
         "comparison.research_quality.wet_radius_spectrum.final_number_l1_difference_cm3",
         "comparison.research_quality.wet_radius_spectrum.final_liquid_volume_l1_difference",
+        "comparison.research_quality.spectrum_transition.transition_onset_shift_s",
+        "comparison.research_quality.spectrum_transition.final_rain_volume_fraction_diff",
         "adapter_summary.final_rain_water_mixing_ratio",
         "adapter_summary.max_rain_water_mixing_ratio",
         "metrics.final_rain_water_mixing_ratio",
@@ -77,6 +80,11 @@ def _quality_rows(summary: Dict[str, Any]) -> list[tuple[str, Any]]:
         "wet_radius_spectrum.final_number_l1_difference_cm3",
         "numerical_convergence.status",
         "numerical_convergence.max_next_finest_relative_difference_percent",
+        "spectrum_transition.status",
+        "spectrum_transition.transition_onset_shift_s",
+        "spectrum_transition.threshold_shift_direction_consistent",
+        "aggregation.elapsed_seconds",
+        "aggregation.python_peak_traced_bytes",
         "growth_pathway_diagnostics_enabled",
     )
     return [
@@ -181,3 +189,73 @@ def build_markdown_report(
         ]
     )
     return "\n".join(lines)
+
+
+def _html_table(headers: Iterable[str], rows: Iterable[Iterable[Any]]) -> str:
+    header_html = "".join(f"<th>{escape(str(header))}</th>" for header in headers)
+    body_html = "".join(
+        "<tr>" + "".join(f"<td>{escape(_format_value(value))}</td>" for value in row) + "</tr>"
+        for row in rows
+    )
+    return f"<table><thead><tr>{header_html}</tr></thead><tbody>{body_html}</tbody></table>"
+
+
+def build_html_report(
+    *,
+    summary: Dict[str, Any],
+    metadata: Dict[str, Any],
+    validation_rows: list[Dict[str, Any]],
+    config: Dict[str, Any],
+) -> str:
+    """Build a self-contained, print-friendly HTML research report."""
+    experiment_name = metadata.get("experiment_name", summary.get("experiment_name", "experiment"))
+    result_type = metadata.get("result_type", summary.get("result_type", "single"))
+    identity_rows = (
+        ("Run ID", metadata.get("run_id", summary.get("run_id", "unknown"))),
+        ("Created", metadata.get("created_at", "unknown")),
+        ("Result type", result_type),
+        ("Experiment mode", metadata.get("experiment_mode", summary.get("experiment_mode", "unknown"))),
+        ("Adapter", metadata.get("adapter_name", summary.get("adapter_name", "unknown"))),
+        ("Case", metadata.get("case_name", summary.get("case_name", "unknown"))),
+        ("Random seed", config.get("experiment", {}).get("random_seed", "unknown")),
+    )
+    severity_counts = {"error": 0, "warning": 0, "info": 0}
+    for row in validation_rows or []:
+        severity = str(row.get("severity", "")).lower()
+        if severity in severity_counts:
+            severity_counts[severity] += 1
+    quality_rows = _quality_rows(summary)
+    metric_rows = _selected_metrics(summary)
+    artifact_rows = list(metadata.get("result_files", {}).items())
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escape(str(experiment_name))} - Research Report</title>
+<style>
+:root {{ color-scheme: light; --ink:#172033; --muted:#64748b; --line:#dbe3ee; --accent:#22577a; }}
+* {{ box-sizing:border-box; }}
+body {{ margin:0; background:#eef3f8; color:var(--ink); font:14px/1.55 Arial, sans-serif; }}
+main {{ max-width:960px; margin:32px auto; background:white; padding:44px; border-radius:16px; box-shadow:0 12px 36px #19324d18; }}
+h1 {{ margin:0 0 6px; font-size:30px; }} h2 {{ margin-top:32px; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:7px; }}
+.subtitle {{ color:var(--muted); margin-bottom:28px; }}
+table {{ width:100%; border-collapse:collapse; margin:12px 0 20px; }} th,td {{ text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }} th {{ background:#f4f7fb; }}
+code {{ background:#f1f5f9; padding:2px 5px; border-radius:4px; }}
+.note {{ border-left:4px solid var(--accent); background:#f4f8fb; padding:12px 16px; }}
+@media print {{ body {{ background:white; }} main {{ max-width:none; margin:0; padding:0; box-shadow:none; }} }}
+</style>
+</head>
+<body><main>
+<h1>{escape(str(experiment_name))}</h1>
+<div class="subtitle">Research Report · generated by <code>{REPORT_BUILD_ID}</code></div>
+<p class="note">This report summarizes stored outputs. CSV, JSON, and YAML artifacts remain the source of truth.</p>
+<h2>Run identity</h2>{_html_table(("Field", "Value"), identity_rows)}
+<h2>Research quality gates</h2>{_html_table(("Diagnostic", "Value"), quality_rows) if quality_rows else '<p>No research-quality gate was available.</p>'}
+<h2>Key outcome metrics</h2>{_html_table(("Metric", "Value"), metric_rows) if metric_rows else '<p>No preferred outcome metric was available.</p>'}
+<h2>Configuration validation</h2>{_html_table(("Severity", "Count"), severity_counts.items())}
+<h2>Result artifacts</h2>{_html_table(("Role", "Path"), artifact_rows) if artifact_rows else '<p>Artifact manifest unavailable.</p>'}
+<h2>Reproduction</h2><ol><li>Use <code>config.yaml</code> as the exact run configuration.</li><li>Review <code>validation_report.json</code>.</li><li>Confirm adapter/PySDM versions and diagnostic thresholds in <code>metadata.json</code>.</li><li>Re-run with the same random seed and dependency versions.</li></ol>
+<h2>Interpretation constraints</h2><ul><li><code>placeholder_warm_cloud</code> is synthetic workflow-test data.</li><li>Cloud/rain labels are instantaneous wet-radius bins, not particle histories.</li><li>The injection interval is an open source window in the water budget.</li><li>Spectrum transition onset is linearly interpolated between stored checkpoints.</li><li>Numerical convergence near a zero reference requires absolute-difference review.</li></ul>
+</main></body></html>"""

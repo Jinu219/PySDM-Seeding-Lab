@@ -845,6 +845,42 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 )
             )
 
+    transition_cfg = diagnostics.get("spectrum_transition", {})
+    if not isinstance(transition_cfg, dict):
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.spectrum_transition",
+                "spectrum_transition must be a mapping.",
+                "Reset this section to the default transition configuration.",
+            )
+        )
+    else:
+        transition_enabled = transition_cfg.get("enabled", True)
+        transition_threshold = transition_cfg.get("rain_volume_fraction_threshold", 0.01)
+        if not isinstance(transition_enabled, bool):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.spectrum_transition.enabled",
+                    "enabled must be true or false.",
+                    "Use a YAML boolean value.",
+                )
+            )
+        if (
+            not isinstance(transition_threshold, (int, float))
+            or isinstance(transition_threshold, bool)
+            or not 0 < float(transition_threshold) < 1
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.spectrum_transition.rain_volume_fraction_threshold",
+                    "rain_volume_fraction_threshold must be between 0 and 1.",
+                    "Use 0.01 for a 1% activated-liquid transition threshold.",
+                )
+            )
+
     if microphysics.get("collision", False):
         issues.append(
             _issue(

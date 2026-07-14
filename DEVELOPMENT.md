@@ -930,3 +930,36 @@ Recommended commit message:
 ```bash
 git commit -m "Add integrated research quality diagnostics"
 ```
+
+## Research-quality second pass. Transition timing, measured aggregation, and HTML reports
+
+Changes:
+- Added a spectrum-transition definition based on the rain-size liquid-volume
+  fraction among activated liquid, with a configurable default threshold of 1%.
+- Added linear checkpoint interpolation for control/seeding transition onset and
+  stores onset shift for every activation/rain radius-threshold pair.
+- Added `spectrum_transition.csv` and
+  `spectrum_transition_onset_robustness.csv`, summary metrics, Results plots,
+  threshold-direction audit, schema defaults, validation, and UI controls.
+- Instrumented streaming ensemble aggregation with member input bytes, elapsed
+  time, output shape, aggregated variable count, and tracemalloc-visible peak
+  allocation in `ensemble_aggregation_diagnostics.json`.
+- Added self-contained, print-friendly `report.html` for single, comparison,
+  sweep, and ensemble results, with Results preview/download and manifest roles.
+- Kept old results safe: every new table/report is optional when loaded by the
+  dashboard, and existing schema compatibility handling remains unchanged.
+
+Validation performed:
+- 16 unit/integration tests passed, including real PySDM native and
+  control-versus-seeding runs.
+- Synthetic transition crossing resolved control onset at 13.33 s, seeding onset
+  at 5 s, and a -8.33 s shift using checkpoint interpolation.
+- Streaming and legacy in-memory ensemble statistics matched exactly.
+- Aerosol, Run, and Results AppTests rendered with 0 exceptions.
+- Project integrity and Python compilation checks passed.
+
+Recommended commit message:
+
+```bash
+git commit -m "Add spectrum transition and HTML research reports"
+```

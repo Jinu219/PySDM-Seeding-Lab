@@ -4,12 +4,13 @@
 
 The canonical current-state view is [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 Step 13 native scalar diagnostics, the first Step 14–16 research-quality
-bundle, Step 17 streaming aggregation, Step 18 Markdown reporting, and Step 19
-result manifests are complete.
+bundle, Step 17 instrumented streaming aggregation, Step 18 Markdown/HTML
+reporting, and Step 19 result manifests are complete.
 Source-aware conservation, numerical convergence, control–seeding spectrum
 differences, vector publication export, and legacy-result inference are now
-implemented. The next engineering priority is benchmarking the Step 17 memory/I/O
-tradeoff on large PySDM ensembles.
+implemented. Spectrum transition onset and threshold-pair timing audits are also
+connected to real comparison results. The next priority is full PySDM convergence
+evidence and large-ensemble RSS/I/O benchmarking.
 
 `DEVELOPMENT.md`가 "무엇을 했는가"의 기록(changelog)이라면, 이 문서는 "다음에 무엇을,
 어떤 순서로 할 것인가"를 관리한다. README.md의 Development Roadmap 섹션은 Step 10까지만
@@ -127,19 +128,22 @@ proxy임을 명시).
 
 ### Step 16. wet radius / cloud-size / rain-size bin diagnostic
 
-**Status: first implementation completed.** native wet-radius number spectrum과 liquid-volume
+**Status: second implementation completed.** native wet-radius number spectrum과 liquid-volume
 spectrum을 start/injection start/injection end/run end checkpoint에 저장한다. Results
-Dashboard에서 single 및 control/seeding case를 확인할 수 있다. 다음 단계는
-seeding-minus-control spectrum/threshold difference까지 구현되었다. 다음 단계는
-growth-transition/onset 지표의 관측 비교 기준 확정이다.
+Dashboard에서 single 및 control/seeding case를 확인할 수 있다. seeding-minus-control
+spectrum/threshold difference와 activated liquid 중 rain-size liquid fraction 기반 onset을
+저장하며, 모든 threshold pair에서 onset shift 방향이 유지되는지도 audit한다. 다음 단계는
+1% 기본 threshold와 checkpoint 해상도의 관측·문헌 근거 확정이다.
 
 ### Step 17~19
 
 - Step 17 large ensemble 최적화: member dataframe 전체를 동시에 보관하지 않고 member
   CSV를 변수별로 streaming aggregation하는 첫 구현 완료. 통계 결과는 기존 방식과 동일하며,
   peak aggregation memory는 members x timesteps x variables에서 members x timesteps로 줄었다.
-  다음은 실제 대형 PySDM ensemble의 peak memory와 추가 CSV I/O 시간을 benchmark하는 것이다.
-- Step 18 자동 report export: Markdown 첫 구현 완료. 다음은 PDF/HTML과 figure embedding.
+  이제 입력 bytes, elapsed time, tracemalloc peak를 자동 저장한다. 다음은 실제 대형 PySDM
+  ensemble의 whole-process RSS와 추가 CSV I/O 시간을 benchmark하는 것이다.
+- Step 18 자동 report export: Markdown과 self-contained print-friendly HTML 구현 완료.
+  다음은 PDF와 publication figure embedding.
 - Step 19 old/new result 호환성 강화: versioned `result_manifest.json`, current/legacy/future
   compatibility inspection, legacy type inference, Results 상태 표시까지 첫 구현 완료.
   다음은 실제 schema 변경 시 migration fixture와 변환기를 추가하는 것이다.

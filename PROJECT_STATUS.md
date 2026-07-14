@@ -4,7 +4,7 @@ Last updated: 2026-07-14
 
 Active branch: `develop`
 
-Current milestone: Steps 14-19 first integrated implementation completed
+Current milestone: Research-quality second pass completed for Steps 16-18
 
 이 문서는 프로젝트의 현재 상태를 한 화면에서 확인하는 운영 문서다. 세부 변경 이력은
 `DEVELOPMENT.md`, 우선순위와 완료 조건은 `ROADMAP.md`, 설치와 사용법은 `README.md`를
@@ -18,9 +18,9 @@ Current milestone: Steps 14-19 first integrated implementation completed
 | Step 13 | 완료 | PySDM 2.131 native scalar diagnostics, native 11 / derived 2 / proxy 0 | PySDM 버전 변경 시 product API 재검증 |
 | Step 14 | 1차 완료 | source-aware water budget, threshold robustness, numerical convergence gate | 장기/고해상도 실험으로 tolerance 근거 축적 |
 | Step 15 | 1차 완료 | publication panels, PNG/SVG/PDF export, journal width presets | 저널별 세부 typography preset은 실제 투고 시 확장 |
-| Step 16 | 1차 완료 | wet-radius spectrum과 control–seeding/threshold 차이 진단 | transition/onset 지표의 관측 비교 기준 확정 |
-| Step 17 | 1차 완료 | member CSV column-streaming ensemble aggregation | 대형 실행 benchmark 후 병렬화·I/O 절충 확정 |
-| Step 18 | 1차 완료 | 모든 result type의 자동 `report.md`와 Results preview/download | 향후 PDF report 및 figure embedding |
+| Step 16 | 2차 완료 | spectrum transition onset, checkpoint interpolation, threshold-pair audit | 1% 기본 threshold의 관측·문헌 근거 확정 |
+| Step 17 | 2차 완료 | streaming aggregation과 input/time/tracemalloc benchmark JSON | 대형 PySDM 실행의 RSS·I/O benchmark |
+| Step 18 | 2차 완료 | 모든 result type의 Markdown + self-contained HTML report | 향후 PDF report 및 figure embedding |
 | Step 19 | 1차 완료 | versioned `result_manifest.json`, legacy inference, Results compatibility status | 실제 schema 변경 시 migration fixture 추가 |
 
 ## 현재 동작하는 연구 흐름
@@ -60,7 +60,11 @@ Current milestone: Steps 14-19 first integrated implementation completed
 | `threshold_robustness_comparison.csv` | threshold 조합별 seeding response 차이 |
 | `numerical_convergence.csv` | finest reference 대비 timestep/NSD OFAT 수렴 오차 |
 | `report.md` | 품질 판정, 핵심 지표, validation, artifact, 재현 절차 자동 요약 |
+| `report.html` | 브라우저 열람과 인쇄가 가능한 self-contained 연구 보고서 |
 | `result_manifest.json` | result schema version, result type, primary data, artifact map |
+| `spectrum_transition.csv` | baseline threshold의 control/seeding rain-size liquid fraction과 차이 |
+| `spectrum_transition_onset_robustness.csv` | radius threshold 조합별 보간 onset과 onset shift |
+| `ensemble_aggregation_diagnostics.json` | streaming input bytes, elapsed time, traced peak allocation |
 
 ## 현재 해석 범위
 
@@ -73,13 +77,16 @@ Current milestone: Steps 14-19 first integrated implementation completed
 - water-budget pass/fail은 injection source window를 제외한 닫힌 구간에만 적용한다.
 - numerical convergence 기본 판정은 rank 1과 finest rank 0의 상대 차이 5%다. 기준 metric이
   0에 매우 가까우면 상대오차가 과대해질 수 있으므로 absolute difference도 함께 확인한다.
+- spectrum transition onset은 activated liquid 중 rain-size bin liquid 비율이 기본 1%를
+  처음 넘는 시각이다. 저장된 checkpoint 사이를 선형 보간하며 particle-history event가 아니다.
+- aggregation peak는 `tracemalloc`이 관측한 Python/NumPy allocation이며 whole-process RSS가 아니다.
 
 ## 다음 개발 우선순위
 
-1. Step 17 검증: 대형 ensemble benchmark로 peak memory와 CSV 재읽기 비용을 계측한다.
-2. numerical convergence preset을 full PySDM으로 실행해 5% 기본 tolerance의 경험적 근거를 축적한다.
-3. spectrum 기반 onset/transition 지표를 정의하고 관측 또는 문헌 기준과 비교한다.
-4. Step 18 report를 PDF/HTML로 확장하고 선택한 publication figure를 포함한다.
+1. numerical convergence preset을 full PySDM으로 실행해 5% 기본 tolerance의 경험적 근거를 축적한다.
+2. spectrum transition 1% threshold와 checkpoint 간격을 관측 또는 문헌 기준으로 보정한다.
+3. 대형 PySDM ensemble에서 whole-process RSS와 streaming CSV I/O 시간을 benchmark한다.
+4. Step 18 report를 PDF로 확장하고 선택한 publication figure를 포함한다.
 5. 실제 구버전 결과 fixture를 보존하고 schema 변경 때 migration 회귀 테스트를 추가한다.
 
 ## 검증 명령

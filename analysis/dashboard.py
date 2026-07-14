@@ -18,6 +18,7 @@ from analysis.growth_pathway_diagnostics import (
 )
 from analysis.result_files import describe_result_files
 from analysis.result_manifest import inspect_result_compatibility
+from analysis.spectrum_transition import plot_spectrum_transition
 from analysis.numerical_convergence import (
     convergence_metrics,
     plot_numerical_convergence,
@@ -49,7 +50,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "research-quality-panels-20260714"
+DASHBOARD_BUILD_ID = "transition-report-performance-panels-20260714"
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
         report_path = entry.path / "report.md"
+        html_report_path = entry.path / "report.html"
+        aggregation_diagnostics_path = entry.path / "ensemble_aggregation_diagnostics.json"
         diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         stats_df = safe_read_csv(stats_path)
@@ -171,6 +174,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
             ) or [],
             "report_markdown": _read_text(report_path),
+            "report_html": _read_text(html_report_path),
+            "ensemble_aggregation_diagnostics": _read_json(aggregation_diagnostics_path),
             "result_compatibility": compatibility,
             "files": {
                 "ensemble_statistics": stats_path,
@@ -181,6 +186,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "validation": validation_path,
                 "diagnostic_provenance": diagnostic_provenance_path,
                 "report": report_path,
+                "report_html": html_report_path,
+                "ensemble_aggregation_diagnostics": aggregation_diagnostics_path,
             },
         }
 
@@ -188,6 +195,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         sweep_path = entry.path / "sweep_summary.csv"
         convergence_path = entry.path / "numerical_convergence.csv"
         report_path = entry.path / "report.md"
+        html_report_path = entry.path / "report.html"
         summary_path = entry.path / "summary.json"
         metadata_path = entry.path / "metadata.json"
         config_path = entry.path / "config.yaml"
@@ -214,6 +222,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
             ) or [],
             "report_markdown": _read_text(report_path),
+            "report_html": _read_text(html_report_path),
             "result_compatibility": compatibility,
             "files": {
                 "sweep_summary": sweep_path,
@@ -224,6 +233,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "validation": validation_path,
                 "diagnostic_provenance": diagnostic_provenance_path,
                 "report": report_path,
+                "report_html": html_report_path,
             },
         }
 
@@ -244,7 +254,10 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         spectrum_comparison_path = entry.path / "wet_radius_spectrum_comparison.csv"
         threshold_comparison_path = entry.path / "threshold_robustness_comparison.csv"
         water_budget_comparison_path = entry.path / "water_budget_comparison.csv"
+        transition_path = entry.path / "spectrum_transition.csv"
+        transition_robustness_path = entry.path / "spectrum_transition_onset_robustness.csv"
         report_path = entry.path / "report.md"
+        html_report_path = entry.path / "report.html"
         # Provenance is identical for control and seeding runs of the same
         # comparison (same adapter, same diagnostics config), so either
         # subdirectory's provenance file is representative; control is used
@@ -271,6 +284,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "wet_radius_spectrum_comparison": safe_read_csv(spectrum_comparison_path),
             "threshold_robustness_comparison": safe_read_csv(threshold_comparison_path),
             "water_budget_comparison": safe_read_csv(water_budget_comparison_path),
+            "spectrum_transition": safe_read_csv(transition_path),
+            "spectrum_transition_onset_robustness": safe_read_csv(transition_robustness_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -279,6 +294,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 _read_json(diagnostic_provenance_path) if diagnostic_provenance_path else []
             ) or [],
             "report_markdown": _read_text(report_path),
+            "report_html": _read_text(html_report_path),
             "result_compatibility": compatibility,
             "files": {
                 "comparison": comparison_path,
@@ -297,8 +313,11 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "wet_radius_spectrum_comparison": spectrum_comparison_path,
                 "threshold_robustness_comparison": threshold_comparison_path,
                 "water_budget_comparison": water_budget_comparison_path,
+                "spectrum_transition": transition_path,
+                "spectrum_transition_onset_robustness": transition_robustness_path,
                 "diagnostic_provenance": diagnostic_provenance_path,
                 "report": report_path,
+                "report_html": html_report_path,
             },
         }
 
@@ -313,6 +332,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         robustness_path = entry.path / "threshold_robustness.csv"
         water_budget_path = entry.path / "water_budget.csv"
         report_path = entry.path / "report.md"
+        html_report_path = entry.path / "report.html"
 
         df = safe_read_csv(timeseries_path)
 
@@ -334,6 +354,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "validation": _read_json(validation_path),
             "diagnostic_provenance": _read_json(diagnostic_provenance_path) or [],
             "report_markdown": _read_text(report_path),
+            "report_html": _read_text(html_report_path),
             "result_compatibility": compatibility,
             "files": {
                 "timeseries": timeseries_path,
@@ -346,6 +367,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "threshold_robustness": robustness_path,
                 "water_budget": water_budget_path,
                 "report": report_path,
+                "report_html": html_report_path,
             },
         }
 
@@ -367,6 +389,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         "validation": [],
         "diagnostic_provenance": [],
         "report_markdown": "",
+        "report_html": "",
         "result_compatibility": compatibility,
         "files": {
             "timeseries": entry.path,

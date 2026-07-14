@@ -15,6 +15,14 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
             "the result-file manifest. CSV/JSON/YAML files remain the source of truth."
         ),
     },
+    "report.html": {
+        "when": "After all result files are finalized",
+        "answers": "Can the research report be viewed or printed without Markdown tooling?",
+        "description": (
+            "Self-contained, print-friendly HTML companion to report.md with the same run, "
+            "quality, validation, artifact, and reproduction information."
+        ),
+    },
     "result_manifest.json": {
         "when": "After all result files are finalized",
         "answers": "Which result schema and primary data file should a reader use?",
@@ -134,6 +142,30 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
         "description": (
             "OFAT timestep and super-droplet convergence against the finest available reference; "
             "resolution_rank=1 is the acceptance check."
+        ),
+    },
+    "spectrum_transition.csv": {
+        "when": "After a control-versus-seeding spectrum comparison",
+        "answers": "When does activated liquid move into rain-size bins for control and seeding?",
+        "description": (
+            "Baseline-threshold time series of rain-size liquid fraction among activated liquid, "
+            "including control, seeding, and their difference."
+        ),
+    },
+    "spectrum_transition_onset_robustness.csv": {
+        "when": "After a control-versus-seeding threshold comparison",
+        "answers": "Is the inferred spectrum-transition timing stable across radius thresholds?",
+        "description": (
+            "Interpolated control/seeding onset and onset shift for every configured activation "
+            "and rain threshold pair."
+        ),
+    },
+    "ensemble_aggregation_diagnostics.json": {
+        "when": "After streaming ensemble aggregation",
+        "answers": "How much input, time, and traced peak memory did ensemble aggregation use?",
+        "description": (
+            "Aggregation benchmark metadata including member bytes, elapsed time, output shape, "
+            "and tracemalloc-visible peak allocation. It is not whole-process RSS."
         ),
     },
     "sweep_summary.csv": {

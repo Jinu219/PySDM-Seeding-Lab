@@ -28,8 +28,13 @@ from analysis.numerical_convergence import (
     summarize_numerical_convergence,
 )
 from analysis.result_files import describe_result_files
-from analysis.reporting import build_markdown_report
+from analysis.reporting import build_html_report, build_markdown_report
 from analysis.result_manifest import build_result_manifest
+from analysis.spectrum_transition import (
+    build_spectrum_transition_table,
+    build_transition_onset_robustness,
+    summarize_spectrum_transition,
+)
 from analysis.water_budget import (
     WATER_BUDGET_TABLE_NAME,
     build_water_budget_table,
@@ -37,7 +42,7 @@ from analysis.water_budget import (
 )
 from analysis.ensemble_statistics import (
     ENSEMBLE_BUILD_ID,
-    build_ensemble_statistics_from_paths,
+    benchmark_ensemble_statistics_from_paths,
     ensemble_summary_metrics,
     member_seed_list,
     member_summary_rows,
@@ -352,6 +357,8 @@ def run_control_vs_seeding(
         control_result.tables.get(WATER_BUDGET_TABLE_NAME, pd.DataFrame()),
         seeding_result.tables.get(WATER_BUDGET_TABLE_NAME, pd.DataFrame()),
     )
+    transition_table = build_spectrum_transition_table(threshold_comparison, cfg)
+    transition_robustness = build_transition_onset_robustness(threshold_comparison, cfg)
 
     emit_progress(progress_callback, "comparison", 5, total_stages, "Computing comparison summary")
     comparison_summary = summarize_comparison(control_df, seeding_df, difference_df)
@@ -361,6 +368,10 @@ def run_control_vs_seeding(
             "seeding": seeding_result.summary.get("water_budget", {}),
         },
         "wet_radius_spectrum": summarize_spectrum_comparison(spectrum_comparison),
+        "spectrum_transition": summarize_spectrum_transition(
+            transition_table,
+            transition_robustness,
+        ),
     }
 
     emit_progress(progress_callback, "comparison", 6, total_stages, "Writing comparison files")
@@ -385,6 +396,16 @@ def run_control_vs_seeding(
             water_budget_comparison,
             "water_budget_comparison.csv",
         ),
+        (
+            "spectrum_transition",
+            transition_table,
+            "spectrum_transition.csv",
+        ),
+        (
+            "spectrum_transition_onset_robustness",
+            transition_robustness,
+            "spectrum_transition_onset_robustness.csv",
+        ),
     ):
         if table.empty:
             continue
@@ -408,6 +429,7 @@ def run_control_vs_seeding(
             "control": "control/",
             "seeding": "seeding/",
             "report": "report.md",
+            "report_html": "report.html",
             "result_manifest": "result_manifest.json",
             **diagnostic_comparison_files,
         },
@@ -419,6 +441,7 @@ def run_control_vs_seeding(
                 "metadata.json",
                 "validation_report.json",
                 "report.md",
+                "report.html",
                 "result_manifest.json",
                 *diagnostic_comparison_files.values(),
             ]
@@ -439,6 +462,15 @@ def run_control_vs_seeding(
     _write_json(run_dir / "summary.json", summary_payload)
     (run_dir / "report.md").write_text(
         build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "report.html").write_text(
+        build_html_report(
             summary=summary_payload,
             metadata=metadata_payload,
             validation_rows=validation_report_rows(cfg),
@@ -569,12 +601,15 @@ def run_ensemble_experiment(
     emit_progress(progress_callback, "ensemble", n_members + 2, n_members + 2, "Writing ensemble statistics")
 
     member_summary_df = member_summary_rows(member_records)
-    stats_df = build_ensemble_statistics_from_paths(member_data_paths)
+    stats_df, aggregation_diagnostics = benchmark_ensemble_statistics_from_paths(
+        member_data_paths
+    )
 
     _write_yaml(run_dir / "config.yaml", cfg)
     member_summary_df.to_csv(run_dir / "member_summary.csv", index=False)
     stats_df.to_csv(run_dir / "ensemble_statistics.csv", index=False)
     _write_json(run_dir / "validation_report.json", validation_report_rows(cfg))
+    _write_json(run_dir / "ensemble_aggregation_diagnostics.json", aggregation_diagnostics)
 
     n_success = int(member_summary_df["success"].sum()) if "success" in member_summary_df.columns else 0
     n_failed = int(len(member_summary_df) - n_success)
@@ -592,6 +627,7 @@ def run_ensemble_experiment(
         "n_failed": n_failed,
         "ensemble_statistics_build_id": ENSEMBLE_BUILD_ID,
         "ensemble_aggregation_method": "column_streaming_from_member_csv",
+        "ensemble_aggregation_diagnostics": aggregation_diagnostics,
         "result_files": {
             "config": "config.yaml",
             "ensemble_statistics": "ensemble_statistics.csv",
@@ -601,6 +637,8 @@ def run_ensemble_experiment(
             "validation_report": "validation_report.json",
             "members": "members/",
             "report": "report.md",
+            "report_html": "report.html",
+            "ensemble_aggregation_diagnostics": "ensemble_aggregation_diagnostics.json",
             "result_manifest": "result_manifest.json",
         },
         "file_roles": describe_result_files(
@@ -612,6 +650,8 @@ def run_ensemble_experiment(
                 "metadata.json",
                 "validation_report.json",
                 "report.md",
+                "report.html",
+                "ensemble_aggregation_diagnostics.json",
                 "result_manifest.json",
             ]
         ),
@@ -629,6 +669,7 @@ def run_ensemble_experiment(
             "n_success": n_success,
             "n_failed": n_failed,
             "aggregation_method": "column_streaming_from_member_csv",
+            "aggregation": aggregation_diagnostics,
             "member_seeds": seeds,
             "metrics": ensemble_summary_metrics(stats_df),
         },
@@ -639,6 +680,15 @@ def run_ensemble_experiment(
     _write_json(run_dir / "summary.json", summary_payload)
     (run_dir / "report.md").write_text(
         build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "report.html").write_text(
+        build_html_report(
             summary=summary_payload,
             metadata=metadata_payload,
             validation_rows=validation_report_rows(cfg),
@@ -794,6 +844,7 @@ def run_parameter_sweep(
             "validation_report": "validation_report.json",
             "cases": "cases/",
             "report": "report.md",
+            "report_html": "report.html",
             "result_manifest": "result_manifest.json",
             **(
                 {"numerical_convergence": "numerical_convergence.csv"}
@@ -809,6 +860,7 @@ def run_parameter_sweep(
                 "metadata.json",
                 "validation_report.json",
                 "report.md",
+                "report.html",
                 "result_manifest.json",
                 *(["numerical_convergence.csv"] if not convergence_table.empty else []),
             ]
@@ -832,6 +884,15 @@ def run_parameter_sweep(
     _write_json(sweep_dir / "summary.json", summary_payload)
     (sweep_dir / "report.md").write_text(
         build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(cfg),
+            config=cfg,
+        ),
+        encoding="utf-8",
+    )
+    (sweep_dir / "report.html").write_text(
+        build_html_report(
             summary=summary_payload,
             metadata=metadata_payload,
             validation_rows=validation_report_rows(cfg),
@@ -869,6 +930,7 @@ def _write_single_result_files(
     diagnostic_health_path = run_dir / "diagnostic_health.json"
     diagnostic_provenance_path = run_dir / "diagnostic_provenance.json"
     report_path = run_dir / "report.md"
+    html_report_path = run_dir / "report.html"
     manifest_path = run_dir / "result_manifest.json"
 
     _write_yaml(config_path, spec.config)
@@ -900,6 +962,7 @@ def _write_single_result_files(
         "diagnostic_health": str(diagnostic_health_path.name),
         "diagnostic_provenance": str(diagnostic_provenance_path.name),
         "report": str(report_path.name),
+        "report_html": str(html_report_path.name),
         "result_manifest": str(manifest_path.name),
     }
 
@@ -934,6 +997,15 @@ def _write_single_result_files(
     _write_json(diagnostic_provenance_path, provenance_rows)
     report_path.write_text(
         build_markdown_report(
+            summary=summary_payload,
+            metadata=metadata_payload,
+            validation_rows=validation_report_rows(spec.config),
+            config=spec.config,
+        ),
+        encoding="utf-8",
+    )
+    html_report_path.write_text(
+        build_html_report(
             summary=summary_payload,
             metadata=metadata_payload,
             validation_rows=validation_report_rows(spec.config),

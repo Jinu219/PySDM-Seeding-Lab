@@ -119,6 +119,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "relative_tolerance_percent": 5.0,
             "metrics": [],
         },
+        "spectrum_transition": {
+            "enabled": True,
+            "rain_volume_fraction_threshold": 0.01,
+        },
     },
     "sweep": {
         "run_mode": "control_vs_seeding",
@@ -194,6 +198,7 @@ FIELD_UNITS: Dict[str, Dict[str, str]] = {
         "warning_relative_drift_percent": "%",
         "failure_relative_drift_percent": "%",
         "relative_tolerance_percent": "%",
+        "rain_volume_fraction_threshold": "-",
     },
 }
 
