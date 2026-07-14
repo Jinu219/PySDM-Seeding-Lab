@@ -1,5 +1,13 @@
 # Roadmap
 
+## Current milestone snapshot (2026-07-14)
+
+The canonical current-state view is [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+Step 13 native scalar diagnostics are complete. This update delivers the first
+implementation of Step 14 threshold robustness and Step 16 wet-radius
+number/volume spectra. Step 14 remains active until conservation and numerical
+convergence acceptance checks are complete.
+
 `DEVELOPMENT.md`가 "무엇을 했는가"의 기록(changelog)이라면, 이 문서는 "다음에 무엇을,
 어떤 순서로 할 것인가"를 관리한다. README.md의 Development Roadmap 섹션은 Step 10까지만
 반영된 예전 버전이므로, 최신 우선순위는 항상 이 문서를 기준으로 한다.
@@ -90,9 +98,10 @@ Step 13 대상 변수의 현재 구현 상태:
 
 ### Step 14. Growth Pathway Diagnostics 물리적 정교화
 
-다음 우선순위. native scalar product가 확보되었으므로 radius-bin 정의 검증, threshold
-민감도, water partition closure, control/seeding 보존성 검사를 강화한다. 이후 Step 16의
-wet-radius spectrum으로 scalar bin 정의가 실제 분포를 충분히 설명하는지 확인한다.
+**Status: active; threshold robustness first implementation completed.** native scalar
+product와 wet-radius spectrum이 확보되었고, 설정 threshold의 0.8/1.0/1.2 배수에 대한
+재분할 결과를 저장한다. 남은 완료 조건은 control/seeding 보존성 자동 판정과
+super-droplet 수치 수렴 기준 확정이다.
 
 ### Step 15. Publication-style diagnostic plots (구 Step 13)
 
@@ -112,9 +121,17 @@ wet-radius spectrum으로 scalar bin 정의가 실제 분포를 충분히 설명
 배지를 함께 표시하는 것을 권장 (완전히 native가 아닌 상태에서 발표해야 한다면, 최소한
 proxy임을 명시).
 
-### Step 16~19
+### Step 16. wet radius / cloud-size / rain-size bin diagnostic
 
-기존 문서의 6~10번과 동일. 상세 내용은 실행 시점에 이 문서를 갱신한다.
+**Status: first implementation completed.** native wet-radius number spectrum과 liquid-volume
+spectrum을 start/injection start/injection end/run end checkpoint에 저장한다. Results
+Dashboard에서 single 및 control/seeding case를 확인할 수 있다. 다음 단계는
+seeding-minus-control spectrum difference와 growth-transition 지표다.
+
+### Step 17~19
+
+large ensemble 최적화, 자동 report export, old/new result 호환성 강화 순으로 진행한다.
+상세 완료 조건은 착수 시점에 이 문서를 갱신한다.
 
 ## 이번 업데이트에서 추가로 반영된 항목 (참고)
 

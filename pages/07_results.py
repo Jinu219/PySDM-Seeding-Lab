@@ -107,6 +107,10 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_ensemble_uncertainty_panel",
     "plot_one_factor_sensitivity_panel",
     "plot_collision_off_on_panel",
+    "plot_wet_radius_spectrum",
+    "plot_threshold_robustness",
+    "spectrum_checkpoint_times",
+    "threshold_robustness_metrics",
     "publication_parameter_label",
     "publication_variable_label",
     "comparison_seeding_intervals",
@@ -172,6 +176,12 @@ sweep_df = loaded.get("sweep", pd.DataFrame())
 comparison_df = loaded.get("comparison", pd.DataFrame())
 control_df = loaded.get("control", pd.DataFrame())
 seeding_df = loaded.get("seeding", pd.DataFrame())
+wet_radius_spectrum_df = loaded.get("wet_radius_spectrum", pd.DataFrame())
+threshold_robustness_df = loaded.get("threshold_robustness", pd.DataFrame())
+control_spectrum_df = loaded.get("control_wet_radius_spectrum", pd.DataFrame())
+seeding_spectrum_df = loaded.get("seeding_wet_radius_spectrum", pd.DataFrame())
+control_robustness_df = loaded.get("control_threshold_robustness", pd.DataFrame())
+seeding_robustness_df = loaded.get("seeding_threshold_robustness", pd.DataFrame())
 summary = loaded["summary"]
 metadata = loaded["metadata"]
 config = loaded["config"]
@@ -245,6 +255,7 @@ if is_ensemble:
     )
     tab_exper2 = tab_growth
     tab_comparison = None
+    tab_spectrum = None
     tab_timeseries = None
     tab_ranking = None
 elif is_sweep:
@@ -253,14 +264,15 @@ elif is_sweep:
     )
     tab_exper2 = tab_growth
     tab_comparison = None
+    tab_spectrum = None
     tab_tables = tab_ranking
 elif is_comparison:
-    tab_dashboard, tab_exper2, tab_publication, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_exper2, tab_publication, tab_spectrum, tab_comparison, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Growth Pathway Diagnostics", "Publication Plots", "Wet-radius Spectrum", "Control vs Seeding", "Tables", "Files & Metadata", "Config / Validation"]
     )
 else:
-    tab_dashboard, tab_tables, tab_files, tab_config = st.tabs(
-        ["Dashboard", "Timeseries Table", "Files & Metadata", "Config / Validation"]
+    tab_dashboard, tab_spectrum, tab_tables, tab_files, tab_config = st.tabs(
+        ["Dashboard", "Wet-radius Spectrum", "Timeseries Table", "Files & Metadata", "Config / Validation"]
     )
     tab_comparison = None
     tab_exper2 = None
@@ -1475,6 +1487,145 @@ if is_comparison and tab_comparison is not None:
 
         st.subheader("Comparison Summary JSON")
         st.json(summary.get("comparison", summary))
+
+if tab_spectrum is not None:
+    with tab_spectrum:
+        st.subheader("Wet-radius Spectrum and Threshold Robustness")
+        st.caption(
+            "Native PySDM checkpoint spectra show how particle number and liquid volume move "
+            "through unactivated, cloud, and rain wet-radius ranges. Threshold robustness "
+            "repartitions the same spectrum, so it does not require another model run."
+        )
+
+        if is_comparison:
+            spectrum_frames = [control_spectrum_df, seeding_spectrum_df]
+            robustness_frames = [control_robustness_df, seeding_robustness_df]
+        else:
+            spectrum_frames = [wet_radius_spectrum_df]
+            robustness_frames = [threshold_robustness_df]
+
+        checkpoint_times = dash.spectrum_checkpoint_times(*spectrum_frames)
+        if not checkpoint_times:
+            st.info(
+                "No wet-radius spectrum is stored in this result. Run a new `pysdm_parcel` "
+                "experiment with spectrum diagnostics enabled."
+            )
+        else:
+            selected_checkpoint = st.selectbox(
+                "Checkpoint time [s]",
+                checkpoint_times,
+                index=len(checkpoint_times) - 1,
+                format_func=lambda value: f"{value:g} s",
+                key="wet_radius_checkpoint",
+            )
+            spectrum_value_options = [
+                column
+                for column in dash.SPECTRUM_VALUE_LABELS
+                if any(column in frame.columns for frame in spectrum_frames)
+            ]
+            selected_spectrum_value = st.selectbox(
+                "Spectrum quantity",
+                spectrum_value_options,
+                format_func=lambda value: dash.SPECTRUM_VALUE_LABELS[value],
+                key="wet_radius_value",
+            )
+
+            if is_comparison:
+                plot_col1, plot_col2 = st.columns(2)
+                with plot_col1:
+                    st.pyplot(
+                        dash.plot_wet_radius_spectrum(
+                            control_spectrum_df,
+                            checkpoint_time_s=selected_checkpoint,
+                            value_column=selected_spectrum_value,
+                            title="Control wet-radius spectrum",
+                        ),
+                        use_container_width=True,
+                    )
+                with plot_col2:
+                    st.pyplot(
+                        dash.plot_wet_radius_spectrum(
+                            seeding_spectrum_df,
+                            checkpoint_time_s=selected_checkpoint,
+                            value_column=selected_spectrum_value,
+                            title="Seeding wet-radius spectrum",
+                        ),
+                        use_container_width=True,
+                    )
+            else:
+                st.pyplot(
+                    dash.plot_wet_radius_spectrum(
+                        wet_radius_spectrum_df,
+                        checkpoint_time_s=selected_checkpoint,
+                        value_column=selected_spectrum_value,
+                    ),
+                    use_container_width=True,
+                )
+
+            robustness_metric_options = sorted(
+                {
+                    metric
+                    for frame in robustness_frames
+                    for metric in dash.threshold_robustness_metrics(frame)
+                }
+            )
+            if robustness_metric_options:
+                selected_robustness_metric = st.selectbox(
+                    "Robustness metric",
+                    robustness_metric_options,
+                    index=(
+                        robustness_metric_options.index("rain_volume_fraction_of_activated")
+                        if "rain_volume_fraction_of_activated" in robustness_metric_options
+                        else 0
+                    ),
+                    format_func=lambda value: dash.ROBUSTNESS_METRIC_LABELS[value],
+                    key="threshold_robustness_metric",
+                )
+                if is_comparison:
+                    robust_col1, robust_col2 = st.columns(2)
+                    with robust_col1:
+                        st.pyplot(
+                            dash.plot_threshold_robustness(
+                                control_robustness_df,
+                                checkpoint_time_s=selected_checkpoint,
+                                metric=selected_robustness_metric,
+                                title="Control threshold robustness",
+                            ),
+                            use_container_width=True,
+                        )
+                    with robust_col2:
+                        st.pyplot(
+                            dash.plot_threshold_robustness(
+                                seeding_robustness_df,
+                                checkpoint_time_s=selected_checkpoint,
+                                metric=selected_robustness_metric,
+                                title="Seeding threshold robustness",
+                            ),
+                            use_container_width=True,
+                        )
+                else:
+                    st.pyplot(
+                        dash.plot_threshold_robustness(
+                            threshold_robustness_df,
+                            checkpoint_time_s=selected_checkpoint,
+                            metric=selected_robustness_metric,
+                        ),
+                        use_container_width=True,
+                    )
+
+            with st.expander("Checkpoint data tables"):
+                if is_comparison:
+                    st.markdown("**Control spectrum**")
+                    st.dataframe(control_spectrum_df, use_container_width=True)
+                    st.markdown("**Seeding spectrum**")
+                    st.dataframe(seeding_spectrum_df, use_container_width=True)
+                    st.markdown("**Control threshold robustness**")
+                    st.dataframe(control_robustness_df, use_container_width=True)
+                    st.markdown("**Seeding threshold robustness**")
+                    st.dataframe(seeding_robustness_df, use_container_width=True)
+                else:
+                    st.dataframe(wet_radius_spectrum_df, use_container_width=True)
+                    st.dataframe(threshold_robustness_df, use_container_width=True)
 
 with tab_tables:
     if is_ensemble:

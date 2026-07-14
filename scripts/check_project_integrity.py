@@ -52,6 +52,10 @@ REQUIRED_DASHBOARD_FUNCTIONS = [
     "plot_ensemble_uncertainty_panel",
     "plot_one_factor_sensitivity_panel",
     "plot_collision_off_on_panel",
+    "plot_wet_radius_spectrum",
+    "plot_threshold_robustness",
+    "spectrum_checkpoint_times",
+    "threshold_robustness_metrics",
     "publication_parameter_label",
     "publication_variable_label",
     "comparison_seeding_intervals",
@@ -219,9 +223,11 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "native_parcel_simulation.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "pysdm_parcel_adapter.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "wet_radius_spectrum.py"), doraise=True)
     for page_path in sorted((PROJECT_ROOT / "pages").glob("*.py")):
         py_compile.compile(str(page_path), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "publication_plots.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "wet_radius_plots.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
 

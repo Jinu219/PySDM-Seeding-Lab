@@ -68,6 +68,22 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
         "answers": "시간에 따라 무엇이 변했는가",
         "description": "단일 run의 시계열 원자료 (Growth Pathway 진단 컬럼 포함).",
     },
+    "wet_radius_spectrum.csv": {
+        "when": "PySDM run checkpoint",
+        "answers": "How is droplet number and liquid volume distributed by wet radius?",
+        "description": (
+            "Tidy checkpoint table of bin-integrated number concentration and liquid-volume "
+            "fraction per wet-radius logarithm. Bin edges include every tested threshold."
+        ),
+    },
+    "threshold_robustness.csv": {
+        "when": "After wet-radius spectrum extraction",
+        "answers": "Does the cloud/rain conclusion change when diagnostic thresholds move?",
+        "description": (
+            "Repartitions each checkpoint spectrum over configured activation/rain threshold "
+            "factors without rerunning PySDM."
+        ),
+    },
     "comparison.csv": {
         "when": "실행 완료 직후",
         "answers": "control 대비 seeding이 무엇을 바꿨는가",

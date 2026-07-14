@@ -646,6 +646,121 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
             )
         )
 
+    spectrum_cfg = diagnostics.get("wet_radius_spectrum", {})
+    if not isinstance(spectrum_cfg, dict):
+        issues.append(
+            _issue(
+                "error",
+                "diagnostics.wet_radius_spectrum",
+                "wet_radius_spectrum must be a mapping.",
+                "Reset this section to the default spectrum configuration.",
+            )
+        )
+    else:
+        spectrum_enabled = spectrum_cfg.get("enabled", True)
+        if not isinstance(spectrum_enabled, bool):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.enabled",
+                    "enabled must be true or false.",
+                    "Use a YAML boolean value.",
+                )
+            )
+
+        minimum_radius = spectrum_cfg.get("min_radius", 0.05e-6)
+        maximum_radius = spectrum_cfg.get("max_radius", 1000.0e-6)
+        n_bins = spectrum_cfg.get("n_bins", 32)
+        factors = spectrum_cfg.get("threshold_factors", [0.8, 1.0, 1.2])
+        checkpoints = spectrum_cfg.get("checkpoint_times", [])
+
+        if not isinstance(n_bins, int) or isinstance(n_bins, bool) or not 8 <= n_bins <= 256:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.n_bins",
+                    "n_bins must be an integer between 8 and 256.",
+                    "Use 32 bins for the default checkpoint diagnostic.",
+                )
+            )
+
+        numeric_bounds = isinstance(minimum_radius, (int, float)) and isinstance(
+            maximum_radius, (int, float)
+        )
+        if not numeric_bounds or minimum_radius <= 0 or maximum_radius <= minimum_radius:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.min_radius",
+                    "Spectrum bounds must satisfy 0 < min_radius < max_radius.",
+                    "Use SI metres, for example 0.05e-6 to 1000e-6.",
+                )
+            )
+
+        valid_factors = (
+            isinstance(factors, list)
+            and bool(factors)
+            and all(isinstance(value, (int, float)) and value > 0 for value in factors)
+        )
+        if not valid_factors:
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.threshold_factors",
+                    "threshold_factors must be a non-empty list of positive numbers.",
+                    "Use [0.8, 1.0, 1.2] for the default robustness test.",
+                )
+            )
+        elif not any(abs(float(value) - 1.0) < 1.0e-12 for value in factors):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.threshold_factors",
+                    "threshold_factors must include the baseline factor 1.0.",
+                    "Add 1.0 so robustness results retain the configured definition.",
+                )
+            )
+        elif numeric_bounds and activation_radius > 0 and rain_radius > 0:
+            if minimum_radius >= activation_radius * min(factors):
+                issues.append(
+                    _issue(
+                        "error",
+                        "diagnostics.wet_radius_spectrum.min_radius",
+                        "min_radius must be below the smallest tested activation threshold.",
+                        "Decrease min_radius or narrow threshold_factors.",
+                    )
+                )
+            if maximum_radius <= rain_radius * max(factors):
+                issues.append(
+                    _issue(
+                        "error",
+                        "diagnostics.wet_radius_spectrum.max_radius",
+                        "max_radius must exceed the largest tested rain threshold.",
+                        "Increase max_radius or narrow threshold_factors.",
+                    )
+                )
+
+        if not isinstance(checkpoints, list) or not all(
+            isinstance(value, (int, float)) for value in checkpoints
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.checkpoint_times",
+                    "checkpoint_times must be a list of times in seconds.",
+                    "Use [] for automatic start/injection/end checkpoints.",
+                )
+            )
+        elif any(float(value) < 0 or (duration > 0 and float(value) > duration) for value in checkpoints):
+            issues.append(
+                _issue(
+                    "error",
+                    "diagnostics.wet_radius_spectrum.checkpoint_times",
+                    "Every checkpoint must fall inside the simulation duration.",
+                    "Remove out-of-range values or use [] for automatic checkpoints.",
+                )
+            )
+
     if microphysics.get("collision", False):
         issues.append(
             _issue(

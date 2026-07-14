@@ -30,8 +30,16 @@ from analysis.publication_plots import (
     publication_provenance_note,
     publication_variable_label,
 )
+from analysis.wet_radius_plots import (
+    ROBUSTNESS_METRIC_LABELS,
+    SPECTRUM_VALUE_LABELS,
+    plot_threshold_robustness,
+    plot_wet_radius_spectrum,
+    spectrum_checkpoint_times,
+    threshold_robustness_metrics,
+)
 
-DASHBOARD_BUILD_ID = "publication-diagnostic-panels-20260714"
+DASHBOARD_BUILD_ID = "wet-radius-spectrum-panels-20260714"
 
 
 @dataclass(frozen=True)
@@ -141,6 +149,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
             "seeding": pd.DataFrame(),
+            "wet_radius_spectrum": pd.DataFrame(),
+            "threshold_robustness": pd.DataFrame(),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -176,6 +186,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
             "seeding": pd.DataFrame(),
+            "wet_radius_spectrum": pd.DataFrame(),
+            "threshold_robustness": pd.DataFrame(),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -201,6 +213,10 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         validation_path = entry.path / "validation_report.json"
         control_path = entry.path / "control" / "timeseries.csv"
         seeding_path = entry.path / "seeding" / "timeseries.csv"
+        control_spectrum_path = entry.path / "control" / "wet_radius_spectrum.csv"
+        seeding_spectrum_path = entry.path / "seeding" / "wet_radius_spectrum.csv"
+        control_robustness_path = entry.path / "control" / "threshold_robustness.csv"
+        seeding_robustness_path = entry.path / "seeding" / "threshold_robustness.csv"
         # Provenance is identical for control and seeding runs of the same
         # comparison (same adapter, same diagnostics config), so either
         # subdirectory's provenance file is representative; control is used
@@ -218,6 +234,10 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "comparison": comparison_df,
             "control": control_df,
             "seeding": seeding_df,
+            "control_wet_radius_spectrum": safe_read_csv(control_spectrum_path),
+            "seeding_wet_radius_spectrum": safe_read_csv(seeding_spectrum_path),
+            "control_threshold_robustness": safe_read_csv(control_robustness_path),
+            "seeding_threshold_robustness": safe_read_csv(seeding_robustness_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -233,6 +253,10 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "validation": validation_path,
                 "control_timeseries": control_path,
                 "seeding_timeseries": seeding_path,
+                "control_wet_radius_spectrum": control_spectrum_path,
+                "seeding_wet_radius_spectrum": seeding_spectrum_path,
+                "control_threshold_robustness": control_robustness_path,
+                "seeding_threshold_robustness": seeding_robustness_path,
                 "diagnostic_provenance": diagnostic_provenance_path,
             },
         }
@@ -244,6 +268,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         config_path = entry.path / "config.yaml"
         validation_path = entry.path / "validation_report.json"
         diagnostic_provenance_path = entry.path / "diagnostic_provenance.json"
+        spectrum_path = entry.path / "wet_radius_spectrum.csv"
+        robustness_path = entry.path / "threshold_robustness.csv"
 
         df = safe_read_csv(timeseries_path)
 
@@ -256,6 +282,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "comparison": pd.DataFrame(),
             "control": pd.DataFrame(),
             "seeding": pd.DataFrame(),
+            "wet_radius_spectrum": safe_read_csv(spectrum_path),
+            "threshold_robustness": safe_read_csv(robustness_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -268,6 +296,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "config": config_path,
                 "validation": validation_path,
                 "diagnostic_provenance": diagnostic_provenance_path,
+                "wet_radius_spectrum": spectrum_path,
+                "threshold_robustness": robustness_path,
             },
         }
 
@@ -279,6 +309,8 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         "comparison": pd.DataFrame(),
         "control": pd.DataFrame(),
         "seeding": pd.DataFrame(),
+        "wet_radius_spectrum": pd.DataFrame(),
+        "threshold_robustness": pd.DataFrame(),
         "summary": {},
         "metadata": {"source": "legacy_csv", "filename": entry.path.name},
         "config": {},

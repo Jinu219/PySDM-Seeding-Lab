@@ -845,3 +845,39 @@ Recommended commit message:
 ```bash
 git commit -m "Add native PySDM growth-pathway diagnostics"
 ```
+
+## Step 14/16 milestone. Wet-radius spectrum and threshold robustness
+
+Implemented the first distribution-level diagnostic pass while retaining the
+existing roadmap numbering: physical robustness belongs to Step 14 and
+wet-radius bin output belongs to Step 16.
+
+Changes:
+- Added configurable spectrum bounds, logarithmic bin count, checkpoint times,
+  and threshold factors under `diagnostics.wet_radius_spectrum`.
+- Added native PySDM `NumberSizeSpectrum` and
+  `ParticleVolumeVersusRadiusLogarithmSpectrum` products to the project-owned
+  parcel builder.
+- Inserted every tested activation/rain threshold as an exact bin edge so
+  repartitioning is not blurred by a bin crossing the diagnostic boundary.
+- Added `wet_radius_spectrum.csv` and `threshold_robustness.csv` as typed
+  auxiliary result tables preserved through runner enrichment and timing.
+- Added single and control/seeding spectrum panels to Results Dashboard.
+- Added schema validation for bounds, bin count, checkpoints, and baseline
+  threshold factor 1.0.
+- Added `PROJECT_STATUS.md` as the concise current/completed/next status page.
+- Removed tracked Python bytecode from source control; `.gitignore` already
+  excludes regenerated cache files.
+
+Validation performed:
+- `python -m unittest -v tests.test_native_diagnostics`: 6 tests passed,
+  including two real PySDM integration tests.
+- `python scripts/check_project_integrity.py`: passed with complete dashboard
+  exports and proxy-free synthetic native contract.
+- Streamlit AppTest: Aerosol, Run, and Results pages rendered with 0 exceptions.
+
+Recommended commit message:
+
+```bash
+git commit -m "Add wet-radius spectrum and threshold robustness"
+```

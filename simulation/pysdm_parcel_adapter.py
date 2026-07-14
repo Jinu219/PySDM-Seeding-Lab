@@ -8,6 +8,15 @@ import pandas as pd
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.schema import diagnostic_radius_thresholds
 from simulation.types import AdapterResult, SimulationRunSpec
+from simulation.wet_radius_spectrum import (
+    ROBUSTNESS_TABLE_NAME,
+    SPECTRUM_TABLE_NAME,
+    build_spectrum_bin_edges,
+    build_threshold_robustness_table,
+    build_wet_radius_spectrum_table,
+    resolve_spectrum_checkpoint_times,
+    wet_radius_spectrum_config,
+)
 
 
 R_DRY_AIR = 287.05  # J kg^-1 K^-1
@@ -385,9 +394,17 @@ def run_pysdm_parcel_simulation(
 
     emit_progress(progress_callback, "adapter", 3, 5, "Initializing PySDM Simulation object")
     activation_radius_m, _ = diagnostic_radius_thresholds(spec.config)
+    spectrum_cfg = wet_radius_spectrum_config(spec.config)
+    spectrum_enabled = bool(spectrum_cfg.get("enabled", True))
+    spectrum_edges = build_spectrum_bin_edges(spec.config) if spectrum_enabled else np.asarray([])
+    spectrum_checkpoints = (
+        resolve_spectrum_checkpoint_times(spec.config) if spectrum_enabled else []
+    )
     simulation = Simulation(
         settings=settings,
         activation_radius_threshold=activation_radius_m,
+        spectrum_radius_bin_edges=spectrum_edges if spectrum_enabled else None,
+        spectrum_checkpoint_times=tuple(spectrum_checkpoints),
     )
 
     emit_progress(
@@ -402,6 +419,12 @@ def run_pysdm_parcel_simulation(
     emit_progress(progress_callback, "adapter", 5, 5, "Converting PySDM output to DataFrame")
     df = _output_to_dataframe(output, spec)
     activation_radius_m, rain_radius_m = diagnostic_radius_thresholds(spec.config)
+    spectrum_df = build_wet_radius_spectrum_table(
+        output.get("spectra", {}),
+        spectrum_edges,
+        spec.config,
+    )
+    robustness_df = build_threshold_robustness_table(spectrum_df, spec.config)
 
     summary = {
         "adapter": "pysdm_parcel",
@@ -425,6 +448,8 @@ def run_pysdm_parcel_simulation(
             )
             if column in df.columns
         ],
+        "wet_radius_spectrum_rows": int(len(spectrum_df)),
+        "threshold_robustness_rows": int(len(robustness_df)),
     }
 
     if "rain_water_mixing_ratio" in df:
@@ -455,6 +480,19 @@ def run_pysdm_parcel_simulation(
         closure_error = (df["total_liquid_water_mixing_ratio"] - partition_sum).abs()
         summary["liquid_water_partition_max_abs_error"] = float(closure_error.max())
 
+    if not robustness_df.empty:
+        final_time = float(robustness_df["time_s"].max())
+        final_baseline = robustness_df[
+            np.isclose(robustness_df["time_s"], final_time)
+            & np.isclose(robustness_df["activation_factor"], 1.0)
+            & np.isclose(robustness_df["rain_factor"], 1.0)
+        ]
+        if not final_baseline.empty:
+            summary["final_threshold_baseline"] = {
+                str(key): float(value)
+                for key, value in final_baseline.iloc[0].to_dict().items()
+            }
+
     metadata = {
         **spec.metadata,
         "adapter_note": (
@@ -473,10 +511,32 @@ def run_pysdm_parcel_simulation(
             "range_convention": "lower inclusive, upper exclusive",
         },
         "native_product_names": sorted(output.get("products", {}).keys()),
+        "wet_radius_spectrum": {
+            "enabled": spectrum_enabled,
+            "configured_log_bins": int(spectrum_cfg.get("n_bins", 32)),
+            "actual_bins_after_threshold_insertion": max(0, int(len(spectrum_edges) - 1)),
+            "radius_bin_edges_um": (spectrum_edges * 1.0e6).tolist(),
+            "checkpoint_times_s": spectrum_checkpoints,
+            "threshold_factors": [
+                float(value)
+                for value in spectrum_cfg.get("threshold_factors", [0.8, 1.0, 1.2])
+            ],
+            "number_product": "NumberSizeSpectrum (bin-integrated, m^-3)",
+            "volume_product": (
+                "ParticleVolumeVersusRadiusLogarithmSpectrum "
+                "(dV_liquid/V_air per dln(r))"
+            ),
+        },
     }
 
     return AdapterResult(
         timeseries=df,
         metadata=metadata,
         summary=summary,
+        tables={
+            SPECTRUM_TABLE_NAME: spectrum_df,
+            ROBUSTNESS_TABLE_NAME: robustness_df,
+        }
+        if spectrum_enabled
+        else {},
     )

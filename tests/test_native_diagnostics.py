@@ -17,6 +17,12 @@ from simulation.pysdm_parcel_adapter import (
 from simulation.runner import run_single_experiment
 from simulation.schema import default_config
 from simulation.validation import validate_config_detailed
+from simulation.wet_radius_spectrum import (
+    build_spectrum_bin_edges,
+    build_threshold_robustness_table,
+    build_wet_radius_spectrum_table,
+    resolve_spectrum_checkpoint_times,
+)
 
 
 PYSDM_AVAILABLE = (
@@ -83,6 +89,46 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         }
         self.assertIn("diagnostics.rain_radius_threshold", fields)
 
+    def test_spectrum_edges_checkpoints_and_threshold_repartition(self):
+        cfg = _small_native_config()
+        edges = build_spectrum_bin_edges(cfg)
+        checkpoints = resolve_spectrum_checkpoint_times(cfg)
+
+        self.assertEqual(checkpoints, [0.0, 15.0, 30.0])
+        for threshold in (0.5e-6, 25.0e-6):
+            for factor in (0.8, 1.0, 1.2):
+                self.assertTrue(np.any(np.isclose(edges, threshold * factor)))
+
+        n_bins = len(edges) - 1
+        spectra = {
+            "time_s": np.asarray(checkpoints),
+            "number_concentration_m3": np.ones((len(checkpoints), n_bins)) * 1.0e6,
+            "volume_fraction_per_dlnr": np.ones((len(checkpoints), n_bins)) * 1.0e-9,
+        }
+        spectrum_df = build_wet_radius_spectrum_table(spectra, edges, cfg)
+        robustness_df = build_threshold_robustness_table(spectrum_df, cfg)
+
+        self.assertEqual(len(spectrum_df), len(checkpoints) * n_bins)
+        self.assertEqual(len(robustness_df), len(checkpoints) * 9)
+        partitioned = (
+            robustness_df["unactivated_number_cm3"]
+            + robustness_df["cloud_number_cm3"]
+            + robustness_df["rain_number_cm3"]
+        )
+        self.assertTrue(np.allclose(partitioned, float(n_bins)))
+
+    def test_invalid_spectrum_configuration_is_blocking(self):
+        cfg = default_config()
+        cfg["diagnostics"]["wet_radius_spectrum"]["threshold_factors"] = [0.8, 1.2]
+        cfg["diagnostics"]["wet_radius_spectrum"]["min_radius"] = 1.0e-6
+        issues = validate_config_detailed(cfg)
+        fields = {
+            issue.field
+            for issue in issues
+            if issue.severity == "error"
+        }
+        self.assertIn("diagnostics.wet_radius_spectrum.threshold_factors", fields)
+
 
 @unittest.skipUnless(PYSDM_AVAILABLE, "PySDM optional dependencies are not installed")
 class NativePySDMIntegrationTests(unittest.TestCase):
@@ -115,6 +161,13 @@ class NativePySDMIntegrationTests(unittest.TestCase):
             result.metadata["diagnostic_radius_thresholds"]["range_convention"],
             "lower inclusive, upper exclusive",
         )
+        self.assertIn("wet_radius_spectrum", result.tables)
+        self.assertIn("threshold_robustness", result.tables)
+        self.assertFalse(result.tables["wet_radius_spectrum"].empty)
+        self.assertEqual(
+            sorted(result.tables["wet_radius_spectrum"]["time_s"].unique().tolist()),
+            [0.0, 15.0, 30.0],
+        )
 
     def test_runner_writes_native_provenance_and_threshold_metadata(self):
         cfg = _small_native_config()
@@ -126,13 +179,21 @@ class NativePySDMIntegrationTests(unittest.TestCase):
             metadata = json.loads(
                 (result_dir / "metadata.json").read_text(encoding="utf-8")
             )
+            spectrum_exists = (result_dir / "wet_radius_spectrum.csv").exists()
+            robustness_exists = (result_dir / "threshold_robustness.csv").exists()
 
         self.assertFalse(any(row["provenance"] == "proxy" for row in provenance))
-        self.assertEqual(metadata["native_product_build_id"], "native-parcel-products-20260714")
+        self.assertEqual(
+            metadata["native_product_build_id"],
+            "native-parcel-spectrum-products-20260714",
+        )
         self.assertEqual(
             metadata["diagnostic_radius_thresholds"]["rain_radius_um"],
             25.0,
         )
+        self.assertEqual(metadata["wet_radius_spectrum"]["checkpoint_times_s"], [0.0, 15.0, 30.0])
+        self.assertTrue(spectrum_exists)
+        self.assertTrue(robustness_exists)
 
 
 if __name__ == "__main__":

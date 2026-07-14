@@ -22,6 +22,18 @@ st.info("아래 Save target에서 Current working config 또는 저장된 scenar
 aero = cfg.setdefault("background_aerosol", {})
 diagnostics = cfg.setdefault("diagnostics", {})
 
+
+def _comma_separated_numbers(value: object) -> str:
+    if not isinstance(value, list):
+        return ""
+    return ", ".join(f"{float(item):g}" for item in value)
+
+
+def _parse_number_list(text: str) -> list[float]:
+    if not text.strip():
+        return []
+    return [float(item.strip()) for item in text.split(",") if item.strip()]
+
 col1, col2 = st.columns([1, 1.2])
 
 with col1.container(border=True):
@@ -125,6 +137,65 @@ with st.expander("Diagnostic radius definitions", expanded=False):
     diagnostics["rain_radius_threshold"] = float(rain_um) * 1.0e-6
     if activation_um >= rain_um:
         st.error("Rain threshold must be larger than the activation threshold.")
+
+    st.markdown("##### Wet-radius spectrum checkpoints")
+    st.caption(
+        "Stores compact wet-radius number/volume spectra at selected times. "
+        "An empty checkpoint list automatically uses start, injection start/end, and run end."
+    )
+    spectrum_cfg = diagnostics.setdefault("wet_radius_spectrum", {})
+    spectrum_cfg["enabled"] = st.toggle(
+        "Save wet-radius spectrum diagnostics",
+        value=bool(spectrum_cfg.get("enabled", True)),
+    )
+    spectrum_col1, spectrum_col2, spectrum_col3 = st.columns(3)
+    with spectrum_col1:
+        spectrum_min_um = st.number_input(
+            "Minimum wet radius [µm]",
+            min_value=0.001,
+            value=float(spectrum_cfg.get("min_radius", 0.05e-6)) * 1.0e6,
+            step=0.01,
+            format="%.3f",
+        )
+    with spectrum_col2:
+        spectrum_max_um = st.number_input(
+            "Maximum wet radius [µm]",
+            min_value=1.0,
+            value=float(spectrum_cfg.get("max_radius", 1000.0e-6)) * 1.0e6,
+            step=100.0,
+            format="%.1f",
+        )
+    with spectrum_col3:
+        spectrum_cfg["n_bins"] = st.number_input(
+            "Base logarithmic bins",
+            min_value=8,
+            max_value=256,
+            value=int(spectrum_cfg.get("n_bins", 32)),
+            step=4,
+        )
+    spectrum_cfg["min_radius"] = float(spectrum_min_um) * 1.0e-6
+    spectrum_cfg["max_radius"] = float(spectrum_max_um) * 1.0e-6
+
+    factors_text = st.text_input(
+        "Threshold factors",
+        value=_comma_separated_numbers(spectrum_cfg.get("threshold_factors", [0.8, 1.0, 1.2])),
+        help="Applied to both activation and rain thresholds. Include 1.0 for the baseline.",
+    )
+    checkpoints_text = st.text_input(
+        "Checkpoint times [s] (optional)",
+        value=_comma_separated_numbers(spectrum_cfg.get("checkpoint_times", [])),
+        placeholder="blank = automatic",
+    )
+    try:
+        spectrum_cfg["threshold_factors"] = _parse_number_list(factors_text)
+        spectrum_cfg["checkpoint_times"] = _parse_number_list(checkpoints_text)
+    except ValueError:
+        st.error("Threshold factors and checkpoint times must be comma-separated numbers.")
+
+    if spectrum_min_um >= activation_um:
+        st.error("Spectrum minimum must be below the activation threshold.")
+    if spectrum_max_um <= rain_um:
+        st.error("Spectrum maximum must exceed the rain threshold.")
 
 config_actions(cfg, "Save Aerosol Settings")
 schema_expander()

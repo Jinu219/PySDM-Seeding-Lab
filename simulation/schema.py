@@ -101,6 +101,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "growth_pathway_mode": True,
         "activation_radius_threshold": 0.5e-6,
         "rain_radius_threshold": 25.0e-6,
+        "wet_radius_spectrum": {
+            "enabled": True,
+            "min_radius": 0.05e-6,
+            "max_radius": 1000.0e-6,
+            "n_bins": 32,
+            "checkpoint_times": [],
+            "threshold_factors": [0.8, 1.0, 1.2],
+        },
     },
     "sweep": {
         "run_mode": "control_vs_seeding",
@@ -170,6 +178,9 @@ FIELD_UNITS: Dict[str, Dict[str, str]] = {
     "diagnostics": {
         "activation_radius_threshold": "m",
         "rain_radius_threshold": "m",
+        "min_radius": "m",
+        "max_radius": "m",
+        "checkpoint_times": "s",
     },
 }
 

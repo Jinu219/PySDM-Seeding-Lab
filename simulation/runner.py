@@ -91,6 +91,7 @@ def _run_adapter_timed(
         timeseries=result.timeseries,
         metadata=result.metadata,
         summary=timed_summary,
+        tables=result.tables,
     )
 
 
@@ -140,7 +141,12 @@ def _apply_growth_pathway_diagnostics_to_result(result: AdapterResult, config: D
         "growth_pathway_diagnostics_enabled": True,
     }
 
-    return AdapterResult(timeseries=enriched, metadata=metadata, summary=summary)
+    return AdapterResult(
+        timeseries=enriched,
+        metadata=metadata,
+        summary=summary,
+        tables=result.tables,
+    )
 
 def run_experiment(
     config: Dict[str, Any],
@@ -705,6 +711,18 @@ def _write_single_result_files(
         "diagnostic_health": str(diagnostic_health_path.name),
         "diagnostic_provenance": str(diagnostic_provenance_path.name),
     }
+
+    table_file_names = {
+        "wet_radius_spectrum": "wet_radius_spectrum.csv",
+        "threshold_robustness": "threshold_robustness.csv",
+    }
+    for table_name, filename in table_file_names.items():
+        table = result.tables.get(table_name)
+        if table is None:
+            continue
+        table_path = run_dir / filename
+        table.to_csv(table_path, index=False)
+        result_file_names[table_name] = filename
 
     metadata_payload = {
         **spec.metadata,

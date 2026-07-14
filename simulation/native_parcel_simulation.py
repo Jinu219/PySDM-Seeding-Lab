@@ -21,7 +21,7 @@ from PySDM.environments import Parcel
 from PySDM.initialisation.sampling.spectral_sampling import ConstantMultiplicity
 
 
-NATIVE_PRODUCT_BUILD_ID = "native-parcel-products-20260714"
+NATIVE_PRODUCT_BUILD_ID = "native-parcel-spectrum-products-20260714"
 
 
 def _sample_initial_spectrum(spectrum: Any, *, n_sd: int, backend: Any):
@@ -47,7 +47,14 @@ def _sample_initial_spectrum(spectrum: Any, *, n_sd: int, backend: Any):
 class NativeParcelSimulation:
     """Warm-cloud parcel model exposing a research-ready native product set."""
 
-    def __init__(self, settings: Any, *, activation_radius_threshold: float):
+    def __init__(
+        self,
+        settings: Any,
+        *,
+        activation_radius_threshold: float,
+        spectrum_radius_bin_edges: np.ndarray | None = None,
+        spectrum_checkpoint_times: tuple[float, ...] = (),
+    ):
         activation_radius = float(activation_radius_threshold)
         rain_radius = float(settings.rain_water_radius_threshold)
         if not 0 < activation_radius < rain_radius:
@@ -99,6 +106,101 @@ class NativeParcelSimulation:
         activated_range = (activation_radius, np.inf)
         unactivated_range = (0.0, activation_radius)
 
+        scalar_products = (
+            products.SuperDropletCountPerGridbox(name="superdroplet_count"),
+            products.Time(name="time"),
+            products.AmbientTemperature(name="temperature_K", var="T"),
+            products.AmbientPressure(name="pressure_Pa", var="p"),
+            products.AmbientWaterVapourMixingRatio(
+                name="water_vapour_mixing_ratio",
+                var="water_vapour_mixing_ratio",
+            ),
+            products.AmbientRelativeHumidity(name="relative_humidity", var="RH"),
+            products.WaterMixingRatio(
+                radius_range=unactivated_range,
+                name="unactivated_water_mixing_ratio",
+            ),
+            products.WaterMixingRatio(
+                radius_range=cloud_range,
+                name="cloud_water_mixing_ratio",
+            ),
+            products.WaterMixingRatio(
+                radius_range=rain_range,
+                name="rain_water_mixing_ratio",
+            ),
+            products.WaterMixingRatio(name="total_liquid_water_mixing_ratio"),
+            products.ParticleConcentration(
+                radius_range=cloud_range,
+                name="cloud_droplet_concentration",
+                unit="cm^-3",
+            ),
+            products.ParticleConcentration(
+                radius_range=rain_range,
+                name="rain_droplet_concentration",
+                unit="cm^-3",
+            ),
+            products.EffectiveRadius(
+                radius_range=cloud_range,
+                name="effective_radius_cloud_um",
+                unit="um",
+            ),
+            products.EffectiveRadius(
+                radius_range=rain_range,
+                name="effective_radius_rain_um",
+                unit="um",
+            ),
+            products.EffectiveRadius(
+                radius_range=activated_range,
+                name="effective_radius_all_um",
+                unit="um",
+            ),
+        )
+        self.scalar_product_names = (
+            "superdroplet_count",
+            "time",
+            "temperature_K",
+            "pressure_Pa",
+            "water_vapour_mixing_ratio",
+            "relative_humidity",
+            "unactivated_water_mixing_ratio",
+            "cloud_water_mixing_ratio",
+            "rain_water_mixing_ratio",
+            "total_liquid_water_mixing_ratio",
+            "cloud_droplet_concentration",
+            "rain_droplet_concentration",
+            "effective_radius_cloud_um",
+            "effective_radius_rain_um",
+            "effective_radius_all_um",
+        )
+
+        spectrum_edges = (
+            np.asarray(spectrum_radius_bin_edges, dtype=float)
+            if spectrum_radius_bin_edges is not None
+            else np.asarray([], dtype=float)
+        )
+        spectrum_products: tuple[Any, ...] = ()
+        self.spectrum_product_names: tuple[str, ...] = ()
+        if spectrum_edges.size:
+            if spectrum_edges.ndim != 1 or spectrum_edges.size < 2 or np.any(np.diff(spectrum_edges) <= 0):
+                raise ValueError("Spectrum radius-bin edges must be a strictly increasing 1-D array.")
+            spectrum_products = (
+                products.NumberSizeSpectrum(
+                    radius_bins_edges=spectrum_edges,
+                    name="wet_radius_number_spectrum",
+                    unit="m^-3",
+                ),
+                products.ParticleVolumeVersusRadiusLogarithmSpectrum(
+                    radius_bins_edges=spectrum_edges,
+                    name="wet_radius_volume_spectrum",
+                    unit="dimensionless",
+                    dry=False,
+                ),
+            )
+            self.spectrum_product_names = (
+                "wet_radius_number_spectrum",
+                "wet_radius_volume_spectrum",
+            )
+
         self.particulator = builder.build(
             attributes={
                 key: np.pad(
@@ -109,64 +211,23 @@ class NativeParcelSimulation:
                 )
                 for key, value in attributes.items()
             },
-            products=(
-                products.SuperDropletCountPerGridbox(name="superdroplet_count"),
-                products.Time(name="time"),
-                products.AmbientTemperature(name="temperature_K", var="T"),
-                products.AmbientPressure(name="pressure_Pa", var="p"),
-                products.AmbientWaterVapourMixingRatio(
-                    name="water_vapour_mixing_ratio",
-                    var="water_vapour_mixing_ratio",
-                ),
-                products.AmbientRelativeHumidity(name="relative_humidity", var="RH"),
-                products.WaterMixingRatio(
-                    radius_range=unactivated_range,
-                    name="unactivated_water_mixing_ratio",
-                ),
-                products.WaterMixingRatio(
-                    radius_range=cloud_range,
-                    name="cloud_water_mixing_ratio",
-                ),
-                products.WaterMixingRatio(
-                    radius_range=rain_range,
-                    name="rain_water_mixing_ratio",
-                ),
-                products.WaterMixingRatio(name="total_liquid_water_mixing_ratio"),
-                products.ParticleConcentration(
-                    radius_range=cloud_range,
-                    name="cloud_droplet_concentration",
-                    unit="cm^-3",
-                ),
-                products.ParticleConcentration(
-                    radius_range=rain_range,
-                    name="rain_droplet_concentration",
-                    unit="cm^-3",
-                ),
-                products.EffectiveRadius(
-                    radius_range=cloud_range,
-                    name="effective_radius_cloud_um",
-                    unit="um",
-                ),
-                products.EffectiveRadius(
-                    radius_range=rain_range,
-                    name="effective_radius_rain_um",
-                    unit="um",
-                ),
-                products.EffectiveRadius(
-                    radius_range=activated_range,
-                    name="effective_radius_all_um",
-                    unit="um",
-                ),
-            ),
+            products=(*scalar_products, *spectrum_products),
         )
         self.n_steps = int(settings.t_max // settings.timestep)
+        timestep_s = float(settings.timestep)
+        self.spectrum_checkpoint_steps = {
+            min(self.n_steps, max(0, int(round(float(time_s) / timestep_s))))
+            for time_s in spectrum_checkpoint_times
+        }
 
     def run(self) -> dict[str, dict[str, np.ndarray]]:
-        output: dict[str, dict[str, list[float]] | dict[str, np.ndarray]] = {
-            "products": {key: [] for key in self.particulator.products}
+        product_rows: dict[str, list[float]] = {
+            key: [] for key in self.scalar_product_names
         }
-        product_rows = output["products"]
-        assert isinstance(product_rows, dict)
+        spectrum_rows: dict[str, list[np.ndarray]] = {
+            key: [] for key in self.spectrum_product_names
+        }
+        spectrum_times: list[float] = []
 
         for step in range(self.n_steps + 1):
             if step:
@@ -177,9 +238,26 @@ class NativeParcelSimulation:
                     (value,) = value
                 product_rows[key].append(float(value))
 
+            if step in self.spectrum_checkpoint_steps:
+                spectrum_times.append(product_rows["time"][-1])
+                for key in spectrum_rows:
+                    values = np.asarray(self.particulator.products[key].get(), dtype=float).squeeze()
+                    if values.ndim != 1:
+                        values = values.reshape(-1)
+                    spectrum_rows[key].append(values.copy())
+
         return {
             "products": {
                 key: np.asarray(values, dtype=float)
                 for key, values in product_rows.items()
-            }
+            },
+            "spectra": {
+                "time_s": np.asarray(spectrum_times, dtype=float),
+                "number_concentration_m3": np.asarray(
+                    spectrum_rows.get("wet_radius_number_spectrum", []), dtype=float
+                ),
+                "volume_fraction_per_dlnr": np.asarray(
+                    spectrum_rows.get("wet_radius_volume_spectrum", []), dtype=float
+                ),
+            },
         }

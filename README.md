@@ -116,6 +116,10 @@ separately so they are not accidentally interpreted as the same question.
 
 ## Current Status
 
+For the current milestone, completed work, and next acceptance gates, see
+[`PROJECT_STATUS.md`](PROJECT_STATUS.md). `ROADMAP.md` owns the prioritized
+sequence, while `DEVELOPMENT.md` remains the detailed implementation history.
+
 The project is an active research workbench with scenario management,
 configuration validation, parameter sweeps, ensembles, a PySDM parcel adapter,
 diagnostic provenance, and publication-oriented result panels. The
@@ -143,12 +147,18 @@ These are radius-bin definitions, not a record of each particle's activation
 history. Run `python -m unittest -v tests.test_native_diagnostics` for the real
 adapter regression check.
 
+New PySDM runs can also save compact wet-radius number and liquid-volume spectra
+at start, injection start/end, and run end. The Results Dashboard displays these
+checkpoints and a 0.8/1.0/1.2 activation/rain threshold robustness analysis.
+The underlying files are `wet_radius_spectrum.csv` and
+`threshold_robustness.csv`.
+
 ## Development Roadmap
 
 Steps 0-12 and the first Step 13 native scalar-product pass are complete; see
 `DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: physically refine the radius-bin diagnostics, add wet-radius
-spectra, then optimize large ensembles and reporting.
+`ROADMAP.md`: complete conservation and numerical-convergence checks, extend
+spectrum comparison metrics, then optimize large ensembles and reporting.
 
 ## Research Direction
 

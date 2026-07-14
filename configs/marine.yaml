@@ -58,6 +58,16 @@ diagnostics:
   growth_pathway_mode: true
   activation_radius_threshold: 5.0e-07
   rain_radius_threshold: 2.5e-05
+  wet_radius_spectrum:
+    enabled: true
+    min_radius: 5.0e-08
+    max_radius: 0.001
+    n_bins: 32
+    checkpoint_times: []
+    threshold_factors:
+    - 0.8
+    - 1.0
+    - 1.2
 output:
   base_dir: results
   save_config: true
