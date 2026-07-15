@@ -11,10 +11,20 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Extend collision response qualification to higher resolution and multiple seeds.
-2. Test process-per-member isolation for PySDM/Numba/backend retained memory.
+1. Test process-per-member isolation for PySDM/Numba/backend retained memory.
+2. Use the common-seed pilot to target a bounded 1600-super-droplet response run.
 3. Prototype a columnar internal cache with CSV numerical-equality regression.
 4. Validate or revise the operational 1% transition floor using observations.
+
+Higher-resolution common-seed gate completed on 2026-07-15:
+- A paired-seed scalar audit now preserves every case × seed response and rejects
+  incomplete case-seed coverage.
+- The 800-super-droplet, three-seed pilot completed all 24 physical executions.
+- Absolute rain state passed 36/36 checks; response passed 4/63. All three seeds
+  independently rejected quantitative response support.
+- The five-seed / 1600 standard plan remains available, but its 70 executions are
+  gated behind process isolation and a targeted resource plan rather than launched
+  automatically after a strongly non-converged pilot.
 
 Retained-memory gate completed on 2026-07-15:
 - Member/stage checkpoints now record RSS, USS, GC-tracked objects, threads, and
@@ -40,8 +50,8 @@ Research-evidence gate completed:
   in Results. Step 19 now has actual legacy-result and schema-migration fixtures.
 
 Next ordered gates:
-1. Higher-resolution, multi-seed collision response qualification.
-2. Process-per-member retained-memory isolation benchmark.
+1. Process-per-member retained-memory isolation benchmark.
+2. Targeted 1600-super-droplet common-seed response qualification.
 3. Columnar internal-cache prototype with CSV equality regression.
 4. Observational validation or revision of the operational 1% transition floor.
 

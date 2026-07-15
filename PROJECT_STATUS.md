@@ -4,7 +4,31 @@ Last updated: 2026-07-15
 
 Active branch: `develop`
 
-Current milestone: Collision qualification and retained-memory A/B completed
+Current milestone: Common-seed rain-response pilot and retained-memory A/B completed
+
+## Higher-resolution common-seed rain-response update
+
+Completed on 2026-07-15:
+- Added `rain_response_pilot` and `rain_response_standard` profiles. The pilot uses
+  a 5 s / 800-super-droplet reference and three paired common random seeds; the
+  standard plan reaches 2.5 s / 1600 super-droplets and five seeds.
+- Ensemble member summaries now preserve every convergence scalar. Sweep results
+  store `paired_seed_metrics.csv`, and identical seeds are compared across OFAT
+  resolution cases before evidence is pooled.
+- Coverage requires every configured seed in every case. Rain-signal gates are also
+  evaluated per seed instead of accepting the maximum from any seed.
+- The full pilot completed 4 cases, 12 case-seed pairs, and 24/24 physical PySDM
+  executions in 956.4 s. All three seeds produced rain.
+- Absolute rain state passed 36/36 checks (maximum 2.366%). Seeding response passed
+  only 4/63 checks (median 39.093%, maximum 526.314%), so quantitative response
+  remains unsupported.
+- All 29 tests, project integrity, and an actual-result Results AppTest passed;
+  the dashboard rendered the paired-seed evidence with zero errors or exceptions.
+
+Decision: preserve the common-seed workflow, but gate the planned 70-execution
+standard run behind process isolation and a targeted high-resolution plan.
+
+Evidence: [`docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`](docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md)
 
 ## Ensemble retained-memory ownership update
 
@@ -47,9 +71,8 @@ Completed on 2026-07-15:
 
 Evidence: [`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md)
 
-Next priority: extend collision response qualification to higher resolution and
-multiple common random seeds, then prototype member process isolation and a
-columnar internal cache.
+Next priority: prototype member process isolation, then use its resource bounds to
+target the planned 1600-super-droplet common-seed response qualification.
 
 ## Portable path-budget hardening
 
@@ -97,8 +120,8 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Extend collision response qualification to higher resolution and common seeds.
-2. Test process-per-member isolation for backend/JIT retained memory.
+1. Test process-per-member isolation for backend/JIT retained memory.
+2. Target a bounded 1600-super-droplet common-seed response qualification.
 3. Compare a columnar internal cache with CSV using numerical-equality regressions.
 4. Validate the operational 1% transition floor against an observational dataset.
 
@@ -222,17 +245,16 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. numerical convergence preset을 full PySDM으로 실행해 5% 기본 tolerance의 경험적 근거를 축적한다.
-2. spectrum transition 1% threshold와 checkpoint 간격을 관측 또는 문헌 기준으로 보정한다.
-3. 대형 PySDM ensemble에서 whole-process RSS와 streaming CSV I/O 시간을 benchmark한다.
-4. Step 18 report를 PDF로 확장하고 선택한 publication figure를 포함한다.
-5. 실제 구버전 결과 fixture를 보존하고 schema 변경 때 migration 회귀 테스트를 추가한다.
+1. ensemble member를 child process로 격리해 PySDM/Numba backend RSS가 process 종료 시 회수되는지 측정한다.
+2. 격리 benchmark의 자원 한도 안에서 1600-super-droplet common-seed response run을 설계한다.
+3. CSV와 수치적으로 동일한 columnar internal cache prototype을 benchmark한다.
+4. spectrum transition 1% threshold와 checkpoint 간격을 관측 자료로 보정한다.
 
 ## 검증 명령
 
 ```powershell
-& 'C:\Users\PC\anaconda3\envs\PySDM\python.exe' -m unittest -v tests.test_native_diagnostics
-& 'C:\Users\PC\anaconda3\envs\PySDM\python.exe' scripts\check_project_integrity.py
+& .\.conda\python.exe -m unittest -v tests.test_native_diagnostics
+& .\.conda\python.exe scripts\check_project_integrity.py
 ```
 
 Streamlit 화면 회귀 검사는 `pages/02_aerosol.py`, `pages/06_run.py`,

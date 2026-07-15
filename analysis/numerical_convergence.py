@@ -3,6 +3,7 @@ from __future__ import annotations
 """OFAT numerical-convergence diagnostics for timestep and super-droplet sweeps."""
 
 import json
+from pathlib import Path
 from typing import Any, Dict, Iterable
 
 import matplotlib.pyplot as plt
@@ -32,6 +33,8 @@ DEFAULT_CONVERGENCE_METRICS = (
     "metrics.final_rain_water_mixing_ratio",
     "metrics.max_rain_water_mixing_ratio",
 )
+COMMON_SEED_PARAMETER_COLUMN = "param.experiment.random_seed"
+MEMBER_CONVERGENCE_METRIC_PREFIX = "convergence."
 
 
 def _condition_groups(
@@ -70,6 +73,7 @@ def build_numerical_convergence_table(
         "tolerance_percent",
         "converged",
         "is_reference",
+        "random_seed",
         "case_name",
         "reference_case_name",
     ]
@@ -100,6 +104,13 @@ def build_numerical_convergence_table(
     rows: list[dict[str, Any]] = []
 
     for condition, condition_df in _condition_groups(sweep_df, condition_columns):
+        random_seed = None
+        if COMMON_SEED_PARAMETER_COLUMN in condition_df:
+            seed_values = pd.to_numeric(
+                condition_df[COMMON_SEED_PARAMETER_COLUMN], errors="coerce"
+            ).dropna()
+            if len(seed_values):
+                random_seed = int(seed_values.iloc[0])
         targets: Dict[str, float] = {}
         for parameter in numerical_columns:
             values = pd.to_numeric(condition_df[parameter], errors="coerce").dropna()
@@ -161,12 +172,106 @@ def build_numerical_convergence_table(
                             "tolerance_percent": tolerance,
                             "converged": bool(relative <= tolerance),
                             "is_reference": bool(resolution_rank == 0),
+                            "random_seed": random_seed,
                             "case_name": str(row.get("case_name", "")),
                             "reference_case_name": str(reference.get("case_name", "")),
                         }
                     )
 
     return pd.DataFrame(rows, columns=columns)
+
+
+def build_common_seed_convergence_input(
+    sweep_df: pd.DataFrame,
+    sweep_root: Path,
+) -> pd.DataFrame:
+    """Expand ensemble case summaries into one scalar row per common seed.
+
+    Every sweep case must use the same ensemble seed sequence. The resulting
+    ``param.experiment.random_seed`` column becomes a convergence condition, so
+    only matched seeds are compared across numerical-resolution cases.
+    """
+    rows: list[dict[str, Any]] = []
+    if sweep_df.empty:
+        return pd.DataFrame()
+    sweep_root = Path(sweep_root)
+    parameter_columns = [
+        column for column in sweep_df.columns if column.startswith("param.")
+    ]
+    for _, case in sweep_df.iterrows():
+        relative_result_dir = str(case.get("result_dir", ""))
+        member_path = sweep_root / relative_result_dir / "member_summary.csv"
+        if not relative_result_dir or not member_path.exists():
+            continue
+        members = pd.read_csv(member_path)
+        if "success" in members:
+            successful = members["success"].astype(str).str.lower().isin(
+                {"true", "1", "1.0"}
+            )
+            members = members.loc[successful]
+        for _, member in members.iterrows():
+            seed = pd.to_numeric(
+                pd.Series([member.get("random_seed")]), errors="coerce"
+            ).iloc[0]
+            if not np.isfinite(seed):
+                continue
+            record: dict[str, Any] = {
+                "sweep_case_name": str(case.get("case_name", "")),
+                "case_name": f"{case.get('case_name', '')}__seed_{int(seed)}",
+                COMMON_SEED_PARAMETER_COLUMN: int(seed),
+            }
+            for column in parameter_columns:
+                record[column] = case.get(column)
+            for metric in DEFAULT_CONVERGENCE_METRICS:
+                member_column = f"{MEMBER_CONVERGENCE_METRIC_PREFIX}{metric}"
+                if member_column in members.columns:
+                    record[metric] = member.get(member_column)
+            rows.append(record)
+    return pd.DataFrame(rows)
+
+
+def summarize_common_seed_case_coverage(
+    paired_seed_metrics: pd.DataFrame,
+    config: Dict[str, Any] | None,
+    *,
+    n_cases: int,
+) -> Dict[str, Any]:
+    """Report whether every expected seed exists in every resolution case."""
+    qualification = (config or {}).get("qualification", {})
+    expected_seeds = sorted(
+        int(value) for value in qualification.get("common_random_seeds", [])
+    )
+    expected_pairs = int(n_cases * len(expected_seeds))
+    if paired_seed_metrics.empty:
+        observed_pairs = 0
+        observed_seeds: list[int] = []
+    else:
+        observed_seeds = sorted(
+            int(value)
+            for value in pd.to_numeric(
+                paired_seed_metrics.get(COMMON_SEED_PARAMETER_COLUMN), errors="coerce"
+            ).dropna().unique()
+        )
+        pair_columns = [
+            column
+            for column in ("sweep_case_name", COMMON_SEED_PARAMETER_COLUMN)
+            if column in paired_seed_metrics
+        ]
+        observed_pairs = int(
+            len(paired_seed_metrics[pair_columns].drop_duplicates())
+            if len(pair_columns) == 2
+            else len(paired_seed_metrics)
+        )
+    return {
+        "expected_case_seed_pairs": expected_pairs,
+        "observed_case_seed_pairs": observed_pairs,
+        "observed_common_random_seeds": observed_seeds,
+        "complete": bool(
+            expected_pairs > 0
+            and observed_pairs == expected_pairs
+            and observed_seeds == expected_seeds
+        ),
+    }
 
 
 def summarize_numerical_convergence(table: pd.DataFrame) -> Dict[str, Any]:

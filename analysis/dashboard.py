@@ -50,7 +50,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "ensemble-memory-checkpoints-20260715"
+DASHBOARD_BUILD_ID = "common-seed-rain-response-evidence-20260715"
 
 
 @dataclass(frozen=True)
@@ -203,6 +203,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
     if entry.result_type == "parameter_sweep":
         sweep_path = entry.path / "sweep_summary.csv"
         convergence_path = entry.path / "numerical_convergence.csv"
+        paired_seed_metrics_path = entry.path / "paired_seed_metrics.csv"
         report_path = entry.path / "report.md"
         html_report_path = entry.path / "report.html"
         pdf_report_path = entry.path / "report.pdf"
@@ -224,6 +225,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "wet_radius_spectrum": pd.DataFrame(),
             "threshold_robustness": pd.DataFrame(),
             "numerical_convergence": safe_read_csv(convergence_path),
+            "paired_seed_metrics": safe_read_csv(paired_seed_metrics_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -238,6 +240,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "files": {
                 "sweep_summary": sweep_path,
                 "numerical_convergence": convergence_path,
+                "paired_seed_metrics": paired_seed_metrics_path,
                 "summary": summary_path,
                 "metadata": metadata_path,
                 "config": config_path,

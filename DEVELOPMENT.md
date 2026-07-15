@@ -1,5 +1,38 @@
 # Development Notes
 
+## Higher-resolution paired common-seed rain response
+
+Changes:
+- Added three-seed `rain_response_pilot` and five-seed `rain_response_standard`
+  numerical qualification profiles.
+- Preserved convergence scalar metrics in every ensemble member summary and added
+  `paired_seed_metrics.csv` as the auditable case × seed source table.
+- Numerical convergence now treats random seed as a condition, preventing a seed
+  from being compared with another seed or hidden inside a case mean.
+- Added complete case-seed coverage validation, per-seed rain-signal requirements,
+  per-seed family evidence, portable report fields, and Results tables.
+
+Execution evidence:
+- The 24-execution placeholder workflow completed in 56.2 s and validated artifact
+  generation only.
+- The full collision-ON PySDM pilot completed 24/24 executions in 956.4 s with all
+  four cases and all 12 case-seed pairs successful.
+- Absolute rain state passed 36/36 5% checks (max 2.366%). Seeding response passed
+  4/63 (median 39.093%, max 526.314%); every seed rejected response support.
+
+Decision:
+- Keep the paired-seed design as mandatory for stochastic response qualification.
+- Do not run the 70-execution standard blindly. First bound retained memory with
+  member process isolation, then target the axes identified by this pilot.
+
+Validation:
+- All 29 unit/integration tests passed in 263.3 s, including two real PySDM tests
+  and a compact 16-execution nested common-seed regression.
+- Project integrity passed. Results AppTest loaded the actual PySDM pilot with zero
+  exceptions and zero rendered errors and exposed the paired scalar source table.
+
+Evidence: `docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`
+
 ## Ensemble member-boundary retained-memory profiling
 
 Changes:

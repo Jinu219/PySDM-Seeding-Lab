@@ -49,6 +49,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
     diagnostics = cfg.get("diagnostics", {})
     sweep = cfg.get("sweep", {})
     ensemble = cfg.get("ensemble", {})
+    qualification = cfg.get("qualification", {})
     output = cfg.get("output", {})
 
     # -------------------------------------------------------------------------
@@ -133,6 +134,26 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 "Leave it false for normal runs; enable it only for memory A/B tests.",
             )
         )
+
+    if qualification.get("common_random_seed_pairing", False):
+        if not ensemble.get("enabled", False):
+            issues.append(
+                _issue(
+                    "error",
+                    "qualification.common_random_seed_pairing",
+                    "Common-seed pairing requires ensemble execution.",
+                    "Enable ensemble and use at least two members.",
+                )
+            )
+        if int(ensemble.get("n_members", 0)) < 2:
+            issues.append(
+                _issue(
+                    "error",
+                    "ensemble.n_members",
+                    "Common-seed qualification requires at least two members.",
+                    "Use two or more deterministic member seeds.",
+                )
+            )
 
 
     # -------------------------------------------------------------------------

@@ -1,0 +1,47 @@
+{
+  "build_id": "common-seed-rain-response-summary-v1-20260715",
+  "source_result": "20260715_135012_809307_qualification_rain_re_341c9e86",
+  "profile": "rain_response_pilot",
+  "adapter": "pysdm_parcel",
+  "execution": {
+    "case_count": 4,
+    "common_random_seeds": [32001, 33010, 34019],
+    "case_seed_pairs": 12,
+    "model_execution_count": 24,
+    "failed_cases": 0,
+    "failed_members": 0,
+    "wall_time_seconds": 956.4
+  },
+  "reference_resolution": {
+    "timestep_seconds": 5,
+    "seeding_superdroplets": 800,
+    "background_superdroplets": 800
+  },
+  "rain_signal": {
+    "detected_for_every_seed": true,
+    "minimum_control_reference_kg_kg": 0.0024727861453386,
+    "minimum_seeding_reference_kg_kg": 0.0026545166824803
+  },
+  "absolute_state": {
+    "status": "supported_for_profile",
+    "checks_within_tolerance": 36,
+    "checks": 36,
+    "median_relative_difference_percent": 0.6889222213122779,
+    "p95_relative_difference_percent": 2.2749456296016275,
+    "max_relative_difference_percent": 2.365584980701611
+  },
+  "seeding_response": {
+    "status": "not_supported_for_profile",
+    "checks_within_tolerance": 4,
+    "checks": 63,
+    "median_relative_difference_percent": 39.093141970829485,
+    "p95_relative_difference_percent": 239.58734521622284,
+    "max_relative_difference_percent": 526.3136239076114,
+    "seed_checks_within_tolerance": {
+      "32001": "3/21",
+      "33010": "1/21",
+      "34019": "0/21"
+    }
+  },
+  "decision": "Do not claim quantitative seeding-response convergence. Keep 5% support limited to absolute rain state. Gate the 1600-super-droplet standard run behind process-isolation/resource work and a targeted execution plan."
+}

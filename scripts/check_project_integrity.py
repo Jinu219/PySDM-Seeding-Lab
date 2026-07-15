@@ -274,6 +274,20 @@ def check_rain_qualification_contract() -> None:
     if not config["microphysics"]["collision"] or not plan["rain_signal_required"]:
         raise RuntimeError("Rain qualification no longer enforces collision and rain signal.")
 
+    response_config = build_qualification_config(
+        default_config(),
+        profile="rain_response_pilot",
+        adapter="pysdm_parcel",
+    )
+    response_plan = qualification_plan(
+        response_config,
+        profile="rain_response_pilot",
+    )
+    if response_plan["case_count"] != 4 or response_plan["model_execution_count"] != 24:
+        raise RuntimeError("Rain response pilot lost its 4-case / 3-seed paired design.")
+    if not response_plan["common_random_seed_pairing"]:
+        raise RuntimeError("Rain response pilot no longer enforces common seed pairing.")
+
 
 def check_ensemble_memory_comparison_contract() -> None:
     from analysis.resource_monitor import compare_ensemble_memory_benchmarks

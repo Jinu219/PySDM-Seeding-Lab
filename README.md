@@ -31,6 +31,17 @@ supports the 5% threshold for absolute rain-water state (12/12 checks, maximum
 3.285%) but not for seeding-minus-control response (2/21 checks). See
 [`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md).
 
+For stochastic response qualification, use paired common random seeds rather than
+comparing unrelated ensemble means:
+
+```powershell
+& .\.conda\python.exe scripts\run_numerical_qualification.py --config configs\marine.yaml --profile rain_response_pilot --adapter pysdm_parcel --output-dir artifacts\numerical_qualification
+```
+
+The completed 800-super-droplet, three-seed pilot passed all 36 absolute rain-state
+checks but only 4/63 seeding-response checks. See
+[`docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`](docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md).
+
 Run an instrumented real-PySDM ensemble benchmark with:
 
 ```powershell
@@ -254,8 +265,8 @@ a particle-history activation event.
 
 Steps 0-19 and the current research-evidence pass are complete; see
 `DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: higher-resolution multi-seed collision-response qualification,
-process-isolated backend memory measurement, a columnar internal cache comparison,
+`ROADMAP.md`: process-isolated backend memory measurement, a bounded targeted
+1600-super-droplet response qualification, a columnar internal cache comparison,
 and observational calibration of the operational transition floor are the next gates.
 
 ## Research Direction

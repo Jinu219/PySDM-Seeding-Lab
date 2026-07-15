@@ -26,9 +26,13 @@ from analysis.growth_pathway_diagnostics import (
 )
 from analysis.metrics import summarize_timeseries
 from analysis.numerical_convergence import (
+    DEFAULT_CONVERGENCE_METRICS,
+    MEMBER_CONVERGENCE_METRIC_PREFIX,
+    build_common_seed_convergence_input,
     build_numerical_convergence_table,
     convergence_metrics,
     plot_numerical_convergence,
+    summarize_common_seed_case_coverage,
     summarize_numerical_convergence,
 )
 from analysis.qualification_evidence import build_qualification_evidence
@@ -120,10 +124,17 @@ def _member_result_metrics(result_dir: Path) -> Dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     flat = flatten_nested_dict(payload)
-    return {
+    metrics = {
         f"metric.{short_name}": flat.get(dotted_name)
         for short_name, dotted_name in ENSEMBLE_MEMBER_SUMMARY_METRICS.items()
     }
+    metrics.update(
+        {
+            f"{MEMBER_CONVERGENCE_METRIC_PREFIX}{metric}": flat.get(metric)
+            for metric in DEFAULT_CONVERGENCE_METRICS
+        }
+    )
+    return metrics
 
 
 def _summarize_member_metrics(member_summary_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
@@ -1117,7 +1128,26 @@ def run_parameter_sweep(
         if "case_status" in sweep_df.columns
         else sweep_df
     )
-    convergence_table = build_numerical_convergence_table(convergence_input, cfg)
+    common_seed_pairing = bool(
+        cfg.get("qualification", {}).get("common_random_seed_pairing", False)
+    )
+    common_seed_input = (
+        build_common_seed_convergence_input(convergence_input, sweep_dir)
+        if common_seed_pairing
+        else pd.DataFrame()
+    )
+    convergence_source = (
+        common_seed_input if not common_seed_input.empty else convergence_input
+    )
+    if common_seed_pairing:
+        cfg.setdefault("qualification", {})[
+            "common_seed_case_coverage"
+        ] = summarize_common_seed_case_coverage(
+            common_seed_input,
+            cfg,
+            n_cases=total_cases,
+        )
+    convergence_table = build_numerical_convergence_table(convergence_source, cfg)
     convergence_summary = summarize_numerical_convergence(convergence_table)
     qualification_evidence = build_qualification_evidence(convergence_table, cfg)
 
@@ -1130,6 +1160,8 @@ def run_parameter_sweep(
     )
 
     sweep_df.to_csv(sweep_dir / "sweep_summary.csv", index=False)
+    if not common_seed_input.empty:
+        common_seed_input.to_csv(sweep_dir / "paired_seed_metrics.csv", index=False)
     if not convergence_table.empty:
         convergence_table.to_csv(sweep_dir / "numerical_convergence.csv", index=False)
     _write_yaml(sweep_dir / "config.yaml", cfg)
@@ -1182,6 +1214,11 @@ def run_parameter_sweep(
                 else {}
             ),
             **(
+                {"paired_seed_metrics": "paired_seed_metrics.csv"}
+                if not common_seed_input.empty
+                else {}
+            ),
+            **(
                 {"numerical_convergence": "numerical_convergence.csv"}
                 if not convergence_table.empty
                 else {}
@@ -1198,6 +1235,11 @@ def run_parameter_sweep(
                 "report.html",
                 "report.pdf",
                 "result_manifest.json",
+                *(
+                    ["paired_seed_metrics.csv"]
+                    if not common_seed_input.empty
+                    else []
+                ),
                 *(
                     ["qualification_plan.json"]
                     if isinstance(qualification_payload, dict) and qualification_payload

@@ -193,7 +193,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "ensemble-memory-checkpoints-20260715"
+RESULTS_UI_BUILD_ID = "common-seed-rain-response-evidence-20260715"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -258,6 +258,7 @@ control_water_budget_df = loaded.get("control_water_budget", pd.DataFrame())
 seeding_water_budget_df = loaded.get("seeding_water_budget", pd.DataFrame())
 water_budget_comparison_df = loaded.get("water_budget_comparison", pd.DataFrame())
 numerical_convergence_df = loaded.get("numerical_convergence", pd.DataFrame())
+paired_seed_metrics_df = loaded.get("paired_seed_metrics", pd.DataFrame())
 spectrum_transition_df = loaded.get("spectrum_transition", pd.DataFrame())
 spectrum_transition_robustness_df = loaded.get(
     "spectrum_transition_onset_robustness", pd.DataFrame()
@@ -2109,6 +2110,48 @@ if tab_convergence is not None:
                     "Near-zero exclusions",
                     convergence_evidence.get("n_near_zero_reference_checks", 0),
                 )
+                if convergence_evidence.get("common_random_seed_pairing"):
+                    common_seed_cols = st.columns(3)
+                    common_seed_cols[0].metric(
+                        "Observed common seeds",
+                        convergence_evidence.get("n_common_random_seeds", 0),
+                    )
+                    common_seed_cols[1].metric(
+                        "Seed coverage",
+                        "COMPLETE"
+                        if convergence_evidence.get("common_seed_coverage_complete")
+                        else "INCOMPLETE",
+                    )
+                    common_seed_cols[2].metric(
+                        "Pairing rule",
+                        "SAME SEED PER RESOLUTION",
+                    )
+                    seed_rows = []
+                    for seed, seed_summary in convergence_evidence.get(
+                        "common_seed_evidence", {}
+                    ).items():
+                        seed_rows.append(
+                            {
+                                "random_seed": seed,
+                                "status": seed_summary.get("status"),
+                                "checks": seed_summary.get("n_checks"),
+                                "within_tolerance": seed_summary.get(
+                                    "n_checks_within_tolerance"
+                                ),
+                                "median_difference_percent": seed_summary.get(
+                                    "median_relative_difference_percent"
+                                ),
+                                "max_difference_percent": seed_summary.get(
+                                    "max_relative_difference_percent"
+                                ),
+                            }
+                        )
+                    if seed_rows:
+                        st.dataframe(
+                            pd.DataFrame(seed_rows),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
                 family_evidence = convergence_evidence.get(
                     "metric_family_evidence", {}
                 )
@@ -2154,7 +2197,34 @@ if tab_convergence is not None:
                         )
                         + " kg/kg",
                     )
+                    rain_by_seed = convergence_evidence.get("rain_signal_by_seed", {})
+                    if rain_by_seed:
+                        st.dataframe(
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "random_seed": seed,
+                                        "rain_signal_detected": row.get("detected"),
+                                        **row.get("reference_values_kg_kg", {}),
+                                    }
+                                    for seed, row in rain_by_seed.items()
+                                ]
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
                 st.caption(str(convergence_evidence.get("interpretation", "")))
+                if not paired_seed_metrics_df.empty:
+                    with st.expander("Show paired common-seed scalar source table"):
+                        st.caption(
+                            "One row per successful resolution case and random seed. "
+                            "The convergence table compares only rows with identical seeds."
+                        )
+                        st.dataframe(
+                            paired_seed_metrics_df,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
             available_convergence_metrics = dash.convergence_metrics(numerical_convergence_df)
             selected_convergence_metric = st.selectbox(
                 "Response metric",

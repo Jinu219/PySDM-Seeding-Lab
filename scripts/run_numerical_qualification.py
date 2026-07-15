@@ -22,9 +22,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from simulation.config import load_config
 from analysis.numerical_convergence import (
     DEFAULT_CONVERGENCE_METRICS,
+    build_common_seed_convergence_input,
     build_numerical_convergence_table,
     convergence_metrics,
     plot_numerical_convergence,
+    summarize_common_seed_case_coverage,
     summarize_numerical_convergence,
 )
 from analysis.qualification_evidence import build_qualification_evidence
@@ -35,6 +37,7 @@ from analysis.reporting import (
     figure_to_png_bytes,
 )
 from simulation.progress import StdoutProgressReporter
+from analysis.ensemble_statistics import member_seed_list
 from simulation.runner import run_experiment
 from simulation.schema import normalize_config
 from simulation.sweep import count_sweep_cases
@@ -42,7 +45,7 @@ from simulation.sweep import flatten_nested_dict
 from simulation.validation import validate_config_detailed
 
 
-QUALIFICATION_BUILD_ID = "numerical-qualification-v3-rain-ofat-20260715"
+QUALIFICATION_BUILD_ID = "numerical-qualification-v4-common-seeds-20260715"
 QUALIFICATION_PROFILES: Dict[str, Dict[str, Any]] = {
     "pilot": {
         "description": "Fast workflow qualification; not sufficient for publication claims.",
@@ -94,6 +97,42 @@ QUALIFICATION_PROFILES: Dict[str, Dict[str, Any]] = {
         "rain_signal_required": True,
         "rain_signal_floor_kg_kg": 1.0e-8,
     },
+    "rain_response_pilot": {
+        "description": (
+            "Higher-super-droplet collision-ON response qualification with three "
+            "paired common random seeds."
+        ),
+        "timestep_seconds": [5, 10],
+        "seeding_superdroplets": [400, 800],
+        "background_superdroplets": [400, 800],
+        "duration_seconds": 1500,
+        "injection_start_seconds": 900,
+        "injection_end_seconds": 1200,
+        "collision": True,
+        "rain_signal_required": True,
+        "rain_signal_floor_kg_kg": 1.0e-8,
+        "common_seed_members": 3,
+        "seed_start": 32001,
+        "seed_step": 1009,
+    },
+    "rain_response_standard": {
+        "description": (
+            "Five-seed collision-ON response qualification with temporal and "
+            "super-droplet resolution above rain_standard."
+        ),
+        "timestep_seconds": [2.5, 5, 10],
+        "seeding_superdroplets": [400, 800, 1600],
+        "background_superdroplets": [400, 800, 1600],
+        "duration_seconds": 1500,
+        "injection_start_seconds": 900,
+        "injection_end_seconds": 1200,
+        "collision": True,
+        "rain_signal_required": True,
+        "rain_signal_floor_kg_kg": 1.0e-8,
+        "common_seed_members": 5,
+        "seed_start": 32001,
+        "seed_step": 1009,
+    },
 }
 
 
@@ -112,16 +151,37 @@ def refresh_qualification_result(result_dir: Path) -> Dict[str, Any]:
     if not sweep_path.exists():
         raise FileNotFoundError(f"Missing sweep_summary.csv: {result_dir}")
     sweep = pd.read_csv(sweep_path)
-    for row_index, row in sweep.iterrows():
-        case_dir = result_dir / str(row.get("result_dir", ""))
-        case_summary = _read_json(case_dir / "summary.json")
-        flat = flatten_nested_dict(case_summary)
-        for metric in DEFAULT_CONVERGENCE_METRICS:
-            sweep.loc[row_index, metric] = flat.get(metric)
+    config = yaml.safe_load(
+        (result_dir / "config.yaml").read_text(encoding="utf-8")
+    ) or {}
+    common_seed_pairing = bool(
+        config.get("qualification", {}).get("common_random_seed_pairing", False)
+    )
+    if not common_seed_pairing:
+        for row_index, row in sweep.iterrows():
+            case_dir = result_dir / str(row.get("result_dir", ""))
+            case_summary = _read_json(case_dir / "summary.json")
+            flat = flatten_nested_dict(case_summary)
+            for metric in DEFAULT_CONVERGENCE_METRICS:
+                sweep.loc[row_index, metric] = flat.get(metric)
     sweep.to_csv(sweep_path, index=False)
 
-    config = yaml.safe_load((result_dir / "config.yaml").read_text(encoding="utf-8")) or {}
-    convergence = build_numerical_convergence_table(sweep, config)
+    convergence_input = (
+        build_common_seed_convergence_input(sweep, result_dir)
+        if common_seed_pairing
+        else sweep
+    )
+    if common_seed_pairing and not convergence_input.empty:
+        convergence_input.to_csv(result_dir / "paired_seed_metrics.csv", index=False)
+    if common_seed_pairing:
+        config.setdefault("qualification", {})[
+            "common_seed_case_coverage"
+        ] = summarize_common_seed_case_coverage(
+            convergence_input,
+            config,
+            n_cases=len(sweep),
+        )
+    convergence = build_numerical_convergence_table(convergence_input, config)
     convergence.to_csv(result_dir / "numerical_convergence.csv", index=False)
     evidence = build_qualification_evidence(convergence, config)
     _write_json(result_dir / "qualification_evidence.json", evidence)
@@ -134,12 +194,16 @@ def refresh_qualification_result(result_dir: Path) -> Dict[str, Any]:
     metadata.setdefault("result_files", {})[
         "qualification_evidence"
     ] = "qualification_evidence.json"
+    if common_seed_pairing and not convergence_input.empty:
+        metadata["result_files"]["paired_seed_metrics"] = "paired_seed_metrics.csv"
     _write_json(result_dir / "metadata.json", metadata)
     manifest = _read_json(result_dir / "result_manifest.json")
     if manifest:
         manifest.setdefault("files", {})[
             "qualification_evidence"
         ] = "qualification_evidence.json"
+        if common_seed_pairing and not convergence_input.empty:
+            manifest["files"]["paired_seed_metrics"] = "paired_seed_metrics.csv"
         _write_json(result_dir / "result_manifest.json", manifest)
     validation = json.loads(
         (result_dir / "validation_report.json").read_text(encoding="utf-8")
@@ -185,6 +249,7 @@ def build_qualification_config(
     profile: str,
     adapter: str | None = None,
     duration_seconds: int | None = None,
+    common_seed_members: int | None = None,
 ) -> Dict[str, Any]:
     """Return a normalized Cartesian sweep used by the OFAT convergence diagnostic."""
     if profile not in QUALIFICATION_PROFILES:
@@ -197,10 +262,27 @@ def build_qualification_config(
     if adapter is not None:
         cfg.setdefault("simulation", {})["adapter"] = adapter
 
-    # Numerical convergence varies deterministic resolution axes. Inheriting an
-    # unrelated UI ensemble would multiply the model count and mix stochastic
-    # uncertainty into the OFAT resolution test.
-    cfg.setdefault("ensemble", {})["enabled"] = False
+    # Deterministic profiles disable unrelated UI ensembles. Response profiles
+    # deliberately use the same member seed sequence for every OFAT case.
+    configured_members = profile_settings.get("common_seed_members")
+    selected_members = (
+        common_seed_members if common_seed_members is not None else configured_members
+    )
+    ensemble_cfg = cfg.setdefault("ensemble", {})
+    if selected_members is not None:
+        if int(selected_members) < 2:
+            raise ValueError("Common-seed qualification requires at least two members.")
+        ensemble_cfg.update(
+            {
+                "enabled": True,
+                "n_members": int(selected_members),
+                "seed_start": int(profile_settings.get("seed_start", 32001)),
+                "seed_step": int(profile_settings.get("seed_step", 1009)),
+                "collect_garbage_between_members": False,
+            }
+        )
+    else:
+        ensemble_cfg["enabled"] = False
 
     profile_duration = profile_settings.get("duration_seconds")
     selected_duration = duration_seconds if duration_seconds is not None else profile_duration
@@ -250,19 +332,26 @@ def build_qualification_config(
 def qualification_plan(config: Dict[str, Any], *, profile: str) -> Dict[str, Any]:
     """Create a serializable execution and interpretation contract."""
     adapter = config.get("simulation", {}).get("adapter", "unknown")
+    ensemble_enabled = bool(config.get("ensemble", {}).get("enabled", False))
+    seeds = member_seed_list(config) if ensemble_enabled else []
+    case_count = count_sweep_cases(config)
     return {
         "build_id": QUALIFICATION_BUILD_ID,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "profile": profile,
         "description": QUALIFICATION_PROFILES[profile]["description"],
         "adapter": adapter,
-        "case_count": count_sweep_cases(config),
-        "model_execution_count": 2 * count_sweep_cases(config),
+        "case_count": case_count,
+        "model_execution_count": 2 * case_count * max(1, len(seeds)),
         "parameters": config.get("sweep", {}).get("parameters", []),
         "sweep_design": config.get("sweep", {}).get("design", "cartesian"),
         "acceptance_rule": (
-            "For every configured metric and numerical axis, compare the next-finest level "
-            "with the finest reference while the other axes remain at their finest values."
+            "For every configured metric, common random seed, and numerical axis, compare "
+            "the next-finest level with the same-seed finest reference while the other axes "
+            "remain at their finest values."
+            if ensemble_enabled
+            else "For every configured metric and numerical axis, compare the next-finest "
+            "level with the finest reference while the other axes remain at their finest values."
         ),
         "relative_tolerance_percent": config.get("diagnostics", {})
         .get("numerical_convergence", {})
@@ -270,7 +359,10 @@ def qualification_plan(config: Dict[str, Any], *, profile: str) -> Dict[str, Any
         "relative_reference_floor": config.get("diagnostics", {})
         .get("numerical_convergence", {})
         .get("relative_reference_floor", 1.0e-12),
-        "ensemble_enabled": bool(config.get("ensemble", {}).get("enabled", False)),
+        "ensemble_enabled": ensemble_enabled,
+        "common_random_seed_pairing": ensemble_enabled,
+        "common_random_seeds": seeds,
+        "n_common_random_seeds": len(seeds),
         "microphysics": dict(config.get("microphysics", {})),
         "rain_signal_required": bool(
             QUALIFICATION_PROFILES[profile].get("rain_signal_required", False)
@@ -297,6 +389,12 @@ def main() -> None:
         default=None,
     )
     parser.add_argument("--duration", type=int, default=None, help="Override simulation duration [s].")
+    parser.add_argument(
+        "--common-seed-members",
+        type=int,
+        default=None,
+        help="Override the number of paired common-random-seed members (minimum 2).",
+    )
     parser.add_argument("--output-dir", default="artifacts/numerical_qualification")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without running models.")
     parser.add_argument(
@@ -322,6 +420,7 @@ def main() -> None:
         profile=args.profile,
         adapter=args.adapter,
         duration_seconds=args.duration,
+        common_seed_members=args.common_seed_members,
     )
     errors = [issue for issue in validate_config_detailed(cfg) if issue.severity == "error"]
     if errors:

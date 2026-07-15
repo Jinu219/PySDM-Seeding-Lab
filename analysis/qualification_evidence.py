@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 
-QUALIFICATION_EVIDENCE_BUILD_ID = "qualification-evidence-v2-rain-signal-20260715"
+QUALIFICATION_EVIDENCE_BUILD_ID = "qualification-evidence-v3-common-seeds-20260715"
 RAIN_SIGNAL_REFERENCE_METRICS = (
     "comparison.control.max_rain_water_mixing_ratio",
     "comparison.seeding.max_rain_water_mixing_ratio",
@@ -43,6 +43,32 @@ def _family_evidence(rows: pd.DataFrame, tolerance: float) -> Dict[str, Any]:
     return evidence
 
 
+def _common_seed_evidence(
+    rows: pd.DataFrame,
+    tolerance: float,
+) -> Dict[str, Any]:
+    evidence: Dict[str, Any] = {}
+    if rows.empty or "random_seed" not in rows:
+        return evidence
+    seeds = pd.to_numeric(rows["random_seed"], errors="coerce")
+    for seed in sorted(int(value) for value in seeds.dropna().unique()):
+        seed_rows = rows.loc[seeds == seed]
+        differences = seed_rows["relative_difference_percent"]
+        evidence[str(seed)] = {
+            "status": (
+                "supported_for_profile"
+                if bool(len(differences) and (differences <= tolerance).all())
+                else "not_supported_for_profile"
+            ),
+            "n_checks": int(len(seed_rows)),
+            "n_checks_within_tolerance": int((differences <= tolerance).sum()),
+            "median_relative_difference_percent": float(differences.median()),
+            "max_relative_difference_percent": float(differences.max()),
+            "metric_family_evidence": _family_evidence(seed_rows, tolerance),
+        }
+    return evidence
+
+
 def build_qualification_evidence(
     convergence_table: pd.DataFrame,
     config: Dict[str, Any] | None,
@@ -54,6 +80,9 @@ def build_qualification_evidence(
     tolerance = float(convergence_cfg.get("relative_tolerance_percent", 5.0))
     absolute_floor = float(convergence_cfg.get("relative_reference_floor", 1.0e-12))
     qualification = (config or {}).get("qualification", {})
+    common_seed_pairing = bool(
+        qualification.get("common_random_seed_pairing", False)
+    )
     rain_signal_required = bool(qualification.get("rain_signal_required", False))
     rain_signal_floor = float(qualification.get("rain_signal_floor_kg_kg", 1.0e-8))
     base = {
@@ -61,6 +90,10 @@ def build_qualification_evidence(
         "configured_tolerance_percent": tolerance,
         "relative_reference_floor": absolute_floor,
         "qualification_profile": qualification.get("profile"),
+        "common_random_seed_pairing": common_seed_pairing,
+        "configured_common_random_seeds": qualification.get(
+            "common_random_seeds", []
+        ),
         "rain_signal_required": rain_signal_required,
         "rain_signal_floor_kg_kg": rain_signal_floor,
     }
@@ -97,28 +130,89 @@ def build_qualification_evidence(
         _metric_family
     )
     differences = relative_evidence["relative_difference_percent"]
-    supported = bool(len(differences) and (differences <= tolerance).all())
+    differences_supported = bool(
+        len(differences) and (differences <= tolerance).all()
+    )
     reference_rows = convergence_table[
         pd.to_numeric(convergence_table["resolution_rank"], errors="coerce") == 0
     ].copy()
     rain_signal_values: Dict[str, float] = {}
-    for metric in RAIN_SIGNAL_REFERENCE_METRICS:
-        values = pd.to_numeric(
-            reference_rows.loc[reference_rows["metric"] == metric, "reference_value"],
-            errors="coerce",
-        )
-        values = values[np.isfinite(values)]
-        if len(values):
-            rain_signal_values[metric] = float(values.abs().max())
-    rain_signal_detected = bool(
-        len(rain_signal_values) == len(RAIN_SIGNAL_REFERENCE_METRICS)
-        and all(value > rain_signal_floor for value in rain_signal_values.values())
+    rain_signal_by_seed: Dict[str, Any] = {}
+    reference_seeds = (
+        pd.to_numeric(reference_rows.get("random_seed"), errors="coerce")
+        if "random_seed" in reference_rows
+        else pd.Series(dtype=float)
     )
+    observed_seeds = sorted(int(value) for value in reference_seeds.dropna().unique())
+    configured_seeds = sorted(
+        int(value)
+        for value in qualification.get("common_random_seeds", [])
+    )
+    seed_coverage_complete = bool(
+        not common_seed_pairing
+        or configured_seeds == observed_seeds
+    )
+    case_seed_coverage = qualification.get("common_seed_case_coverage", {})
+    case_seed_coverage_complete = bool(
+        not common_seed_pairing or case_seed_coverage.get("complete", False)
+    )
+    if common_seed_pairing and observed_seeds:
+        for seed in observed_seeds:
+            seed_rows = reference_rows.loc[reference_seeds == seed]
+            seed_values: Dict[str, float] = {}
+            for metric in RAIN_SIGNAL_REFERENCE_METRICS:
+                values = pd.to_numeric(
+                    seed_rows.loc[seed_rows["metric"] == metric, "reference_value"],
+                    errors="coerce",
+                )
+                values = values[np.isfinite(values)]
+                if len(values):
+                    seed_values[metric] = float(values.abs().max())
+            detected = bool(
+                len(seed_values) == len(RAIN_SIGNAL_REFERENCE_METRICS)
+                and all(value > rain_signal_floor for value in seed_values.values())
+            )
+            rain_signal_by_seed[str(seed)] = {
+                "detected": detected,
+                "reference_values_kg_kg": seed_values,
+            }
+        rain_signal_detected = bool(
+            seed_coverage_complete
+            and case_seed_coverage_complete
+            and len(rain_signal_by_seed) == len(observed_seeds)
+            and all(row["detected"] for row in rain_signal_by_seed.values())
+        )
+        for metric in RAIN_SIGNAL_REFERENCE_METRICS:
+            metric_values = [
+                row["reference_values_kg_kg"].get(metric)
+                for row in rain_signal_by_seed.values()
+            ]
+            finite_values = [value for value in metric_values if value is not None]
+            if finite_values:
+                rain_signal_values[metric] = float(min(finite_values))
+    else:
+        for metric in RAIN_SIGNAL_REFERENCE_METRICS:
+            values = pd.to_numeric(
+                reference_rows.loc[
+                    reference_rows["metric"] == metric, "reference_value"
+                ],
+                errors="coerce",
+            )
+            values = values[np.isfinite(values)]
+            if len(values):
+                rain_signal_values[metric] = float(values.abs().max())
+        rain_signal_detected = bool(
+            len(rain_signal_values) == len(RAIN_SIGNAL_REFERENCE_METRICS)
+            and all(value > rain_signal_floor for value in rain_signal_values.values())
+        )
     status = (
-        "missing_required_rain_signal"
+        "incomplete_common_seed_coverage"
+        if common_seed_pairing
+        and not (seed_coverage_complete and case_seed_coverage_complete)
+        else "missing_required_rain_signal"
         if rain_signal_required and not rain_signal_detected
         else "supported_for_profile"
-        if supported
+        if differences_supported
         else "not_supported_for_profile"
         if len(differences)
         else "indeterminate_near_zero_references"
@@ -131,6 +225,7 @@ def build_qualification_evidence(
             for axis, group in relative_evidence.groupby("varied_parameter", sort=True)
         }
     family_evidence = _family_evidence(relative_evidence, tolerance)
+    seed_evidence = _common_seed_evidence(relative_evidence, tolerance)
 
     return {
         **base,
@@ -152,14 +247,24 @@ def build_qualification_evidence(
         ),
         "axis_max_relative_difference_percent": axis_maxima,
         "metric_family_evidence": family_evidence,
+        "n_common_random_seeds": int(len(observed_seeds)),
+        "n_common_random_seeds_with_relative_evidence": int(len(seed_evidence)),
+        "observed_common_random_seeds": observed_seeds,
+        "common_seed_coverage_complete": seed_coverage_complete,
+        "common_seed_case_coverage": case_seed_coverage,
+        "common_seed_case_coverage_complete": case_seed_coverage_complete,
+        "common_seed_evidence": seed_evidence,
         "rain_signal_detected": rain_signal_detected,
         "rain_signal_reference_values_kg_kg": rain_signal_values,
+        "rain_signal_by_seed": rain_signal_by_seed,
         "interpretation": (
             "Support is limited to this adapter, configuration, metric set, and resolution grid. "
             "Near-zero reference values are excluded from percentage-based support and require "
             "absolute-difference review. Rain profiles additionally require both control and "
             "seeding reference cases to exceed the configured maximum rain-water signal floor. "
             "Absolute-state convergence does not imply convergence of the smaller seeding-minus-"
-            "control response."
+            "control response. Common-seed profiles require every paired seed's reference "
+            "control and seeding run to exceed the rain-signal floor, and every per-seed "
+            "next-finest check to satisfy the configured tolerance."
         ),
     }
