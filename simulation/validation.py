@@ -48,6 +48,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
     microphysics = cfg.get("microphysics", {})
     diagnostics = cfg.get("diagnostics", {})
     sweep = cfg.get("sweep", {})
+    ensemble = cfg.get("ensemble", {})
     output = cfg.get("output", {})
 
     # -------------------------------------------------------------------------
@@ -122,6 +123,16 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                         "Mark the finest numerical level as the reference.",
                     )
                 )
+
+    if not isinstance(ensemble.get("collect_garbage_between_members", False), bool):
+        issues.append(
+            _issue(
+                "error",
+                "ensemble.collect_garbage_between_members",
+                "collect_garbage_between_members must be true or false.",
+                "Leave it false for normal runs; enable it only for memory A/B tests.",
+            )
+        )
 
 
     # -------------------------------------------------------------------------

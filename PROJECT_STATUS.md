@@ -1,10 +1,31 @@
 # Project Status
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 Active branch: `develop`
 
-Current milestone: Full PySDM qualification and large-ensemble evidence completed
+Current milestone: Collision qualification and retained-memory A/B completed
+
+## Ensemble retained-memory ownership update
+
+Completed on 2026-07-15:
+- Added member/stage RSS, USS, GC-object, thread, and open-figure checkpoints to
+  reproducible PySDM ensemble benchmarks.
+- Added opt-in `gc.collect()` between members and a matched-workload A/B comparison
+  CLI. Normal ensemble execution keeps the option disabled.
+- Ran two 12-member standard real-PySDM ensembles. Explicit GC reclaimed objects and
+  produced 198.676 MiB of cumulative per-event RSS drops, but peak RSS was 0.310%
+  worse, first-to-last retained RSS was 1.515% worse, and wall time was 3.772% higher.
+- No Matplotlib figures accumulated. Streaming aggregation remained about 0.26 MiB
+  incremental RSS in both runs.
+- Results Dashboard now exposes raw stage checkpoints and member-boundary RSS/USS
+  trends. Machine-readable A/B evidence is preserved with the interpretation rule.
+
+Decision: keep member-boundary GC disabled by default. The result does not support
+GC-reclaimable Python cycles as the dominant retained-RSS explanation; the next
+performance experiment should isolate PySDM/Numba/backend lifetime at process exit.
+
+Evidence: [`docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md`](docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md)
 
 ## Collision-ON rain qualification update
 
@@ -26,9 +47,9 @@ Completed on 2026-07-15:
 
 Evidence: [`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md)
 
-Next priority: characterize retained memory ownership across ensemble members,
-then extend collision response qualification to higher resolution and multiple
-common random seeds.
+Next priority: extend collision response qualification to higher resolution and
+multiple common random seeds, then prototype member process isolation and a
+columnar internal cache.
 
 ## Portable path-budget hardening
 
@@ -76,8 +97,8 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Repeat qualification with collision enabled and a rain-producing configuration.
-2. Profile retained RSS ownership across ensemble members and backend/JIT lifetimes.
+1. Extend collision response qualification to higher resolution and common seeds.
+2. Test process-per-member isolation for backend/JIT retained memory.
 3. Compare a columnar internal cache with CSV using numerical-equality regressions.
 4. Validate the operational 1% transition floor against an observational dataset.
 

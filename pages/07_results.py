@@ -193,7 +193,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "research-quality-panels-20260714"
+RESULTS_UI_BUILD_ID = "ensemble-memory-checkpoints-20260715"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -264,6 +264,7 @@ spectrum_transition_robustness_df = loaded.get(
 )
 ensemble_aggregation_diagnostics = loaded.get("ensemble_aggregation_diagnostics", {})
 ensemble_benchmark = loaded.get("ensemble_benchmark", {})
+ensemble_memory_checkpoints = loaded.get("ensemble_memory_checkpoints", {})
 summary = loaded["summary"]
 metadata = loaded["metadata"]
 config = loaded["config"]
@@ -1025,6 +1026,77 @@ if is_ensemble:
                 "Peak RSS increase",
                 f"{(full_rss.get('peak_rss_increase_bytes') or 0) / (1024.0**2):.1f} MiB",
             )
+            memory_checkpoints = ensemble_benchmark.get(
+                "memory_checkpoint_summary", {}
+            )
+            if memory_checkpoints:
+                retained_cols = st.columns(4)
+                retained_cols[0].metric(
+                    "Member boundaries",
+                    memory_checkpoints.get("n_member_boundaries", 0),
+                )
+                retained_cols[1].metric(
+                    "First-to-last member RSS",
+                    f"{(memory_checkpoints.get('member_boundary_rss_increase_bytes') or 0) / (1024.0**2):.1f} MiB",
+                )
+                retained_cols[2].metric(
+                    "RSS slope/member",
+                    f"{(memory_checkpoints.get('member_boundary_rss_slope_bytes_per_member') or 0) / (1024.0**2):.2f} MiB",
+                )
+                retained_cols[3].metric(
+                    "GC event RSS reclaimed (sum)",
+                    f"{(memory_checkpoints.get('gc_reclaimed_rss_total_bytes') or 0) / (1024.0**2):.1f} MiB",
+                )
+                st.caption(str(memory_checkpoints.get("scope", "")))
+                gc_enabled = bool(
+                    ensemble_benchmark.get("collect_garbage_between_members", False)
+                )
+                st.caption(
+                    f"Member-boundary explicit GC: {'ON' if gc_enabled else 'OFF'}. "
+                    "The reclaimed value is the sum of per-member RSS drops, not net "
+                    "end-of-run memory saved."
+                )
+            checkpoint_rows = ensemble_memory_checkpoints.get("checkpoints", [])
+            if checkpoint_rows:
+                with st.expander("Show member/stage memory checkpoints"):
+                    checkpoint_df = pd.DataFrame(checkpoint_rows)
+                    visible_columns = [
+                        column
+                        for column in (
+                            "elapsed_seconds",
+                            "stage",
+                            "current",
+                            "total",
+                            "rss_bytes",
+                            "uss_bytes",
+                            "gc_tracked_objects",
+                            "num_threads",
+                            "matplotlib_open_figures",
+                        )
+                        if column in checkpoint_df.columns
+                    ]
+                    st.dataframe(
+                        checkpoint_df[visible_columns],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    member_boundaries = checkpoint_df[
+                        checkpoint_df.get("stage", pd.Series(dtype=str)).eq(
+                            "ensemble_member_complete"
+                        )
+                    ].copy()
+                    if not member_boundaries.empty:
+                        member_boundaries["rss_mib"] = (
+                            pd.to_numeric(member_boundaries["rss_bytes"], errors="coerce")
+                            / (1024.0**2)
+                        )
+                        member_boundaries["uss_mib"] = (
+                            pd.to_numeric(member_boundaries["uss_bytes"], errors="coerce")
+                            / (1024.0**2)
+                        )
+                        st.line_chart(
+                            member_boundaries.set_index("current")[["rss_mib", "uss_mib"]]
+                        )
             st.caption(str(ensemble_benchmark.get("interpretation", "")))
 
         bases = dash.ensemble_available_bases(ensemble_df)

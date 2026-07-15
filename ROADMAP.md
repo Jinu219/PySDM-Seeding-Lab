@@ -11,10 +11,20 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Profile retained RSS ownership across repeated ensemble members.
-2. Extend collision response qualification to higher resolution and multiple seeds.
+1. Extend collision response qualification to higher resolution and multiple seeds.
+2. Test process-per-member isolation for PySDM/Numba/backend retained memory.
 3. Prototype a columnar internal cache with CSV numerical-equality regression.
 4. Validate or revise the operational 1% transition floor using observations.
+
+Retained-memory gate completed on 2026-07-15:
+- Member/stage checkpoints now record RSS, USS, GC-tracked objects, threads, and
+  open Matplotlib figures during real-PySDM ensembles.
+- Matched 12-member standard runs compared normal execution with `gc.collect()`
+  after every member.
+- Explicit GC made peak RSS 0.310% worse, retained RSS 1.515% worse, and wall time
+  3.772% longer despite cumulative transient RSS drops of 198.676 MiB.
+- The default remains GC OFF. Process isolation is the next ownership experiment;
+  the evidence does not support Python cyclic garbage as the dominant owner.
 
 Research-evidence gate completed:
 - The standard full-PySDM qualification completed 27 cases / 54 model executions.
@@ -30,8 +40,8 @@ Research-evidence gate completed:
   in Results. Step 19 now has actual legacy-result and schema-migration fixtures.
 
 Next ordered gates:
-1. Retained-memory ownership profiling across ensemble members.
-2. Higher-resolution, multi-seed collision response qualification.
+1. Higher-resolution, multi-seed collision response qualification.
+2. Process-per-member retained-memory isolation benchmark.
 3. Columnar internal-cache prototype with CSV equality regression.
 4. Observational validation or revision of the operational 1% transition floor.
 

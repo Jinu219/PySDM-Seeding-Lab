@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import gc
 import json
 import time
 from datetime import datetime
@@ -709,6 +710,9 @@ def run_ensemble_experiment(
 
     member_records = []
     member_data_paths: list[Path] = []
+    collect_garbage = bool(
+        cfg.get("ensemble", {}).get("collect_garbage_between_members", False)
+    )
 
     for idx, seed in enumerate(seeds, start=1):
         emit_progress(progress_callback, "ensemble", idx + 1, n_members + 2, f"Running ensemble member {idx}/{n_members}")
@@ -762,11 +766,42 @@ def run_ensemble_experiment(
                 }
             )
 
+        emit_progress(
+            progress_callback,
+            "ensemble_member_complete_pre_gc",
+            idx,
+            n_members,
+            f"Completed ensemble member {idx}/{n_members} before optional garbage collection",
+        )
+        collected_objects = int(gc.collect()) if collect_garbage else 0
+        member_records[-1]["gc_collected_objects"] = collected_objects
+        emit_progress(
+            progress_callback,
+            "ensemble_member_complete",
+            idx,
+            n_members,
+            f"Completed ensemble member {idx}/{n_members}; gc_collected={collected_objects}",
+        )
+
     emit_progress(progress_callback, "ensemble", n_members + 2, n_members + 2, "Writing ensemble statistics")
+    emit_progress(
+        progress_callback,
+        "ensemble_aggregation_start",
+        0,
+        1,
+        "Starting streaming ensemble aggregation",
+    )
 
     member_summary_df = member_summary_rows(member_records)
     stats_df, aggregation_diagnostics = benchmark_ensemble_statistics_from_paths(
         member_data_paths
+    )
+    emit_progress(
+        progress_callback,
+        "ensemble_aggregation_complete",
+        1,
+        1,
+        "Completed streaming ensemble aggregation",
     )
 
     _write_yaml(run_dir / "config.yaml", cfg)
@@ -903,6 +938,14 @@ def run_ensemble_experiment(
             result_files=metadata_payload["result_files"],
             run_id=run_id,
         ),
+    )
+
+    emit_progress(
+        progress_callback,
+        "ensemble_complete",
+        n_members,
+        n_members,
+        "Completed ensemble result and reports",
     )
 
     if n_success == 0:

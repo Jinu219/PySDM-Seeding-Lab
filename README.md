@@ -37,6 +37,18 @@ Run an instrumented real-PySDM ensemble benchmark with:
 & .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile large --output-dir artifacts\ensemble_benchmark
 ```
 
+For a matched retained-memory A/B, rerun the same profile with
+`--gc-between-members`, then compare the two result directories:
+
+```powershell
+& .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile standard --gc-between-members --output-dir artifacts\ensemble_benchmark
+& .\.conda\python.exe scripts\compare_ensemble_memory_benchmarks.py --baseline BASELINE_RESULT_DIR --explicit-gc GC_RESULT_DIR --output docs\evidence\ensemble_memory_ab.json
+```
+
+Explicit member-boundary GC is diagnostic-only and remains disabled by default.
+The measured 12-member A/B did not reduce peak or retained RSS; see
+[`docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md`](docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md).
+
 The latest measured RSS and streaming-I/O record is in
 [`docs/evidence/ENSEMBLE_BENCHMARK_20260714.md`](docs/evidence/ENSEMBLE_BENCHMARK_20260714.md).
 The spectrum-transition threshold and checkpoint rationale is documented in
@@ -242,9 +254,9 @@ a particle-history activation event.
 
 Steps 0-19 and the current research-evidence pass are complete; see
 `DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: collision-ON convergence qualification, retained-memory ownership
-profiling, a columnar internal cache comparison, and observational calibration of
-the operational transition floor are the next gates.
+`ROADMAP.md`: higher-resolution multi-seed collision-response qualification,
+process-isolated backend memory measurement, a columnar internal cache comparison,
+and observational calibration of the operational transition floor are the next gates.
 
 ## Research Direction
 

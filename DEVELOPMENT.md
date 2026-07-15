@@ -1,5 +1,36 @@
 # Development Notes
 
+## Ensemble member-boundary retained-memory profiling
+
+Changes:
+- Added a process checkpoint profiler for ensemble member completion, optional GC,
+  streaming aggregation, result finalization, and CLI return boundaries.
+- Each checkpoint records RSS, USS, VMS, thread count, GC generation/object state,
+  and open Matplotlib figure count.
+- Added `ensemble.collect_garbage_between_members` with blocking boolean validation;
+  it defaults to false and is exposed by the benchmark CLI only as an A/B diagnostic.
+- Added a matched-workload comparison function and CLI that rejects mismatched
+  profiles/workloads and stores peak, retained, slope, and wall-time differences.
+- Added Results raw-checkpoint inspection and member-boundary RSS/USS line charts.
+
+Execution evidence:
+- Baseline and explicit-GC standard profiles each completed 12 real PySDM members.
+- Baseline: 475.329 s, 878.137 MiB peak increase, 252.883 MiB first-to-last
+  retention, 23.461 MiB/member fitted slope.
+- Explicit GC: 493.260 s, 880.859 MiB peak increase, 256.715 MiB retention,
+  24.472 MiB/member slope.
+- GC reduced tracked Python objects and caused 198.676 MiB of cumulative transient
+  RSS drops, but did not reduce peak or net retained RSS. No figures accumulated.
+
+Decision:
+- Keep explicit member-boundary GC disabled by default. The next memory experiment
+  is child-process isolation to probe PySDM/Numba/backend allocator lifetime.
+- Preserve the streaming aggregator, whose incremental RSS stayed near 0.26 MiB.
+
+Evidence:
+- `docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md`
+- `docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.json`
+
 ## Collision-ON rain qualification and OFAT execution design
 
 Changes:

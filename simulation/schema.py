@@ -143,6 +143,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             },
         ],
     },
+    "ensemble": {
+        "enabled": False,
+        "n_members": 5,
+        "seed_start": 1000,
+        "seed_step": 1,
+        "collect_garbage_between_members": False,
+    },
     "output": {
         "base_dir": "results",
         "save_config": True,

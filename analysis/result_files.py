@@ -200,6 +200,14 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
             "CSV scan, throughput, allocation, and RSS diagnostics."
         ),
     },
+    "ensemble_memory_checkpoints.json": {
+        "when": "During an instrumented PySDM ensemble benchmark",
+        "answers": "At which member or processing stage is process memory retained?",
+        "description": (
+            "Member/stage boundary RSS, USS, GC-tracked object, thread, and open-figure "
+            "evidence, including optional explicit-GC reclamation."
+        ),
+    },
     "sweep_summary.csv": {
         "when": "sweep 종료 직후",
         "answers": "어떤 parameter 조합이 가장 효과적이었는가",

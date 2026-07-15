@@ -1,0 +1,38 @@
+{
+  "build_id": "ensemble-memory-ab-comparison-v1-20260715",
+  "matched_workload": true,
+  "profile": "standard",
+  "workload": {
+    "n_members": 12,
+    "duration_seconds": 300,
+    "timestep_seconds": 10,
+    "background_superdroplets": 200,
+    "seeding_superdroplets": 200
+  },
+  "baseline": {
+    "full_run_elapsed_seconds": 475.3287574999995,
+    "peak_rss_increase_bytes": 920793088,
+    "member_boundary_rss_increase_bytes": 265166848,
+    "member_boundary_rss_slope_bytes_per_member": 24604514.46153846
+  },
+  "explicit_gc": {
+    "full_run_elapsed_seconds": 493.2601468000066,
+    "peak_rss_increase_bytes": 923648000,
+    "member_boundary_rss_increase_bytes": 269185024,
+    "member_boundary_rss_slope_bytes_per_member": 25660279.944055945,
+    "gc_reclaimed_rss_total_bytes": 208326656
+  },
+  "observed_differences": {
+    "peak_rss_improvement_percent": -0.310049243115083,
+    "member_boundary_rss_improvement_percent": -1.5153387500386173,
+    "member_boundary_slope_improvement_percent": -4.29094215278195,
+    "wall_time_overhead_percent": 3.7724183561536693
+  },
+  "conclusion": "no_observed_peak_and_retained_rss_reduction",
+  "recommend_collect_garbage_between_members_default": false,
+  "interpretation": "Positive improvement means the explicit-GC run used less RSS. The summed GC reclamation is event-level and can include memory allocated again by later members; it is not a net end-of-run saving. A matched A/B without peak and retained-RSS reduction does not support enabling explicit GC by default.",
+  "source_results": {
+    "baseline": "20260715_111635_143415_ensemble_benchmark_standard_single_ensemble",
+    "explicit_gc": "20260715_112442_693723_ensemble_benchmark_standard_single_ensemble"
+  }
+}

@@ -275,6 +275,37 @@ def check_rain_qualification_contract() -> None:
         raise RuntimeError("Rain qualification no longer enforces collision and rain signal.")
 
 
+def check_ensemble_memory_comparison_contract() -> None:
+    from analysis.resource_monitor import compare_ensemble_memory_benchmarks
+
+    baseline = {
+        "profile": "pilot",
+        "workload": {"n_members": 3},
+        "collect_garbage_between_members": False,
+        "full_run_elapsed_seconds": 10.0,
+        "full_process_rss": {"peak_rss_increase_bytes": 100},
+        "memory_checkpoint_summary": {
+            "member_boundary_rss_increase_bytes": 50,
+            "member_boundary_rss_slope_bytes_per_member": 25.0,
+        },
+    }
+    explicit_gc = {
+        "profile": "pilot",
+        "workload": {"n_members": 3},
+        "collect_garbage_between_members": True,
+        "full_run_elapsed_seconds": 11.0,
+        "full_process_rss": {"peak_rss_increase_bytes": 105},
+        "memory_checkpoint_summary": {
+            "member_boundary_rss_increase_bytes": 55,
+            "member_boundary_rss_slope_bytes_per_member": 27.5,
+            "gc_reclaimed_rss_total_bytes": 20,
+        },
+    }
+    comparison = compare_ensemble_memory_benchmarks(baseline, explicit_gc)
+    if comparison["recommend_collect_garbage_between_members_default"]:
+        raise RuntimeError("Memory comparison incorrectly recommends a regressive GC run.")
+
+
 def main() -> None:
     check_page_files()
     check_safe_read_csv_no_recursion()
@@ -282,6 +313,7 @@ def main() -> None:
     check_native_diagnostic_contract()
     check_result_path_policy()
     check_rain_qualification_contract()
+    check_ensemble_memory_comparison_contract()
     py_compile.compile(str(PROJECT_ROOT / "app.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "ui_helpers.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
@@ -307,6 +339,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_numerical_qualification.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_ensemble_benchmark.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_memory_benchmarks.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 
@@ -321,6 +354,7 @@ def main() -> None:
     print("Native diagnostic contract is complete (proxy-free synthetic mapping).")
     print("Portable result-path budget check passed.")
     print("Collision-ON rain qualification contract passed.")
+    print("Ensemble retained-memory A/B comparison contract passed.")
     print(f"Dashboard build: {getattr(dashboard, 'DASHBOARD_BUILD_ID', 'unknown')}")
 
 

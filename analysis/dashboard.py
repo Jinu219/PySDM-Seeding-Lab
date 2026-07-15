@@ -50,7 +50,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "rain-qualification-ofat-evidence-20260715"
+DASHBOARD_BUILD_ID = "ensemble-memory-checkpoints-20260715"
 
 
 @dataclass(frozen=True)
@@ -152,6 +152,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         pdf_report_path = entry.path / "report.pdf"
         aggregation_diagnostics_path = entry.path / "ensemble_aggregation_diagnostics.json"
         ensemble_benchmark_path = entry.path / "ensemble_benchmark.json"
+        ensemble_memory_checkpoints_path = entry.path / "ensemble_memory_checkpoints.json"
         diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         stats_df = safe_read_csv(stats_path)
@@ -180,6 +181,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "report_pdf": _read_bytes(pdf_report_path),
             "ensemble_aggregation_diagnostics": _read_json(aggregation_diagnostics_path),
             "ensemble_benchmark": _read_json(ensemble_benchmark_path),
+            "ensemble_memory_checkpoints": _read_json(ensemble_memory_checkpoints_path),
             "result_compatibility": compatibility,
             "files": {
                 "ensemble_statistics": stats_path,
@@ -194,6 +196,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "report_pdf": pdf_report_path,
                 "ensemble_aggregation_diagnostics": aggregation_diagnostics_path,
                 "ensemble_benchmark": ensemble_benchmark_path,
+                "ensemble_memory_checkpoints": ensemble_memory_checkpoints_path,
             },
         }
 

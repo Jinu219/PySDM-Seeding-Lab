@@ -21,6 +21,10 @@ from analysis.ensemble_statistics import (
     build_ensemble_statistics,
     build_ensemble_statistics_from_paths,
 )
+from analysis.resource_monitor import (
+    ProcessRSSCheckpointProfiler,
+    compare_ensemble_memory_benchmarks,
+)
 from analysis.numerical_convergence import (
     build_numerical_convergence_table,
     summarize_numerical_convergence,
@@ -477,6 +481,62 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertEqual(benchmark["simulation"]["adapter"], "pysdm_parcel")
         self.assertEqual(benchmark["ensemble"]["n_members"], 24)
         self.assertEqual(benchmark["environment"]["duration"], 600)
+        benchmark_gc = build_benchmark_config(
+            cfg,
+            profile="pilot",
+            collect_garbage_between_members=True,
+        )
+        self.assertTrue(
+            benchmark_gc["ensemble"]["collect_garbage_between_members"]
+        )
+        profiler = ProcessRSSCheckpointProfiler()
+        profiler("ensemble_member_complete_pre_gc", 1, 2, "before gc")
+        profiler("ensemble_member_complete", 1, 2, "after gc")
+        profiler("ensemble_member_complete_pre_gc", 2, 2, "before gc")
+        profiler("ensemble_member_complete", 2, 2, "after gc")
+        profile_summary = profiler.summary()
+        self.assertEqual(profile_summary["n_member_boundaries"], 2)
+        self.assertEqual(len(profile_summary["gc_reclaimed_rss_bytes"]), 2)
+
+        baseline_evidence = {
+            "profile": "standard",
+            "workload": {"n_members": 12},
+            "collect_garbage_between_members": False,
+            "full_run_elapsed_seconds": 100.0,
+            "full_process_rss": {"peak_rss_increase_bytes": 1_000},
+            "memory_checkpoint_summary": {
+                "member_boundary_rss_increase_bytes": 500,
+                "member_boundary_rss_slope_bytes_per_member": 50.0,
+            },
+        }
+        gc_evidence = {
+            "profile": "standard",
+            "workload": {"n_members": 12},
+            "collect_garbage_between_members": True,
+            "full_run_elapsed_seconds": 105.0,
+            "full_process_rss": {"peak_rss_increase_bytes": 1_010},
+            "memory_checkpoint_summary": {
+                "member_boundary_rss_increase_bytes": 510,
+                "member_boundary_rss_slope_bytes_per_member": 51.0,
+                "gc_reclaimed_rss_total_bytes": 200,
+            },
+        }
+        memory_comparison = compare_ensemble_memory_benchmarks(
+            baseline_evidence,
+            gc_evidence,
+        )
+        self.assertTrue(memory_comparison["matched_workload"])
+        self.assertEqual(
+            memory_comparison["conclusion"],
+            "no_observed_peak_and_retained_rss_reduction",
+        )
+        self.assertFalse(
+            memory_comparison["recommend_collect_garbage_between_members_default"]
+        )
+        self.assertAlmostEqual(
+            memory_comparison["observed_differences"]["wall_time_overhead_percent"],
+            5.0,
+        )
 
         pilot_with_duration = build_qualification_config(
             cfg,
@@ -655,6 +715,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         cfg["diagnostics"]["numerical_convergence"]["relative_tolerance_percent"] = 0.0
         cfg["diagnostics"]["spectrum_transition"]["rain_volume_fraction_threshold"] = 1.0
         cfg["sweep"]["design"] = "one_factor_at_reference"
+        cfg["ensemble"]["collect_garbage_between_members"] = "yes"
         error_fields = {
             issue.field
             for issue in validate_config_detailed(cfg)
@@ -673,6 +734,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             error_fields,
         )
         self.assertIn("sweep.parameters.0.reference", error_fields)
+        self.assertIn("ensemble.collect_garbage_between_members", error_fields)
 
     def test_placeholder_numerical_sweep_writes_convergence_audit(self):
         cfg = default_config()
