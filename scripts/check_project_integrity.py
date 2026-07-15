@@ -83,6 +83,7 @@ def check_page_files() -> None:
         "05_parameter_sweep.py",
         "06_run.py",
         "07_results.py",
+        "08_server_jobs.py",
     }
     forbidden = {
         "05_run.py",
@@ -380,6 +381,9 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "pages" / "08_server_jobs.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "server_jobs.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "server_job_worker.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_numerical_qualification.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_ensemble_benchmark.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_memory_benchmarks.py"), doraise=True)

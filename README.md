@@ -2,6 +2,14 @@
 
 PySDM Seeding Lab is a research-oriented simulation platform for designing, running, and visualizing cloud seeding experiments based on PySDM.
 
+For persistent Linux lab-server hosting, detached simulation jobs, SSH-tunnel
+access, and bounded multi-core sweep execution, see
+[`docs/SERVER_DEPLOYMENT.md`](docs/SERVER_DEPLOYMENT.md). The short server command is:
+
+```bash
+bash scripts/server_web.sh start
+```
+
 New results include Markdown, self-contained HTML, and paginated PDF research
 reports. The automatic PDF embeds the most relevant available water-budget,
 spectrum-transition, or numerical-convergence figure. Results Dashboard also
@@ -372,6 +380,9 @@ microphysics:
   collision:
   sedimentation:
 
+execution:
+  max_workers:  # parallel sweep cases; 1 keeps serial execution
+
 output:
   base_dir:
   save_config:
@@ -387,8 +398,10 @@ The app provides separate pages for editing the working configuration:
 - `02_aerosol.py`: background aerosol size distribution and hygroscopicity
 - `03_seeding.py`: seeding particle properties and injection timing
 - `04_dynamics.py`: dynamic parameters and future parameterization inputs
-- `05_run.py`: validation and simulation execution
-- `06_results.py`: result loading and basic visualization
+- `05_parameter_sweep.py`: sensitivity design, ensemble, and server worker settings
+- `06_run.py`: validation, foreground execution, and detached job submission
+- `07_results.py`: result loading and research visualization
+- `08_server_jobs.py`: persistent job progress, PID, result path, and worker logs
 
 All input pages edit `configs/default.yaml` as the current working configuration.
 Scenario files such as `configs/marine.yaml` and `configs/urban.yaml` can be loaded from the main app page.
@@ -939,6 +952,7 @@ ensemble.n_members
 ensemble.seed_start
 ensemble.seed_step
 ensemble.execution_backend  # in_process or subprocess
+execution.max_workers        # independent sweep-case worker processes
 ```
 
 When enabled, each case is repeated with different random seeds and summarized into:

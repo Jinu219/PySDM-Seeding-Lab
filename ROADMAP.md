@@ -2,14 +2,22 @@
 
 ## Current milestone snapshot (2026-07-15)
 
+Lab-server execution gate completed on 2026-07-15:
+- Added persistent headless Streamlit management, SSH-tunnel guidance, detached
+  experiment jobs, and a durable server-job monitor.
+- Added a bounded spawn-based process pool for independent sweep cases. Workers
+  are warm-reused within one sweep and exit when the pool closes.
+- The first server showcase is configured for four workers; worker count remains
+  bounded by case count and must be scaled against measured RAM.
+
 Process-isolation gate completed on 2026-07-15:
 - Added a production subprocess backend with durable per-member audit artifacts and
   separate child process-tree resource telemetry.
 - Matched 3-member PySDM pilots reduced cross-member parent RSS retention by 99.669%.
 - The isolated pilot also increased fair process-tree peak by 13.606% and wall time
   by 113.374%, so it remains an opt-in safety mechanism rather than the default.
-- The next performance gate is bounded-lifetime warm-worker batching. The planned
-  70-execution response run remains gated behind that resource plan.
+- The warm-worker prototype now exists. Its real-PySDM wall-time/RSS A/B benchmark
+  is the next gate before the planned 70-execution response run.
 
 Collision-ON rain qualification completed on 2026-07-15:
 - A new 7-case OFAT design replaced the 27-case Cartesian qualification grid.
@@ -20,8 +28,8 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Prototype bounded-lifetime warm-worker batches and measure reuse versus retention.
-2. Use those bounds to target a reduced 1600-super-droplet response plan.
+1. Benchmark serial versus 4/8-worker real-PySDM sweep wall time and process-tree RSS.
+2. Use those measured bounds to target a reduced 1600-super-droplet response plan.
 3. Prototype a columnar internal cache with CSV numerical-equality regression.
 4. Validate or revise the operational 1% transition floor using observations.
 
@@ -59,7 +67,7 @@ Research-evidence gate completed:
   in Results. Step 19 now has actual legacy-result and schema-migration fixtures.
 
 Next ordered gates:
-1. Bounded warm-worker batch prototype and A/B benchmark.
+1. Bounded warm-worker serial/4/8-worker real-PySDM A/B benchmark.
 2. Targeted, resource-bounded 1600-super-droplet response qualification.
 3. Columnar internal-cache prototype with CSV equality regression.
 4. Observational validation or revision of the operational 1% transition floor.

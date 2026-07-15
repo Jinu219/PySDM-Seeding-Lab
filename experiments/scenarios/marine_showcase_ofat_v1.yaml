@@ -136,6 +136,8 @@ config:
     seed_step: 1009
     execution_backend: in_process
     collect_garbage_between_members: false
+  execution:
+    max_workers: 4
   output:
     base_dir: results
     save_config: true

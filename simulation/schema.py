@@ -156,6 +156,12 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "execution_backend": "in_process",
         "collect_garbage_between_members": False,
     },
+    "execution": {
+        # Sweep cases are independent and can be distributed across a bounded
+        # process pool. Keep the portable/local default serial; lab servers can
+        # opt in after choosing a worker count that fits available RAM.
+        "max_workers": 1,
+    },
     "output": {
         "base_dir": "results",
         "save_config": True,

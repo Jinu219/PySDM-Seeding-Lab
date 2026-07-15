@@ -146,6 +146,27 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
             )
         )
 
+    execution = cfg.get("execution", {})
+    max_workers = execution.get("max_workers", 1)
+    if isinstance(max_workers, bool) or not isinstance(max_workers, int):
+        issues.append(
+            _issue(
+                "error",
+                "execution.max_workers",
+                "max_workers must be an integer.",
+                "Use 1 for serial execution or a positive worker count for a server sweep.",
+            )
+        )
+    elif not 1 <= max_workers <= 256:
+        issues.append(
+            _issue(
+                "error",
+                "execution.max_workers",
+                "max_workers must be between 1 and 256.",
+                "Choose a worker count that also fits the server memory budget.",
+            )
+        )
+
     if qualification.get("common_random_seed_pairing", False):
         if not ensemble.get("enabled", False):
             issues.append(

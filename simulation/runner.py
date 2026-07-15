@@ -3,7 +3,9 @@ from __future__ import annotations
 import copy
 import gc
 import json
+import multiprocessing as mp
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -1060,6 +1062,54 @@ def run_ensemble_experiment(
     return run_dir
 
 
+def _execute_sweep_case(
+    case_config: Dict[str, Any],
+    cases_dir: Path,
+    case_directory_name: str,
+    progress_callback: ProgressCallback = None,
+) -> Dict[str, str]:
+    """Execute one sweep case and return a process-safe status payload."""
+    case_status = "success"
+    case_error = ""
+    try:
+        case_result_dir = run_experiment(
+            case_config,
+            cases_dir,
+            progress_callback=progress_callback,
+            result_dir_name=case_directory_name,
+        )
+    except ExperimentExecutionError as exc:
+        case_result_dir = exc.result_dir
+        case_status = "failed"
+        case_error = str(exc)
+    except Exception as exc:
+        case_result_dir = cases_dir / case_directory_name
+        case_result_dir.mkdir(parents=True, exist_ok=True)
+        case_status = "failed"
+        case_error = repr(exc)
+
+    return {
+        "result_dir": str(case_result_dir),
+        "case_status": case_status,
+        "case_error": case_error,
+    }
+
+
+def _failed_parallel_case_payload(
+    cases_dir: Path,
+    case_directory_name: str,
+    exc: BaseException,
+) -> Dict[str, str]:
+    """Preserve a directory and diagnostic when a worker future itself fails."""
+    case_result_dir = cases_dir / case_directory_name
+    case_result_dir.mkdir(parents=True, exist_ok=True)
+    return {
+        "result_dir": str(case_result_dir),
+        "case_status": "failed",
+        "case_error": f"Parallel worker failure: {exc!r}",
+    }
+
+
 def run_parameter_sweep(
     config: Dict[str, Any],
     output_dir: Path,
@@ -1122,36 +1172,95 @@ def run_parameter_sweep(
         f"Generated {total_cases} sweep cases",
     )
 
-    rows = []
+    configured_workers = max(int(cfg.get("execution", {}).get("max_workers", 1)), 1)
+    effective_workers = min(configured_workers, total_cases)
+    outcomes: list[Dict[str, str] | None] = [None] * total_cases
 
-    for idx, case in enumerate(cases, start=1):
+    if effective_workers == 1:
+        for idx, case in enumerate(cases, start=1):
+            emit_progress(
+                progress_callback,
+                "sweep",
+                idx + 1,
+                total_cases + 2,
+                f"Running sweep case {idx}/{total_cases}: {case.case_name}",
+            )
+            outcomes[idx - 1] = _execute_sweep_case(
+                case.config,
+                cases_dir,
+                f"case_{idx:03d}",
+                progress_callback=progress_callback,
+            )
+    else:
         emit_progress(
             progress_callback,
             "sweep",
-            idx + 1,
+            1,
             total_cases + 2,
-            f"Running sweep case {idx}/{total_cases}: {case.case_name}",
+            f"Starting {total_cases} sweep cases with {effective_workers} worker processes",
         )
+        spawn_context = mp.get_context("spawn")
+        with ProcessPoolExecutor(
+            max_workers=effective_workers,
+            mp_context=spawn_context,
+        ) as executor:
+            future_map = {
+                executor.submit(
+                    _execute_sweep_case,
+                    case.config,
+                    cases_dir,
+                    f"case_{idx:03d}",
+                ): (idx, case)
+                for idx, case in enumerate(cases, start=1)
+            }
+            completed_cases = 0
+            for future in as_completed(future_map):
+                idx, case = future_map[future]
+                try:
+                    outcomes[idx - 1] = future.result()
+                except Exception as exc:
+                    outcomes[idx - 1] = _failed_parallel_case_payload(
+                        cases_dir,
+                        f"case_{idx:03d}",
+                        exc,
+                    )
+                completed_cases += 1
+                emit_progress(
+                    progress_callback,
+                    "sweep",
+                    completed_cases + 1,
+                    total_cases + 2,
+                    f"Completed sweep case {idx}/{total_cases}: {case.case_name}",
+                )
 
-        case_directory_name = f"case_{idx:03d}"
-        case_status = "success"
-        case_error = ""
-        try:
-            case_result_dir = run_experiment(
-                case.config,
+                case_mode = str(case.config.get("sweep", {}).get("run_mode", "control_vs_seeding"))
+                control_factor = 2 if case_mode == "control_vs_seeding" else 1
+                ensemble_cfg = case.config.get("ensemble", {})
+                member_factor = (
+                    max(int(ensemble_cfg.get("n_members", 1)), 1)
+                    if bool(ensemble_cfg.get("enabled", False))
+                    else 1
+                )
+                for completed_unit in range(control_factor * member_factor):
+                    emit_progress(
+                        progress_callback,
+                        "model_run_complete",
+                        completed_unit + 1,
+                        control_factor * member_factor,
+                        f"Completed parallel case unit: {case.case_name}",
+                    )
+
+    rows = []
+    for case, outcome in zip(cases, outcomes):
+        if outcome is None:
+            outcome = _failed_parallel_case_payload(
                 cases_dir,
-                progress_callback=progress_callback,
-                result_dir_name=case_directory_name,
+                f"case_{case.case_index:03d}",
+                RuntimeError("No worker outcome was returned."),
             )
-        except ExperimentExecutionError as exc:
-            case_result_dir = exc.result_dir
-            case_status = "failed"
-            case_error = str(exc)
-        except Exception as exc:
-            case_result_dir = cases_dir / case_directory_name
-            case_result_dir.mkdir(parents=True, exist_ok=True)
-            case_status = "failed"
-            case_error = repr(exc)
+        case_result_dir = Path(outcome["result_dir"])
+        case_status = outcome["case_status"]
+        case_error = outcome["case_error"]
 
         summary_path = case_result_dir / "summary.json"
         if summary_path.exists():
@@ -1213,6 +1322,8 @@ def run_parameter_sweep(
         "successful_cases": n_successful_cases,
         "partial_cases": n_partial_cases,
         "failed_cases": n_failed_cases,
+        "configured_case_workers": configured_workers,
+        "effective_case_workers": effective_workers,
     }
     convergence_input = (
         sweep_df[sweep_df["case_status"] != "failed"].copy()

@@ -28,6 +28,8 @@ class RunPlan:
     estimated_total_duration: str
     runtime_basis: str
     runtime_is_measured: bool
+    configured_workers: int
+    effective_workers: int
     runtime_warning: Optional[str] = None
 
 
@@ -49,6 +51,7 @@ def estimate_run_plan(config: Dict[str, Any], results_dir: Path | str = "results
     simulation = config.get("simulation", {})
     sweep = config.get("sweep", {})
     ensemble = config.get("ensemble", {})
+    execution = config.get("execution", {})
 
     mode = str(experiment.get("mode", "single"))
     adapter = str(simulation.get("adapter", "unknown"))
@@ -68,6 +71,8 @@ def estimate_run_plan(config: Dict[str, Any], results_dir: Path | str = "results
     ensemble_members = max(ensemble_members, 1)
 
     total_model_runs = case_count * ensemble_members * control_factor
+    configured_workers = max(int(execution.get("max_workers", 1)), 1)
+    effective_workers = min(configured_workers, case_count) if mode == "parameter_sweep" else 1
 
     if mode == "parameter_sweep":
         description = (
@@ -109,6 +114,8 @@ def estimate_run_plan(config: Dict[str, Any], results_dir: Path | str = "results
         estimated_total_duration=format_seconds(estimated_total_seconds),
         runtime_basis=timing.basis,
         runtime_is_measured=timing.is_measured,
+        configured_workers=configured_workers,
+        effective_workers=effective_workers,
         runtime_warning=runtime_warning,
     )
 
@@ -124,6 +131,8 @@ def run_plan_rows(config: Dict[str, Any], results_dir: Path | str = "results") -
         {"item": "Ensemble members", "value": plan.ensemble_members},
         {"item": "Control/seeding factor", "value": plan.control_factor},
         {"item": "Estimated model runs", "value": plan.total_model_runs},
+        {"item": "Configured case workers", "value": plan.configured_workers},
+        {"item": "Effective case workers", "value": plan.effective_workers},
         {"item": "Estimated time per run", "value": format_seconds(plan.estimated_seconds_per_run)},
         {"item": "Estimated total runtime", "value": plan.estimated_total_duration},
         {"item": "Runtime estimate basis", "value": plan.runtime_basis},

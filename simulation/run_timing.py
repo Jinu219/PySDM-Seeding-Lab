@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import statistics
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +14,8 @@ from typing import Any, Dict, List, Optional
 TIMING_HISTORY_FILENAME = ".run_timing_history.json"
 MAX_HISTORY_ENTRIES = 300
 MAX_ENTRIES_USED_FOR_ESTIMATE = 30
+HISTORY_LOCK_TIMEOUT_SECONDS = 10.0
+STALE_HISTORY_LOCK_SECONDS = 120.0
 
 # Fallback per-run duration (seconds) used only when no local history exists yet
 # for a given adapter. These are intentionally conservative "first guess" values;
@@ -50,6 +55,39 @@ def _load_history(results_dir: Path) -> List[Dict[str, Any]]:
         return []
 
 
+@contextmanager
+def _history_lock(results_dir: Path):
+    """Serialize the tiny timing-history update across sweep worker processes."""
+    lock_path = results_dir / f"{TIMING_HISTORY_FILENAME}.lock"
+    deadline = time.monotonic() + HISTORY_LOCK_TIMEOUT_SECONDS
+    lock_fd: int | None = None
+
+    while lock_fd is None:
+        try:
+            lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(lock_fd, str(os.getpid()).encode("ascii", errors="ignore"))
+        except FileExistsError:
+            try:
+                if time.time() - lock_path.stat().st_mtime > STALE_HISTORY_LOCK_SECONDS:
+                    lock_path.unlink(missing_ok=True)
+                    continue
+            except OSError:
+                pass
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for the run-timing history lock.")
+            time.sleep(0.05)
+
+    try:
+        yield
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+        try:
+            lock_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def record_run_timing(
     results_dir: Path,
     *,
@@ -66,25 +104,29 @@ def record_run_timing(
     runs, not precise performance analysis.
     """
     results_dir.mkdir(parents=True, exist_ok=True)
-    history = _load_history(results_dir)
-
-    history.append(
-        {
-            "adapter": str(adapter),
-            "mode": str(mode),
-            "elapsed_seconds": float(elapsed_seconds),
-            "n_sd_total": int(n_sd_total) if n_sd_total is not None else None,
-            "recorded_at": datetime.now().isoformat(timespec="seconds"),
-        }
-    )
-
-    if len(history) > MAX_HISTORY_ENTRIES:
-        history = history[-MAX_HISTORY_ENTRIES:]
-
     try:
-        with _history_path(results_dir).open("w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
-    except OSError:
+        with _history_lock(results_dir):
+            history = _load_history(results_dir)
+            history.append(
+                {
+                    "adapter": str(adapter),
+                    "mode": str(mode),
+                    "elapsed_seconds": float(elapsed_seconds),
+                    "n_sd_total": int(n_sd_total) if n_sd_total is not None else None,
+                    "recorded_at": datetime.now().isoformat(timespec="seconds"),
+                }
+            )
+            if len(history) > MAX_HISTORY_ENTRIES:
+                history = history[-MAX_HISTORY_ENTRIES:]
+
+            history_path = _history_path(results_dir)
+            temp_path = history_path.with_name(
+                f"{history_path.name}.{os.getpid()}.tmp"
+            )
+            with temp_path.open("w", encoding="utf-8") as f:
+                json.dump(history, f, ensure_ascii=False, indent=2)
+            os.replace(temp_path, history_path)
+    except (OSError, TimeoutError):
         # Timing history is a best-effort convenience feature; never fail a run
         # over a filesystem write issue here.
         pass

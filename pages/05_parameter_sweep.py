@@ -65,6 +65,7 @@ if scenario_memo:
 sweep = cfg.setdefault("sweep", {})
 experiment = cfg.setdefault("experiment", {})
 ensemble = cfg.setdefault("ensemble", {})
+execution = cfg.setdefault("execution", {})
 
 with st.container(border=True):
     st.subheader("Execution Design")
@@ -173,6 +174,33 @@ with st.container(border=True):
             )
         st.caption(
             "Ensemble은 stochastic uncertainty용입니다. timestep/super-droplet sweep은 별도의 numerical convergence 실험으로 해석하세요."
+        )
+
+
+with st.container(border=True):
+    st.subheader("Server / Parallel Execution")
+    worker_col, guidance_col = st.columns([1, 2])
+    with worker_col:
+        execution["max_workers"] = st.number_input(
+            "Maximum parallel sweep workers",
+            min_value=1,
+            max_value=256,
+            value=int(execution.get("max_workers", 1)),
+            step=1,
+            help=(
+                "Only independent sweep cases run in parallel. Ensemble members inside "
+                "one case remain sequential, preventing nested process oversubscription."
+            ),
+        )
+    with guidance_col:
+        st.info(
+            "Use 1 on a laptop. On a lab server, start with 4 workers and raise it only "
+            "after checking RAM. Recent real-PySDM measurements reached about 1 GiB per "
+            "active worker, so 20 workers can require more than 20 GiB plus overhead."
+        )
+        st.caption(
+            "The effective worker count is min(max_workers, number of sweep cases). "
+            "A 10-case OFAT scenario therefore uses at most 10 workers even if 20 is configured."
         )
 
 

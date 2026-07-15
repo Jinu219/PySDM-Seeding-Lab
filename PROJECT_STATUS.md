@@ -4,7 +4,33 @@ Last updated: 2026-07-15
 
 Active branch: `develop`
 
-Current milestone: Process-isolated ensemble backend and matched PySDM A/B completed
+Current milestone: Linux server deployment and bounded multi-core sweep execution completed
+
+## Lab-server and bounded parallel execution update
+
+Completed on 2026-07-15:
+- Added a Linux `nohup` service script with start, stop, restart, status, PID,
+  private log, headless Streamlit, configurable interpreter/host/port, and a
+  secure loopback-plus-SSH-tunnel default.
+- Added detached experiment jobs. Each job preserves an immutable YAML snapshot,
+  PID, state, progress, error, log, and result path under `.runtime/jobs/`; it is
+  independent of browser and Streamlit page lifetimes.
+- Added the Server Jobs page for persistent monitoring and diagnostics.
+- Added bounded process-pool execution for independent sweep cases through
+  `execution.max_workers`. Ensemble members remain sequential inside each worker,
+  preventing nested oversubscription.
+- Process workers use spawn semantics and are reused across cases until the sweep
+  ends. Timing-history writes are now inter-process locked and atomically replaced.
+- The marine showcase scenario starts at four workers. Its 10 cases can use at
+  most 10 workers; a 20-worker setting only becomes effective for 20 or more cases.
+- Added server deployment, SSH tunnel, RAM sizing, and rollout guidance under
+  `docs/SERVER_DEPLOYMENT.md`.
+- All 37 unit/integration tests and project integrity passed. Parameter Sweep,
+  Run, and Server Jobs AppTests rendered with zero exceptions and zero errors.
+
+Decision: server use is supported, but worker count remains opt-in and defaults to
+one. Recent PySDM evidence reached about 1.03 GiB per active isolated child, so the
+first lab-server run should use four workers and scale only after measuring RAM.
 
 ## Process-isolated ensemble backend update
 
