@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import reduce
-from operator import mul
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from simulation.run_timing import estimate_seconds_per_run, format_seconds
+from simulation.sweep import count_sweep_cases
 
 # Above this many total model runs, an unmeasured (no history yet) runtime
 # estimate is treated as too uncertain to trust at face value, and the UI
@@ -34,17 +33,9 @@ class RunPlan:
 
 def _sweep_case_count(config: Dict[str, Any]) -> int:
     sweep = config.get("sweep", {})
-    params = sweep.get("parameters", []) or []
-
-    if not params:
+    total = count_sweep_cases(config)
+    if total == 0:
         return 1
-
-    lengths: List[int] = []
-    for param in params:
-        values = param.get("values", [])
-        lengths.append(max(len(values), 1))
-
-    total = reduce(mul, lengths, 1)
     max_runs = int(sweep.get("max_runs", total))
     return min(total, max_runs)
 

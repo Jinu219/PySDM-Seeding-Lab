@@ -228,10 +228,14 @@ def _parse_values(spec: SweepParameterSpec, raw_text: str) -> list[Any]:
 
 
 catalog_lookup = parameter_spec_lookup()
-existing_params = {
-    str(param.get("name")): list(param.get("values", []))
+existing_parameter_definitions = {
+    str(param.get("name")): dict(param)
     for param in sweep.get("parameters", [])
     if param.get("name") and isinstance(param.get("values", []), list)
+}
+existing_params = {
+    name: list(param.get("values", []))
+    for name, param in existing_parameter_definitions.items()
 }
 
 source_identity = str(
@@ -318,14 +322,32 @@ for spec in COMMON_SWEEP_PARAMETERS:
         continue
     try:
         raw_text = spec.default_values if spec.value_type == "bool" else str(st.session_state[_values_key(spec)])
-        params.append({"name": spec.name, "values": _parse_values(spec, raw_text)})
+        values = _parse_values(spec, raw_text)
+        parameter = {"name": spec.name, "values": values}
+        existing_reference = existing_parameter_definitions.get(spec.name, {}).get(
+            "reference"
+        )
+        if (
+            isinstance(existing_reference, str)
+            and existing_reference in {"min", "max"}
+        ) or any(existing_reference == value for value in values):
+            parameter["reference"] = existing_reference
+        params.append(parameter)
     except Exception as exc:
         parse_error = exc
         break
 
 # Preserve advanced dotted-key parameters that are not yet part of the common catalog.
 custom_params = [
-    {"name": name, "values": values}
+    {
+        "name": name,
+        "values": values,
+        **(
+            {"reference": existing_parameter_definitions[name]["reference"]}
+            if "reference" in existing_parameter_definitions[name]
+            else {}
+        ),
+    }
     for name, values in existing_params.items()
     if name not in catalog_lookup
 ]

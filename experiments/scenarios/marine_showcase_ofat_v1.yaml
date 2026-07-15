@@ -1,0 +1,143 @@
+metadata:
+  name: Marine Showcase OFAT v1
+  slug: marine_showcase_ofat_v1
+  memo: 실제 PySDM collision-ON 강우 생성 조건에서 시딩 입자 크기, 흡습성, 농도, 주입 시점과 collision 효과를 3개 공통 seed로 비교하는 종합 시연 시나리오입니다.
+  created_at: '2026-07-15T15:23:47'
+config:
+  schema_version: 1
+  experiment:
+    name: marine_showcase_ofat_v1
+    mode: parameter_sweep
+    description: Rain-producing marine warm-cloud OFAT sensitivity showcase with three common seeds.
+    random_seed: 32001
+  simulation:
+    adapter: pysdm_parcel
+    case_name: base
+    notes: Exploratory physical sensitivity run; absolute rain state is qualified, but seeding-minus-control response is not yet quantitatively converged.
+  environment:
+    temperature: 300.0
+    pressure: 100000.0
+    water_vapour_mixing_ratio: 0.024
+    relative_humidity: 96.0
+    initial_altitude: 0.0
+    updraft_velocity: 0.8
+    duration: 1500
+    timestep: 5
+  background_aerosol:
+    distribution_type: single_lognormal
+    number_concentration: 80.0
+    number_superdroplets: 800
+    dry_radius: 9.0e-08
+    geometric_sigma: 1.5
+    kappa: 0.7
+    particle_density: 2160.0
+    chemical_composition: sea_salt_mixed
+  seeding:
+    enabled: true
+    material_type: hygroscopic
+    dry_radius: 1.0e-06
+    geometric_sigma: 1.2
+    kappa: 0.8
+    particle_density: 1770.0
+    number_concentration: 10.0
+    number_superdroplets: 800
+    injection_start: 900
+    injection_end: 1200
+    injection_altitude: 500.0
+    delivery_method: idealized_uniform
+  dynamics:
+    updraft_strength: 0.8
+    downdraft_strength: 0.0
+    turbulence_intensity: 0.1
+    entrainment_rate: 0.0
+    detrainment_rate: 0.0
+    wind_shear: 0.0
+    convergence: 0.0
+    cape: 0.0
+    cin: 0.0
+  microphysics:
+    condensation: true
+    collision: true
+    sedimentation: false
+  diagnostics:
+    growth_pathway_mode: true
+    activation_radius_threshold: 5.0e-07
+    rain_radius_threshold: 2.5e-05
+    wet_radius_spectrum:
+      enabled: true
+      min_radius: 5.0e-08
+      max_radius: 0.001
+      n_bins: 32
+      checkpoint_times: []
+      checkpoint_interval_seconds: 10.0
+      threshold_factors:
+      - 0.8
+      - 1.0
+      - 1.2
+    water_budget:
+      enabled: true
+      warning_relative_drift_percent: 0.01
+      failure_relative_drift_percent: 0.1
+    numerical_convergence:
+      enabled: false
+      relative_tolerance_percent: 5.0
+      relative_reference_floor: 1.0e-12
+      metrics: []
+    spectrum_transition:
+      enabled: true
+      rain_volume_fraction_threshold: 0.01
+      rain_volume_fraction_thresholds:
+      - 0.005
+      - 0.01
+      - 0.02
+  sweep:
+    design: one_factor_at_reference
+    run_mode: control_vs_seeding
+    max_runs: 20
+    ranking_metric: ensemble.metrics.rain_water_mixing_ratio_diff_final_mean
+    parameters:
+    - name: seeding.dry_radius
+      values:
+      - 5.0e-07
+      - 1.0e-06
+      - 2.0e-06
+      reference: 1.0e-06
+    - name: seeding.kappa
+      values:
+      - 0.4
+      - 0.8
+      - 1.2
+      reference: 0.8
+    - name: seeding.number_concentration
+      values:
+      - 1.0
+      - 10.0
+      - 100.0
+      reference: 10.0
+    - name: seeding.injection_start
+      values:
+      - 600
+      - 900
+      - 1200
+      reference: 900
+    - name: seeding.injection_duration
+      values:
+      - 300
+      reference: 300
+    - name: microphysics.collision
+      values:
+      - false
+      - true
+      reference: true
+  ensemble:
+    enabled: true
+    n_members: 3
+    seed_start: 32001
+    seed_step: 1009
+    execution_backend: in_process
+    collect_garbage_between_members: false
+  output:
+    base_dir: results
+    save_config: true
+    save_summary: true
+    save_timeseries: true

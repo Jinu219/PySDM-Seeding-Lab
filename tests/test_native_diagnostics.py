@@ -44,6 +44,7 @@ from analysis.spectrum_transition import (
 )
 from analysis.water_budget import build_water_budget_table, summarize_water_budget
 from simulation.builder import build_run_spec
+from simulation.experiment_manager import apply_scenario_identity, read_scenario
 from simulation.pysdm_parcel_adapter import (
     _output_to_dataframe,
     run_pysdm_parcel_simulation,
@@ -62,6 +63,7 @@ from simulation.runner import (
     run_experiment,
     run_parameter_sweep,
 )
+from simulation.run_plan import estimate_run_plan
 from simulation.schema import default_config
 from simulation.sweep import generate_sweep_cases
 from simulation.validation import validate_config_detailed
@@ -98,6 +100,75 @@ def _small_native_config() -> dict:
 
 
 class NativeDiagnosticMappingTests(unittest.TestCase):
+    def test_marine_showcase_scenario_is_runnable(self):
+        scenario_path = (
+            Path(__file__).resolve().parents[1]
+            / "experiments"
+            / "scenarios"
+            / "marine_showcase_ofat_v1.yaml"
+        )
+        payload = read_scenario(scenario_path)
+        cfg = apply_scenario_identity(payload["config"], scenario_path)
+        cases = generate_sweep_cases(cfg)
+        plan = estimate_run_plan(cfg)
+        errors = [
+            issue
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        ]
+        case_errors = [
+            issue
+            for case in cases
+            for issue in validate_config_detailed(case.config)
+            if issue.severity == "error"
+        ]
+
+        self.assertFalse(errors)
+        self.assertFalse(case_errors)
+        self.assertEqual(len(cases), 10)
+        self.assertEqual(plan.total_model_runs, 60)
+        self.assertEqual(cfg["simulation"]["adapter"], "pysdm_parcel")
+        self.assertEqual(cfg["ensemble"]["execution_backend"], "in_process")
+        self.assertEqual(
+            sorted(
+                {
+                    (
+                        case.config["seeding"]["injection_start"],
+                        case.config["seeding"]["injection_end"],
+                    )
+                    for case in cases
+                }
+            ),
+            [(600, 900), (900, 1200), (1200, 1500)],
+        )
+
+    def test_run_plan_uses_ofat_case_count(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "parameter_sweep"
+        cfg["sweep"].update(
+            {
+                "design": "one_factor_at_reference",
+                "parameters": [
+                    {
+                        "name": "seeding.kappa",
+                        "values": [0.4, 0.8, 1.2],
+                        "reference": 0.8,
+                    },
+                    {
+                        "name": "microphysics.collision",
+                        "values": [False, True],
+                        "reference": True,
+                    },
+                ],
+            }
+        )
+        cfg["ensemble"].update({"enabled": True, "n_members": 3})
+
+        plan = estimate_run_plan(cfg)
+
+        self.assertEqual(plan.case_count, 4)
+        self.assertEqual(plan.total_model_runs, 24)
+
     def test_nested_sweep_ensemble_uses_compact_paths(self):
         cfg = default_config()
         cfg["experiment"]["name"] = "long experiment name " * 5
