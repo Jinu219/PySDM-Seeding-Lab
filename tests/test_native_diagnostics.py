@@ -23,6 +23,7 @@ from analysis.ensemble_statistics import (
 )
 from analysis.resource_monitor import (
     ProcessRSSCheckpointProfiler,
+    compare_ensemble_execution_backends,
     compare_ensemble_memory_benchmarks,
 )
 from analysis.numerical_convergence import (
@@ -427,6 +428,86 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertTrue(pdf_report.startswith(b"%PDF"))
         self.assertTrue(aggregation["process_rss"]["available"])
 
+    def test_subprocess_ensemble_preserves_member_audit_and_resource_data(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "single"
+        cfg["simulation"]["adapter"] = "placeholder_warm_cloud"
+        cfg["environment"]["duration"] = 20
+        cfg["environment"]["timestep"] = 10
+        cfg.setdefault("ensemble", {}).update(
+            {
+                "enabled": True,
+                "n_members": 2,
+                "execution_backend": "subprocess",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result_dir = run_experiment(cfg, Path(tmp_dir))
+            member_summary = pd.read_csv(result_dir / "member_summary.csv")
+            summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
+            member_dirs = sorted((result_dir / "members").glob("member_*"))
+            audit_files_exist = all(
+                (member_dir / filename).exists()
+                for member_dir in member_dirs
+                for filename in (
+                    "isolated_member_config.yaml",
+                    "isolated_member_stdout.log",
+                    "isolated_member_stderr.log",
+                    "isolated_member_status.json",
+                )
+            )
+
+        self.assertEqual(len(member_summary), 2)
+        self.assertTrue(member_summary["success"].all())
+        self.assertEqual(set(member_summary["execution_backend"]), {"subprocess"})
+        self.assertTrue((member_summary["member_process_return_code"] == 0).all())
+        self.assertTrue(audit_files_exist)
+        resources = summary["ensemble"]["member_process_resources"]
+        self.assertTrue(resources["member_process_isolation"])
+        self.assertEqual(resources["successful_child_processes"], 2)
+        self.assertGreater(resources["max_child_process_tree_rss_bytes"], 0)
+
+    def test_invalid_ensemble_execution_backend_is_blocking(self):
+        cfg = default_config()
+        cfg["ensemble"]["execution_backend"] = "thread"
+        fields = {
+            issue.field
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        }
+        self.assertIn("ensemble.execution_backend", fields)
+
+    def test_subprocess_member_failure_preserves_child_error(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "single"
+        cfg["simulation"]["adapter"] = "missing_test_adapter"
+        cfg.setdefault("ensemble", {}).update(
+            {
+                "enabled": True,
+                "n_members": 1,
+                "execution_backend": "subprocess",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(ExperimentExecutionError) as raised:
+                run_ensemble_experiment(cfg, Path(tmp_dir))
+            result_dir = raised.exception.result_dir
+            member_summary = pd.read_csv(result_dir / "member_summary.csv")
+            status_path = (
+                result_dir
+                / "members"
+                / "member_001"
+                / "isolated_member_status.json"
+            )
+            child_status = json.loads(status_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(member_summary.loc[0, "execution_backend"], "subprocess")
+        self.assertNotEqual(member_summary.loc[0, "member_process_return_code"], 0)
+        self.assertFalse(child_status["success"])
+        self.assertIn("adapter", child_status["error_message"].lower())
+
     def test_pdf_report_and_qualification_plan_contracts(self):
         cfg = default_config()
         metadata = {
@@ -512,6 +593,15 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertTrue(
             benchmark_gc["ensemble"]["collect_garbage_between_members"]
         )
+        benchmark_subprocess = build_benchmark_config(
+            cfg,
+            profile="pilot",
+            member_execution_backend="subprocess",
+        )
+        self.assertEqual(
+            benchmark_subprocess["ensemble"]["execution_backend"],
+            "subprocess",
+        )
         profiler = ProcessRSSCheckpointProfiler()
         profiler("ensemble_member_complete_pre_gc", 1, 2, "before gc")
         profiler("ensemble_member_complete", 1, 2, "after gc")
@@ -560,6 +650,42 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             memory_comparison["observed_differences"]["wall_time_overhead_percent"],
             5.0,
         )
+
+        backend_baseline = {
+            **baseline_evidence,
+            "member_execution_backend": "in_process",
+            "full_process_rss": {
+                "process_tree": {"peak_rss_increase_bytes": 1_000},
+            },
+        }
+        backend_isolated = {
+            **baseline_evidence,
+            "member_execution_backend": "subprocess",
+            "full_run_elapsed_seconds": 130.0,
+            "full_process_rss": {
+                "process_tree": {"peak_rss_increase_bytes": 950},
+            },
+            "memory_checkpoint_summary": {
+                "member_boundary_rss_increase_bytes": 50,
+            },
+            "member_process_resources": {
+                "max_child_process_tree_rss_bytes": 800,
+            },
+        }
+        backend_comparison = compare_ensemble_execution_backends(
+            backend_baseline,
+            backend_isolated,
+        )
+        self.assertEqual(
+            backend_comparison["conclusion"],
+            "observed_parent_retained_rss_release",
+        )
+        self.assertTrue(
+            backend_comparison[
+                "recommend_subprocess_for_memory_bounded_ensembles"
+            ]
+        )
+        self.assertFalse(backend_comparison["recommend_subprocess_as_default"])
 
         pilot_with_duration = build_qualification_config(
             cfg,

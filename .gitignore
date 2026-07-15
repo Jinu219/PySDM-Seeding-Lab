@@ -19,3 +19,4 @@ logs/
 # summaries under docs/evidence instead of the raw member/case directories.
 artifacts/numerical_qualification/
 artifacts/ensemble_benchmark/
+artifacts/ensemble_backend_ab/

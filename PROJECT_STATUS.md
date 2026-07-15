@@ -4,7 +4,33 @@ Last updated: 2026-07-15
 
 Active branch: `develop`
 
-Current milestone: Common-seed rain-response pilot and retained-memory A/B completed
+Current milestone: Process-isolated ensemble backend and matched PySDM A/B completed
+
+## Process-isolated ensemble backend update
+
+Completed on 2026-07-15:
+- Added opt-in `ensemble.execution_backend: subprocess`. Every member runs in a
+  fresh Python process and preserves its normalized config, status, stdout, stderr,
+  return code, elapsed time, and sampled child process-tree peak RSS.
+- Kept `in_process` as the compatibility and speed default. Invalid backend values
+  are blocking validation errors, and the Parameter Sweep page explains the choice.
+- Ensemble summaries and Results now separate parent/member-boundary RSS from child
+  peak RSS. The benchmark samples the fair parent-plus-live-children process tree.
+- Matched real-PySDM 3-member pilots both succeeded. Subprocess reduced first-to-last
+  parent RSS from 37.797 MiB to 0.125 MiB (99.669%), confirming process-lifetime
+  ownership of the retained memory.
+- The tradeoff was unfavorable for a default: wall time increased from 248.725 s
+  to 530.714 s (+113.374%), and process-tree peak increase rose from 879.238 MiB
+  to 998.867 MiB (+13.606%).
+- All 32 unit/integration tests and project integrity passed. Parameter Sweep and
+  Results AppTests rendered with zero exceptions and zero error elements.
+
+Decision: keep subprocess opt-in. It controls cross-member retention but does not
+lower instantaneous memory or runtime for the tested pilot. The next performance
+prototype should use bounded-lifetime warm workers or batches before attempting the
+70-execution common-seed standard qualification.
+
+Evidence: [`docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md`](docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md)
 
 ## Higher-resolution common-seed rain-response update
 
@@ -71,8 +97,8 @@ Completed on 2026-07-15:
 
 Evidence: [`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md)
 
-Next priority: prototype member process isolation, then use its resource bounds to
-target the planned 1600-super-droplet common-seed response qualification.
+Next priority: prototype bounded-lifetime warm worker batches, then use the measured
+resource bounds to target—not blindly launch—the 1600-super-droplet response plan.
 
 ## Portable path-budget hardening
 

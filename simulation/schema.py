@@ -17,6 +17,11 @@ ADAPTER_NAMES = [
     "pysdm_parcel",
 ]
 
+ENSEMBLE_EXECUTION_BACKENDS = [
+    "in_process",
+    "subprocess",
+]
+
 SEEDING_MATERIAL_TYPES = [
     "hygroscopic",
     "custom",
@@ -148,6 +153,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "n_members": 5,
         "seed_start": 1000,
         "seed_step": 1,
+        "execution_backend": "in_process",
         "collect_garbage_between_members": False,
     },
     "output": {

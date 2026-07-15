@@ -7,6 +7,7 @@ from simulation.schema import (
     ADAPTER_NAMES,
     AEROSOL_DISTRIBUTION_TYPES,
     DELIVERY_METHODS,
+    ENSEMBLE_EXECUTION_BACKENDS,
     EXPERIMENT_MODES,
     SEEDING_MATERIAL_TYPES,
     SCHEMA_VERSION,
@@ -132,6 +133,16 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 "ensemble.collect_garbage_between_members",
                 "collect_garbage_between_members must be true or false.",
                 "Leave it false for normal runs; enable it only for memory A/B tests.",
+            )
+        )
+
+    if ensemble.get("execution_backend", "in_process") not in ENSEMBLE_EXECUTION_BACKENDS:
+        issues.append(
+            _issue(
+                "error",
+                "ensemble.execution_backend",
+                f"execution_backend must be one of {ENSEMBLE_EXECUTION_BACKENDS}.",
+                "Use in_process for minimum overhead or subprocess for member-level memory isolation.",
             )
         )
 

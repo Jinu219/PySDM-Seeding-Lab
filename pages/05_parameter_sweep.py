@@ -134,6 +134,43 @@ with st.container(border=True):
         )
 
     if ensemble.get("enabled", False):
+        backend_col, gc_col = st.columns([1.3, 1])
+        with backend_col:
+            backend_options = ["in_process", "subprocess"]
+            current_backend = str(ensemble.get("execution_backend", "in_process"))
+            ensemble["execution_backend"] = st.selectbox(
+                "Member execution backend",
+                backend_options,
+                index=(
+                    backend_options.index(current_backend)
+                    if current_backend in backend_options
+                    else 0
+                ),
+                format_func=lambda value: (
+                    "In-process (faster)"
+                    if value == "in_process"
+                    else "Subprocess (memory-isolated)"
+                ),
+                help=(
+                    "Subprocess starts a fresh Python process for every member so native/JIT "
+                    "memory is returned to the OS when that member exits."
+                ),
+            )
+        with gc_col:
+            ensemble["collect_garbage_between_members"] = st.toggle(
+                "Explicit GC between members",
+                value=bool(
+                    ensemble.get("collect_garbage_between_members", False)
+                ),
+                disabled=ensemble["execution_backend"] == "subprocess",
+                help="Diagnostic A/B option for the in-process backend.",
+            )
+        if ensemble["execution_backend"] == "subprocess":
+            st.info(
+                "Memory isolation is enabled. Each member keeps its config, status, stdout, "
+                "stderr, elapsed time, and child-process peak RSS in the result folder. "
+                "Interpreter and PySDM/Numba startup overhead is paid once per member."
+            )
         st.caption(
             "Ensemble은 stochastic uncertainty용입니다. timestep/super-droplet sweep은 별도의 numerical convergence 실험으로 해석하세요."
         )

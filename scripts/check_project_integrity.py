@@ -290,7 +290,10 @@ def check_rain_qualification_contract() -> None:
 
 
 def check_ensemble_memory_comparison_contract() -> None:
-    from analysis.resource_monitor import compare_ensemble_memory_benchmarks
+    from analysis.resource_monitor import (
+        compare_ensemble_execution_backends,
+        compare_ensemble_memory_benchmarks,
+    )
 
     baseline = {
         "profile": "pilot",
@@ -319,6 +322,31 @@ def check_ensemble_memory_comparison_contract() -> None:
     if comparison["recommend_collect_garbage_between_members_default"]:
         raise RuntimeError("Memory comparison incorrectly recommends a regressive GC run.")
 
+    in_process = {
+        **baseline,
+        "member_execution_backend": "in_process",
+        "full_process_rss": {
+            "process_tree": {"peak_rss_increase_bytes": 100},
+        },
+    }
+    isolated = {
+        **baseline,
+        "member_execution_backend": "subprocess",
+        "full_run_elapsed_seconds": 13.0,
+        "full_process_rss": {
+            "process_tree": {"peak_rss_increase_bytes": 95},
+        },
+        "memory_checkpoint_summary": {
+            "member_boundary_rss_increase_bytes": 5,
+        },
+        "member_process_resources": {
+            "max_child_process_tree_rss_bytes": 80,
+        },
+    }
+    backend_comparison = compare_ensemble_execution_backends(in_process, isolated)
+    if not backend_comparison["recommend_subprocess_for_memory_bounded_ensembles"]:
+        raise RuntimeError("Backend comparison lost the bounded-memory recommendation.")
+
 
 def main() -> None:
     check_page_files()
@@ -333,6 +361,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "path_policy.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "member_process.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "native_parcel_simulation.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "pysdm_parcel_adapter.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "wet_radius_spectrum.py"), doraise=True)
@@ -354,6 +383,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_numerical_qualification.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_ensemble_benchmark.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_memory_benchmarks.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_execution_backends.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 

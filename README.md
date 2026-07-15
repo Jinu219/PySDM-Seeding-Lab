@@ -60,6 +60,19 @@ Explicit member-boundary GC is diagnostic-only and remains disabled by default.
 The measured 12-member A/B did not reduce peak or retained RSS; see
 [`docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md`](docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md).
 
+For member-level process isolation, run a matched backend A/B:
+
+```powershell
+& .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile pilot --member-execution-backend in_process --output-dir artifacts\ensemble_backend_ab
+& .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile pilot --member-execution-backend subprocess --output-dir artifacts\ensemble_backend_ab
+& .\.conda\python.exe scripts\compare_ensemble_execution_backends.py --in-process IN_PROCESS_RESULT --subprocess SUBPROCESS_RESULT --output docs\evidence\ensemble_backend_ab.json
+```
+
+`subprocess` returns almost all cross-member retained parent RSS at child exit, but
+the measured pilot doubled runtime and raised process-tree peak. It therefore
+remains opt-in; see
+[`docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md`](docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md).
+
 The latest measured RSS and streaming-I/O record is in
 [`docs/evidence/ENSEMBLE_BENCHMARK_20260714.md`](docs/evidence/ENSEMBLE_BENCHMARK_20260714.md).
 The spectrum-transition threshold and checkpoint rationale is documented in
@@ -925,6 +938,7 @@ ensemble.enabled
 ensemble.n_members
 ensemble.seed_start
 ensemble.seed_step
+ensemble.execution_backend  # in_process or subprocess
 ```
 
 When enabled, each case is repeated with different random seeds and summarized into:

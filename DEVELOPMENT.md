@@ -1,5 +1,39 @@
 # Development Notes
 
+## Process-per-member ensemble isolation
+
+Changes:
+- Added validated `ensemble.execution_backend` choices: `in_process` (default) and
+  `subprocess` (opt-in).
+- The isolated path serializes an ensemble-disabled member config, invokes the same
+  production `run_experiment` entry point in a fresh interpreter, and preserves
+  stdout, stderr, status, return code, elapsed time, and process-tree RSS peak.
+- Successful and failed child telemetry is flattened into `member_summary.csv`.
+  Ensemble metadata/summary includes aggregate child resource statistics.
+- The benchmark now samples the parent plus live descendants as a fair peak measure,
+  while member checkpoints continue to measure retained parent RSS.
+- Added a matched backend comparison CLI, Results metrics, Parameter Sweep controls,
+  validation/integrity contracts, and a real subprocess integration regression.
+
+Execution evidence:
+- Matched 3-member real-PySDM pilots completed 3/3 members in both backends.
+- Parent first-to-last retention fell 99.669% (37.797 MiB to 0.125 MiB).
+- Process-tree peak increase worsened 13.606% (879.238 MiB to 998.867 MiB).
+- Wall time worsened 113.374% (248.725 s to 530.714 s).
+
+Decision:
+- Keep `in_process` as default and present `subprocess` as a retention-control tool,
+  not as a general memory or speed optimization.
+- Prototype bounded warm-worker batches before any 70-execution standard run.
+
+Validation:
+- All 32 tests passed in 293.2 s, including two real PySDM integrations and both
+  successful and failed child-process regression paths.
+- Project integrity passed. Parameter Sweep and Results AppTests had zero rendered
+  errors and zero exceptions.
+
+Evidence: `docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md`
+
 ## Higher-resolution paired common-seed rain response
 
 Changes:

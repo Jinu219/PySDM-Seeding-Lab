@@ -26,7 +26,7 @@ from simulation.schema import normalize_config
 from simulation.validation import validate_config_detailed
 
 
-ENSEMBLE_BENCHMARK_BUILD_ID = "pysdm-ensemble-benchmark-v2-checkpoints-20260715"
+ENSEMBLE_BENCHMARK_BUILD_ID = "pysdm-ensemble-benchmark-v3-process-isolation-20260715"
 BENCHMARK_PROFILES: Dict[str, Dict[str, int]] = {
     "pilot": {
         "n_members": 3,
@@ -57,6 +57,7 @@ def build_benchmark_config(
     *,
     profile: str,
     collect_garbage_between_members: bool = False,
+    member_execution_backend: str = "in_process",
 ) -> Dict[str, Any]:
     """Build a deterministic single-mode ensemble workload for resource measurement."""
     if profile not in BENCHMARK_PROFILES:
@@ -82,6 +83,7 @@ def build_benchmark_config(
             "n_members": settings["n_members"],
             "seed_start": 7000,
             "seed_step": 17,
+            "execution_backend": str(member_execution_backend),
             "collect_garbage_between_members": bool(
                 collect_garbage_between_members
             ),
@@ -98,6 +100,7 @@ def build_benchmark_config(
         "collect_garbage_between_members": bool(
             collect_garbage_between_members
         ),
+        "member_execution_backend": str(member_execution_backend),
     }
     return normalize_config(cfg)
 
@@ -122,6 +125,12 @@ def main() -> None:
         action="store_true",
         help="Run gc.collect() after every member for an A/B retained-memory benchmark.",
     )
+    parser.add_argument(
+        "--member-execution-backend",
+        choices=["in_process", "subprocess"],
+        default="in_process",
+        help="Run members in the benchmark parent or in one isolated child process per member.",
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -131,6 +140,7 @@ def main() -> None:
         load_config(config_path),
         profile=args.profile,
         collect_garbage_between_members=args.gc_between_members,
+        member_execution_backend=args.member_execution_backend,
     )
     errors = [issue for issue in validate_config_detailed(cfg) if issue.severity == "error"]
     if errors:
@@ -155,7 +165,10 @@ def main() -> None:
         reporter(stage, current, total, message)
         checkpoint_profiler(stage, current, total, message)
 
-    full_run_monitor = ProcessRSSMonitor(sample_interval_seconds=0.05)
+    full_run_monitor = ProcessRSSMonitor(
+        sample_interval_seconds=0.05,
+        include_children=True,
+    )
     with full_run_monitor:
         started = time.perf_counter()
         result_dir = run_experiment(cfg, output_dir, progress_callback=progress)
@@ -168,6 +181,10 @@ def main() -> None:
     )
 
     aggregation = _read_json(result_dir / "ensemble_aggregation_diagnostics.json")
+    result_summary = _read_json(result_dir / "summary.json")
+    member_process_resources = result_summary.get("ensemble", {}).get(
+        "member_process_resources", {}
+    )
     checkpoint_payload = {
         "build_id": ENSEMBLE_BENCHMARK_BUILD_ID,
         "summary": checkpoint_profiler.summary(),
@@ -181,12 +198,14 @@ def main() -> None:
         "full_process_rss": full_run_monitor.summary(),
         "streaming_aggregation": aggregation,
         "memory_checkpoint_summary": checkpoint_payload["summary"],
+        "member_execution_backend": str(args.member_execution_backend),
+        "member_process_resources": member_process_resources,
         "garbage_collection_between_members": bool(args.gc_between_members),
         "interpretation": (
-            "full_process_rss covers model execution, result writes, and aggregation. "
+            "full_process_rss separates parent RSS from a parent-plus-live-children process-tree peak. "
             "streaming_aggregation.process_rss covers only the aggregation window. "
-            "memory_checkpoint_summary estimates member-boundary retention and optional "
-            "explicit-GC reclamation."
+            "memory_checkpoint_summary estimates parent member-boundary retention and optional "
+            "explicit-GC reclamation; member_process_resources summarizes isolated children."
         ),
     }
     _write_json(result_dir / "ensemble_benchmark.json", evidence)

@@ -193,7 +193,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "common-seed-rain-response-evidence-20260715"
+RESULTS_UI_BUILD_ID = "ensemble-process-isolation-20260715"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -962,6 +962,38 @@ if is_ensemble:
         st.subheader("Ensemble Statistics")
         st.caption("Mean ± std and median + IQR uncertainty views for repeated random seeds.")
 
+        ensemble_runtime = summary.get("ensemble", {})
+        execution_backend = str(
+            ensemble_runtime.get(
+                "execution_backend",
+                metadata.get("ensemble_execution_backend", "in_process"),
+            )
+        )
+        member_process_resources = ensemble_runtime.get(
+            "member_process_resources",
+            metadata.get("member_process_resources", {}),
+        )
+        runtime_cols = st.columns(4)
+        runtime_cols[0].metric("Member backend", execution_backend)
+        runtime_cols[1].metric(
+            "Successful members",
+            ensemble_runtime.get("n_success", metadata.get("n_success", 0)),
+        )
+        runtime_cols[2].metric(
+            "Failed members",
+            ensemble_runtime.get("n_failed", metadata.get("n_failed", 0)),
+        )
+        runtime_cols[3].metric(
+            "Max isolated child RSS",
+            (
+                f"{(member_process_resources.get('max_child_process_tree_rss_bytes') or 0) / (1024.0**2):.1f} MiB"
+                if execution_backend == "subprocess"
+                else "N/A"
+            ),
+        )
+        if execution_backend == "subprocess":
+            st.caption(str(member_process_resources.get("scope", "")))
+
         if ensemble_aggregation_diagnostics:
             st.markdown("#### Streaming aggregation benchmark")
             benchmark_cols = st.columns(6)
@@ -1010,21 +1042,29 @@ if is_ensemble:
         if ensemble_benchmark:
             st.markdown("#### End-to-end PySDM benchmark")
             full_rss = ensemble_benchmark.get("full_process_rss", {})
-            full_cols = st.columns(4)
+            process_tree_rss = full_rss.get("process_tree", {})
+            benchmark_backend = ensemble_benchmark.get(
+                "member_execution_backend", "in_process"
+            )
+            full_cols = st.columns(5)
             full_cols[0].metric(
                 "Profile",
                 ensemble_benchmark.get("profile", "unknown"),
             )
             full_cols[1].metric(
+                "Backend",
+                benchmark_backend,
+            )
+            full_cols[2].metric(
                 "Full wall time",
                 f"{ensemble_benchmark.get('full_run_elapsed_seconds', 0.0):.1f} s",
             )
-            full_cols[2].metric(
-                "Full-process peak RSS",
-                f"{(full_rss.get('peak_rss_bytes') or 0) / (1024.0**2):.1f} MiB",
-            )
             full_cols[3].metric(
-                "Peak RSS increase",
+                "Process-tree peak RSS",
+                f"{(process_tree_rss.get('peak_rss_bytes') or full_rss.get('peak_rss_bytes') or 0) / (1024.0**2):.1f} MiB",
+            )
+            full_cols[4].metric(
+                "Parent peak increase",
                 f"{(full_rss.get('peak_rss_increase_bytes') or 0) / (1024.0**2):.1f} MiB",
             )
             memory_checkpoints = ensemble_benchmark.get(

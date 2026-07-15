@@ -64,6 +64,10 @@ from analysis.ensemble_statistics import (
     member_summary_rows,
 )
 from simulation.builder import build_run_spec
+from simulation.member_process import (
+    MemberProcessExecutionError,
+    run_member_subprocess,
+)
 from simulation.path_policy import (
     COMPARISON_RESULT_DESCENDANT_RESERVE,
     ENSEMBLE_RESULT_DESCENDANT_RESERVE,
@@ -670,6 +674,58 @@ def _primary_member_data_path(member_dir: Path, mode: str) -> Path:
     return path
 
 
+def _summarize_member_process_resources(
+    member_summary_df: pd.DataFrame,
+    execution_backend: str,
+) -> Dict[str, Any]:
+    """Summarize isolated-child cost without mixing it with parent RSS."""
+    payload: Dict[str, Any] = {
+        "execution_backend": execution_backend,
+        "member_process_isolation": execution_backend == "subprocess",
+        "successful_child_processes": 0,
+        "max_child_process_tree_rss_bytes": None,
+        "median_child_process_tree_rss_bytes": None,
+        "total_child_elapsed_seconds": None,
+        "median_child_elapsed_seconds": None,
+        "scope": (
+            "Child peak values sum the isolated member process and its descendants. "
+            "Parent-process RSS is measured separately by the benchmark profiler."
+            if execution_backend == "subprocess"
+            else "Members executed in the parent Python process; no child-process telemetry exists."
+        ),
+    }
+    if execution_backend != "subprocess" or member_summary_df.empty:
+        return payload
+
+    return_codes = pd.to_numeric(
+        member_summary_df.get("member_process_return_code"), errors="coerce"
+    )
+    peak_rss = pd.to_numeric(
+        member_summary_df.get("member_process_peak_tree_rss_bytes"), errors="coerce"
+    ).dropna()
+    elapsed = pd.to_numeric(
+        member_summary_df.get("member_process_elapsed_seconds"), errors="coerce"
+    ).dropna()
+    payload.update(
+        {
+            "successful_child_processes": int((return_codes == 0).sum()),
+            "max_child_process_tree_rss_bytes": (
+                int(peak_rss.max()) if not peak_rss.empty else None
+            ),
+            "median_child_process_tree_rss_bytes": (
+                float(peak_rss.median()) if not peak_rss.empty else None
+            ),
+            "total_child_elapsed_seconds": (
+                float(elapsed.sum()) if not elapsed.empty else None
+            ),
+            "median_child_elapsed_seconds": (
+                float(elapsed.median()) if not elapsed.empty else None
+            ),
+        }
+    )
+    return payload
+
+
 def run_ensemble_experiment(
     config: Dict[str, Any],
     output_dir: Path,
@@ -724,6 +780,9 @@ def run_ensemble_experiment(
     collect_garbage = bool(
         cfg.get("ensemble", {}).get("collect_garbage_between_members", False)
     )
+    execution_backend = str(
+        cfg.get("ensemble", {}).get("execution_backend", "in_process")
+    )
 
     for idx, seed in enumerate(seeds, start=1):
         emit_progress(progress_callback, "ensemble", idx + 1, n_members + 2, f"Running ensemble member {idx}/{n_members}")
@@ -735,8 +794,15 @@ def run_ensemble_experiment(
         member_parent = members_dir / f"member_{idx:03d}"
         member_parent.mkdir(parents=True, exist_ok=True)
 
+        process_telemetry: Dict[str, Any] = {}
         try:
-            if mode == "control_vs_seeding":
+            if execution_backend == "subprocess":
+                member_result_dir, process_telemetry = run_member_subprocess(
+                    member_cfg,
+                    member_parent,
+                    mode=mode,
+                )
+            elif mode == "control_vs_seeding":
                 member_result_dir = run_control_vs_seeding(
                     member_cfg,
                     member_parent,
@@ -757,6 +823,7 @@ def run_ensemble_experiment(
                 "member_index": idx,
                 "random_seed": int(seed),
                 "success": True,
+                "execution_backend": execution_backend,
                 "result_dir": str(member_result_dir.relative_to(run_dir)),
                 "error": "",
                 "error_type": "",
@@ -764,16 +831,31 @@ def run_ensemble_experiment(
                 "error_errno": None,
                 "error_winerror": None,
             }
+            member_record.update(process_telemetry)
             member_record.update(_member_result_metrics(member_result_dir))
             member_records.append(member_record)
         except Exception as exc:
+            error_fields = _exception_fields(exc)
+            if isinstance(exc, MemberProcessExecutionError):
+                process_telemetry = exc.telemetry
+                for key in (
+                    "error",
+                    "error_type",
+                    "error_message",
+                    "error_errno",
+                    "error_winerror",
+                ):
+                    if exc.status.get(key) not in (None, ""):
+                        error_fields[key] = exc.status[key]
             member_records.append(
                 {
                     "member_index": idx,
                     "random_seed": int(seed),
                     "success": False,
+                    "execution_backend": execution_backend,
                     "result_dir": "",
-                    **_exception_fields(exc),
+                    **process_telemetry,
+                    **error_fields,
                 }
             )
 
@@ -824,6 +906,10 @@ def run_ensemble_experiment(
     n_success = int(member_summary_df["success"].sum()) if "success" in member_summary_df.columns else 0
     n_failed = int(len(member_summary_df) - n_success)
     member_metric_summary = _summarize_member_metrics(member_summary_df)
+    member_process_resources = _summarize_member_process_resources(
+        member_summary_df,
+        execution_backend,
+    )
     execution_status = (
         "failed"
         if n_success == 0
@@ -841,6 +927,7 @@ def run_ensemble_experiment(
         "requested_members": n_members,
         "successful_members": n_success,
         "failed_members": n_failed,
+        "execution_backend": execution_backend,
         "first_errors": first_member_errors,
     }
 
@@ -857,6 +944,8 @@ def run_ensemble_experiment(
         "n_failed": n_failed,
         "execution_status": execution_status,
         "execution": execution_payload,
+        "ensemble_execution_backend": execution_backend,
+        "member_process_resources": member_process_resources,
         "member_metric_summary": member_metric_summary,
         "ensemble_statistics_build_id": ENSEMBLE_BUILD_ID,
         "ensemble_aggregation_method": "column_streaming_from_member_csv",
@@ -904,6 +993,8 @@ def run_ensemble_experiment(
             "n_members_requested": n_members,
             "n_success": n_success,
             "n_failed": n_failed,
+            "execution_backend": execution_backend,
+            "member_process_resources": member_process_resources,
             "aggregation_method": "column_streaming_from_member_csv",
             "aggregation": aggregation_diagnostics,
             "member_seeds": seeds,
