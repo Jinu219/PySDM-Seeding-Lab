@@ -42,7 +42,7 @@ from simulation.sweep import flatten_nested_dict
 from simulation.validation import validate_config_detailed
 
 
-QUALIFICATION_BUILD_ID = "numerical-qualification-v2-20260714"
+QUALIFICATION_BUILD_ID = "numerical-qualification-v3-rain-ofat-20260715"
 QUALIFICATION_PROFILES: Dict[str, Dict[str, Any]] = {
     "pilot": {
         "description": "Fast workflow qualification; not sufficient for publication claims.",
@@ -52,6 +52,7 @@ QUALIFICATION_PROFILES: Dict[str, Dict[str, Any]] = {
         "duration_seconds": 60,
         "injection_start_seconds": 20,
         "injection_end_seconds": 40,
+        "rain_signal_required": False,
     },
     "standard": {
         "description": "Three-level numerical qualification for research interpretation.",
@@ -61,6 +62,37 @@ QUALIFICATION_PROFILES: Dict[str, Dict[str, Any]] = {
         "duration_seconds": None,
         "injection_start_seconds": None,
         "injection_end_seconds": None,
+        "rain_signal_required": False,
+    },
+    "rain_pilot": {
+        "description": (
+            "Collision-ON rain-signal workflow check; not sufficient for final "
+            "tolerance claims."
+        ),
+        "timestep_seconds": [10, 15],
+        "seeding_superdroplets": [60, 100],
+        "background_superdroplets": [60, 100],
+        "duration_seconds": 900,
+        "injection_start_seconds": 300,
+        "injection_end_seconds": 600,
+        "collision": True,
+        "rain_signal_required": True,
+        "rain_signal_floor_kg_kg": 1.0e-8,
+    },
+    "rain_standard": {
+        "description": (
+            "Collision-ON, rain-producing three-level numerical qualification "
+            "for research interpretation."
+        ),
+        "timestep_seconds": [5, 10, 15],
+        "seeding_superdroplets": [100, 200, 400],
+        "background_superdroplets": [100, 200, 400],
+        "duration_seconds": 1500,
+        "injection_start_seconds": 900,
+        "injection_end_seconds": 1200,
+        "collision": True,
+        "rain_signal_required": True,
+        "rain_signal_floor_kg_kg": 1.0e-8,
     },
 }
 
@@ -179,8 +211,13 @@ def build_qualification_config(
             profile_settings["injection_start_seconds"]
         )
         cfg["seeding"]["injection_end"] = int(profile_settings["injection_end_seconds"])
+    if "collision" in profile_settings:
+        cfg.setdefault("microphysics", {})["collision"] = bool(
+            profile_settings["collision"]
+        )
 
     cfg["sweep"] = {
+        "design": "one_factor_at_reference",
         "run_mode": "control_vs_seeding",
         "max_runs": 100,
         "ranking_metric": "comparison.efficiency.seeding_efficiency_score",
@@ -188,14 +225,17 @@ def build_qualification_config(
             {
                 "name": "environment.timestep",
                 "values": list(profile_settings["timestep_seconds"]),
+                "reference": "min",
             },
             {
                 "name": "seeding.number_superdroplets",
                 "values": list(profile_settings["seeding_superdroplets"]),
+                "reference": "max",
             },
             {
                 "name": "background_aerosol.number_superdroplets",
                 "values": list(profile_settings["background_superdroplets"]),
+                "reference": "max",
             },
         ],
     }
@@ -219,6 +259,7 @@ def qualification_plan(config: Dict[str, Any], *, profile: str) -> Dict[str, Any
         "case_count": count_sweep_cases(config),
         "model_execution_count": 2 * count_sweep_cases(config),
         "parameters": config.get("sweep", {}).get("parameters", []),
+        "sweep_design": config.get("sweep", {}).get("design", "cartesian"),
         "acceptance_rule": (
             "For every configured metric and numerical axis, compare the next-finest level "
             "with the finest reference while the other axes remain at their finest values."
@@ -231,6 +272,12 @@ def qualification_plan(config: Dict[str, Any], *, profile: str) -> Dict[str, Any
         .get("relative_reference_floor", 1.0e-12),
         "ensemble_enabled": bool(config.get("ensemble", {}).get("enabled", False)),
         "microphysics": dict(config.get("microphysics", {})),
+        "rain_signal_required": bool(
+            QUALIFICATION_PROFILES[profile].get("rain_signal_required", False)
+        ),
+        "rain_signal_floor_kg_kg": float(
+            QUALIFICATION_PROFILES[profile].get("rain_signal_floor_kg_kg", 1.0e-8)
+        ),
         "evidence_scope": (
             "placeholder_warm_cloud qualifies only the software workflow; pysdm_parcel is "
             "required before making physical or publication-facing claims."

@@ -47,6 +47,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
     dyn = cfg.get("dynamics", {})
     microphysics = cfg.get("microphysics", {})
     diagnostics = cfg.get("diagnostics", {})
+    sweep = cfg.get("sweep", {})
     output = cfg.get("output", {})
 
     # -------------------------------------------------------------------------
@@ -91,6 +92,36 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 "Use an integer seed if stochastic reproducibility is needed.",
             )
         )
+
+    sweep_design = str(sweep.get("design", "cartesian"))
+    if sweep_design not in {"cartesian", "one_factor_at_reference"}:
+        issues.append(
+            _issue(
+                "error",
+                "sweep.design",
+                "sweep.design must be cartesian or one_factor_at_reference.",
+                "Use one_factor_at_reference only when every parameter declares a reference.",
+            )
+        )
+    elif sweep_design == "one_factor_at_reference":
+        for index, parameter in enumerate(sweep.get("parameters", [])):
+            values = parameter.get("values", [])
+            reference = parameter.get("reference")
+            reference_is_selector = isinstance(reference, str) and reference in {
+                "min",
+                "max",
+            }
+            reference_is_explicit = any(reference == value for value in values)
+            if not reference_is_selector and not reference_is_explicit:
+                issues.append(
+                    _issue(
+                        "error",
+                        f"sweep.parameters.{index}.reference",
+                        "Each one-factor parameter needs reference=min, reference=max, "
+                        "or an explicit value present in values.",
+                        "Mark the finest numerical level as the reference.",
+                    )
+                )
 
 
     # -------------------------------------------------------------------------

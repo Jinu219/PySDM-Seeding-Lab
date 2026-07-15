@@ -13,6 +13,7 @@ Run a reproducible numerical qualification plan from the CLI:
 ```powershell
 & .\.conda\python.exe scripts\run_numerical_qualification.py --profile pilot --adapter placeholder_warm_cloud --dry-run
 & .\.conda\python.exe scripts\run_numerical_qualification.py --profile standard --adapter pysdm_parcel --output-dir artifacts\numerical_qualification
+& .\.conda\python.exe scripts\run_numerical_qualification.py --config configs\marine.yaml --profile rain_standard --adapter pysdm_parcel --output-dir artifacts\numerical_qualification
 ```
 
 `pilot` is a fast software-workflow check. Only the `pysdm_parcel` standard run
@@ -23,6 +24,12 @@ The completed 2026-07-14 standard qualification supports the default 5% toleranc
 for the tested marine collision-OFF profile: all 12 non-zero next-finest checks
 passed, with a 1.731% maximum difference. It is not yet rain-producing evidence.
 See [`docs/evidence/NUMERICAL_QUALIFICATION_20260714.md`](docs/evidence/NUMERICAL_QUALIFICATION_20260714.md).
+
+The collision-ON `rain_standard` profile uses a 7-case one-factor-at-reference
+design and requires real rain-water in both reference runs. The 2026-07-15 result
+supports the 5% threshold for absolute rain-water state (12/12 checks, maximum
+3.285%) but not for seeding-minus-control response (2/21 checks). See
+[`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md).
 
 Run an instrumented real-PySDM ensemble benchmark with:
 

@@ -2037,6 +2037,51 @@ if tab_convergence is not None:
                     "Near-zero exclusions",
                     convergence_evidence.get("n_near_zero_reference_checks", 0),
                 )
+                family_evidence = convergence_evidence.get(
+                    "metric_family_evidence", {}
+                )
+                if family_evidence:
+                    family_rows = []
+                    for family, family_summary in family_evidence.items():
+                        family_rows.append(
+                            {
+                                "metric_family": str(family).replace("_", " "),
+                                "status": family_summary.get("status"),
+                                "checks": family_summary.get("n_checks"),
+                                "within_tolerance": family_summary.get(
+                                    "n_checks_within_tolerance"
+                                ),
+                                "median_difference_percent": family_summary.get(
+                                    "median_relative_difference_percent"
+                                ),
+                                "p95_difference_percent": family_summary.get(
+                                    "p95_relative_difference_percent"
+                                ),
+                                "max_difference_percent": family_summary.get(
+                                    "max_relative_difference_percent"
+                                ),
+                            }
+                        )
+                    st.dataframe(
+                        pd.DataFrame(family_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                if convergence_evidence.get("rain_signal_required"):
+                    rain_cols = st.columns(2)
+                    rain_cols[0].metric(
+                        "Required rain signal",
+                        "DETECTED"
+                        if convergence_evidence.get("rain_signal_detected")
+                        else "MISSING",
+                    )
+                    rain_cols[1].metric(
+                        "Rain signal floor",
+                        dash.format_metric_value(
+                            convergence_evidence.get("rain_signal_floor_kg_kg")
+                        )
+                        + " kg/kg",
+                    )
                 st.caption(str(convergence_evidence.get("interpretation", "")))
             available_convergence_metrics = dash.convergence_metrics(numerical_convergence_df)
             selected_convergence_metric = st.selectbox(

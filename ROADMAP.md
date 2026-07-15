@@ -2,6 +2,20 @@
 
 ## Current milestone snapshot (2026-07-14)
 
+Collision-ON rain qualification completed on 2026-07-15:
+- A new 7-case OFAT design replaced the 27-case Cartesian qualification grid.
+- The full `rain_standard` profile completed 14 real PySDM executions in 699 s.
+- Both control and seeding produced physical rain-water signals above the required
+  floor. Absolute rain state passed all 12 next-finest 5% checks (max 3.285%).
+- Seeding-response metrics did not converge (2/21 passed), so quantitative seeding
+  enhancement remains outside the supported interpretation scope.
+
+Revised next ordered gates:
+1. Profile retained RSS ownership across repeated ensemble members.
+2. Extend collision response qualification to higher resolution and multiple seeds.
+3. Prototype a columnar internal cache with CSV numerical-equality regression.
+4. Validate or revise the operational 1% transition floor using observations.
+
 Research-evidence gate completed:
 - The standard full-PySDM qualification completed 27 cases / 54 model executions.
   All 12 non-zero next-finest comparisons passed 5%; the maximum was 1.731%.
@@ -16,8 +30,8 @@ Research-evidence gate completed:
   in Results. Step 19 now has actual legacy-result and schema-migration fixtures.
 
 Next ordered gates:
-1. Collision-ON, rain-producing convergence qualification.
-2. Retained-memory ownership profiling across ensemble members.
+1. Retained-memory ownership profiling across ensemble members.
+2. Higher-resolution, multi-seed collision response qualification.
 3. Columnar internal-cache prototype with CSV equality regression.
 4. Observational validation or revision of the operational 1% transition floor.
 

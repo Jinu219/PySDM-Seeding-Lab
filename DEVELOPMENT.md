@@ -1,5 +1,41 @@
 # Development Notes
 
+## Collision-ON rain qualification and OFAT execution design
+
+Changes:
+- Added `rain_pilot` and `rain_standard` CLI profiles with collision forced ON,
+  explicit rain-signal requirements, and stored signal floors.
+- Added a generic `one_factor_at_reference` sweep design. Qualification parameters
+  declare `reference: min` or `reference: max`, producing one reference case plus
+  each non-reference level varied alone.
+- Reduced a three-level, three-axis qualification from 27 to 7 cases while retaining
+  every reference and next-finest comparison consumed by the convergence analysis.
+- Added absolute control/seeding rain-water metrics to sweep and convergence outputs.
+- Qualification evidence now requires physical rain for rain profiles and reports
+  `absolute_state` and `seeding_response` metric families separately.
+- Results Dashboard and portable reports expose family-level status and the rain
+  signal gate instead of presenting one pooled percentage without context.
+
+Execution evidence:
+- A 1500-second collision-ON probe produced rain onset at 525 s and non-zero final
+  rain water in both control and seeding cases.
+- The four-case `rain_pilot` completed in 433 s, detected rain, and appropriately
+  rejected 5% support at the 60/100-super-droplet levels.
+- The seven-case `rain_standard` completed 14 real PySDM executions in 699 s with
+  zero failures. Absolute rain-state convergence passed 12/12 checks with a 3.285%
+  maximum; seeding-response convergence passed only 2/21 checks.
+
+Scientific limitation:
+- Collision/coalescence is enabled, but sedimentation and surface precipitation are
+  not. The supported family is parcel rain-water state, not rainfall at the ground.
+- The current numerical reference is insufficient for quantitative seeding-effect
+  claims even though its absolute rain state passes the 5% gate.
+
+Validation:
+- All 26 unit/integration tests passed in 249 seconds, including two real PySDM
+  tests. Project integrity, portable path checks, and Results AppTest passed with
+  zero exceptions or rendered errors.
+
 ## Absolute result-path budget hardening
 
 Changes:

@@ -25,6 +25,7 @@ from analysis.numerical_convergence import (
     build_numerical_convergence_table,
     summarize_numerical_convergence,
 )
+from analysis.qualification_evidence import build_qualification_evidence
 from analysis.result_manifest import inspect_result_compatibility
 from analysis.reporting import REPORT_BUILD_ID, build_pdf_report
 from analysis.dashboard import sweep_execution_status_table
@@ -54,6 +55,7 @@ from simulation.runner import (
     run_parameter_sweep,
 )
 from simulation.schema import default_config
+from simulation.sweep import generate_sweep_cases
 from simulation.validation import validate_config_detailed
 from simulation.wet_radius_spectrum import (
     build_spectrum_bin_edges,
@@ -442,13 +444,34 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             adapter="placeholder_warm_cloud",
         )
         plan = qualification_plan(pilot, profile="pilot")
-        self.assertEqual(plan["case_count"], 8)
-        self.assertEqual(plan["model_execution_count"], 16)
+        self.assertEqual(plan["case_count"], 4)
+        self.assertEqual(plan["model_execution_count"], 8)
+        self.assertEqual(plan["sweep_design"], "one_factor_at_reference")
         self.assertEqual(pilot["environment"]["duration"], 60)
         self.assertEqual(pilot["seeding"]["injection_start"], 20)
         self.assertTrue(pilot["diagnostics"]["numerical_convergence"]["enabled"])
         self.assertFalse(pilot["ensemble"]["enabled"])
         self.assertFalse(plan["ensemble_enabled"])
+        pilot_cases = generate_sweep_cases(pilot)
+        reference = pilot_cases[0].parameter_values
+        self.assertEqual(len(pilot_cases), 4)
+        self.assertTrue(
+            all(
+                sum(values[key] != reference[key] for key in reference) <= 1
+                for values in [case.parameter_values for case in pilot_cases]
+            )
+        )
+
+        rain_standard = build_qualification_config(
+            cfg,
+            profile="rain_standard",
+            adapter="pysdm_parcel",
+        )
+        rain_plan = qualification_plan(rain_standard, profile="rain_standard")
+        self.assertTrue(rain_standard["microphysics"]["collision"])
+        self.assertEqual(rain_plan["case_count"], 7)
+        self.assertEqual(rain_plan["model_execution_count"], 14)
+        self.assertTrue(rain_plan["rain_signal_required"])
 
         benchmark = build_benchmark_config(cfg, profile="large")
         self.assertEqual(benchmark["simulation"]["adapter"], "pysdm_parcel")
@@ -465,6 +488,50 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         second_spec = build_run_spec(cfg)
         self.assertNotEqual(first_spec.run_id, second_spec.run_id)
         self.assertIn("T", first_spec.metadata["created_at"])
+
+    def test_rain_qualification_evidence_requires_physical_rain_signal(self):
+        rows = []
+        for metric, reference in (
+            ("comparison.control.max_rain_water_mixing_ratio", 3.0e-3),
+            ("comparison.seeding.max_rain_water_mixing_ratio", 2.8e-3),
+        ):
+            rows.extend(
+                [
+                    {
+                        "metric": metric,
+                        "varied_parameter": "param.environment.timestep",
+                        "resolution_rank": 0,
+                        "reference_value": reference,
+                        "relative_difference_percent": 0.0,
+                    },
+                    {
+                        "metric": metric,
+                        "varied_parameter": "param.environment.timestep",
+                        "resolution_rank": 1,
+                        "reference_value": reference,
+                        "relative_difference_percent": 1.0,
+                    },
+                ]
+            )
+        cfg = default_config()
+        cfg["qualification"] = {
+            "profile": "rain_standard",
+            "rain_signal_required": True,
+            "rain_signal_floor_kg_kg": 1.0e-8,
+        }
+        evidence = build_qualification_evidence(pd.DataFrame(rows), cfg)
+        self.assertEqual(evidence["status"], "supported_for_profile")
+        self.assertTrue(evidence["rain_signal_detected"])
+        self.assertEqual(
+            evidence["metric_family_evidence"]["absolute_state"]["status"],
+            "supported_for_profile",
+        )
+
+        missing = pd.DataFrame(rows)
+        missing["reference_value"] = 0.0
+        evidence = build_qualification_evidence(missing, cfg)
+        self.assertEqual(evidence["status"], "missing_required_rain_signal")
+        self.assertFalse(evidence["rain_signal_detected"])
 
     def test_spectrum_transition_onset_is_interpolated_and_audited(self):
         cfg = default_config()
@@ -587,6 +654,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         cfg["diagnostics"]["water_budget"]["failure_relative_drift_percent"] = 0.1
         cfg["diagnostics"]["numerical_convergence"]["relative_tolerance_percent"] = 0.0
         cfg["diagnostics"]["spectrum_transition"]["rain_volume_fraction_threshold"] = 1.0
+        cfg["sweep"]["design"] = "one_factor_at_reference"
         error_fields = {
             issue.field
             for issue in validate_config_detailed(cfg)
@@ -604,6 +672,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             "diagnostics.spectrum_transition.rain_volume_fraction_threshold",
             error_fields,
         )
+        self.assertIn("sweep.parameters.0.reference", error_fields)
 
     def test_placeholder_numerical_sweep_writes_convergence_audit(self):
         cfg = default_config()

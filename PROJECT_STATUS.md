@@ -6,6 +6,30 @@ Active branch: `develop`
 
 Current milestone: Full PySDM qualification and large-ensemble evidence completed
 
+## Collision-ON rain qualification update
+
+Completed on 2026-07-15:
+- Added `rain_pilot` and `rain_standard` qualification profiles that force real
+  PySDM collision/coalescence and require non-zero rain-water in both control and
+  seeding reference cases.
+- Replaced qualification-only 3-axis Cartesian execution with a one-factor-at-
+  reference design. A three-level qualification now uses 7 cases / 14 model
+  executions instead of 27 cases / 54 executions without removing any comparison
+  used by the OFAT convergence decision.
+- The full collision-ON run completed all 7 cases in 699 seconds. The finest
+  reference produced 0.002558 kg/kg control and 0.002634 kg/kg seeding rain water.
+- All 12 absolute rain-state checks passed 5% (maximum 3.285%). Only 2 of 21
+  seeding-response checks passed, so the overall result correctly remains
+  `not_supported_for_profile` for quantitative seeding-effect claims.
+- Results and reports now separate absolute-state convergence from the more
+  sensitive seeding-minus-control response and display the required rain-signal gate.
+
+Evidence: [`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md)
+
+Next priority: characterize retained memory ownership across ensemble members,
+then extend collision response qualification to higher resolution and multiple
+common random seeds.
+
 ## Portable path-budget hardening
 
 The historical `20260714_190022_727349_0714_18_58_parameter_sweep` failure was

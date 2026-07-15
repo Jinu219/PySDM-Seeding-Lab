@@ -256,12 +256,32 @@ def check_result_path_policy() -> None:
         raise RuntimeError("Compact nested sweep path exceeds the portable path limit.")
 
 
+def check_rain_qualification_contract() -> None:
+    from scripts.run_numerical_qualification import (
+        build_qualification_config,
+        qualification_plan,
+    )
+    from simulation.schema import default_config
+
+    config = build_qualification_config(
+        default_config(),
+        profile="rain_standard",
+        adapter="pysdm_parcel",
+    )
+    plan = qualification_plan(config, profile="rain_standard")
+    if plan["case_count"] != 7 or plan["model_execution_count"] != 14:
+        raise RuntimeError("Rain qualification lost its seven-case OFAT design.")
+    if not config["microphysics"]["collision"] or not plan["rain_signal_required"]:
+        raise RuntimeError("Rain qualification no longer enforces collision and rain signal.")
+
+
 def main() -> None:
     check_page_files()
     check_safe_read_csv_no_recursion()
     check_sweep_catalog()
     check_native_diagnostic_contract()
     check_result_path_policy()
+    check_rain_qualification_contract()
     py_compile.compile(str(PROJECT_ROOT / "app.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "ui_helpers.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
@@ -300,6 +320,7 @@ def main() -> None:
     print("Dashboard exports are complete.")
     print("Native diagnostic contract is complete (proxy-free synthetic mapping).")
     print("Portable result-path budget check passed.")
+    print("Collision-ON rain qualification contract passed.")
     print(f"Dashboard build: {getattr(dashboard, 'DASHBOARD_BUILD_ID', 'unknown')}")
 
 

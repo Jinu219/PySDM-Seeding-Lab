@@ -25,6 +25,10 @@ DEFAULT_CONVERGENCE_METRICS = (
     "comparison.efficiency.rain_enhancement_final",
     "comparison.efficiency.cloud_to_rain_conversion_delta",
     "comparison.efficiency.seeding_efficiency_score",
+    "comparison.control.final_rain_water_mixing_ratio",
+    "comparison.seeding.final_rain_water_mixing_ratio",
+    "comparison.control.max_rain_water_mixing_ratio",
+    "comparison.seeding.max_rain_water_mixing_ratio",
     "metrics.final_rain_water_mixing_ratio",
     "metrics.max_rain_water_mixing_ratio",
 )

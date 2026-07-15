@@ -128,6 +128,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
     },
     "sweep": {
+        "design": "cartesian",
         "run_mode": "control_vs_seeding",
         "max_runs": 100,
         "ranking_metric": "comparison.efficiency.seeding_efficiency_score",
