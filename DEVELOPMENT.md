@@ -1,5 +1,25 @@
 # Development Notes
 
+## Targeted high-resolution response plan
+
+Changes:
+- Added a five-seed `rain_response_targeted` profile with two levels on each
+  numerical axis: 2.5/5 s and 800/1600 seeding/background super-droplets.
+- The OFAT contract generates 4 cases, 20 case-seed pairs, and 40 physical
+  control/seeding executions, 42.9% fewer than the three-level standard plan.
+- Added case-seed counts, runtime-estimate provenance, serial-duration estimates,
+  and explicit confirmation metadata to `qualification_plan` output.
+- Forced serial case execution for this profile and added a dry-run-first guard;
+  physical execution requires `--confirm-targeted-run`.
+
+Validation:
+- The dry-run produced the exact expected axes, seeds, and execution counts.
+- A no-dry-run invocation without confirmation exited before starting PySDM.
+- No new physical evidence was generated and existing interpretation boundaries
+  remain unchanged.
+
+Plan: `docs/TARGETED_RESPONSE_PLAN.md`
+
 ## Process-per-member ensemble isolation
 
 Changes:

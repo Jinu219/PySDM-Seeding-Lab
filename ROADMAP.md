@@ -1,6 +1,14 @@
 # Roadmap
 
-## Current milestone snapshot (2026-07-15)
+## Current milestone snapshot (2026-07-16)
+
+Targeted high-resolution response plan completed on 2026-07-16:
+- Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
+- The plan uses 4 OFAT cases and 5 common seeds: 40 physical executions rather
+  than the 70-execution three-level standard profile.
+- Physical execution requires an explicit confirmation flag and remains unrun.
+- The next scientific gate is review of the printed runtime/resource estimate,
+  followed by an explicitly authorized serial execution when resources allow.
 
 Lab-server execution gate completed on 2026-07-15:
 - Added persistent headless Streamlit management, SSH-tunnel guidance, detached
@@ -28,10 +36,11 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Benchmark serial versus 4/8-worker real-PySDM sweep wall time and process-tree RSS.
-2. Use those measured bounds to target a reduced 1600-super-droplet response plan.
-3. Prototype a columnar internal cache with CSV numerical-equality regression.
-4. Validate or revise the operational 1% transition floor using observations.
+1. Review the 40-execution targeted response plan and local runtime estimate.
+2. Run the targeted profile serially only after explicit authorization.
+3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
+4. Prototype a columnar internal cache with CSV numerical-equality regression.
+5. Validate or revise the operational 1% transition floor using observations.
 
 Higher-resolution common-seed gate completed on 2026-07-15:
 - A paired-seed scalar audit now preserves every case × seed response and rejects

@@ -1,10 +1,30 @@
 # Project Status
 
-Last updated: 2026-07-15
+Last updated: 2026-07-16
 
 Active branch: `develop`
 
-Current milestone: Linux server deployment and bounded multi-core sweep execution completed
+Current milestone: Targeted high-resolution rain-response plan completed
+
+## Targeted high-resolution response-plan update
+
+Completed on 2026-07-16:
+- Added `rain_response_targeted`, using only finest and next-finest timestep,
+  seeding-super-droplet, and background-super-droplet levels.
+- The resulting OFAT plan is exactly 4 cases, 5 common seeds, 20 case-seed pairs,
+  and 40 control/seeding model executions instead of the 70-execution standard.
+- Qualification plans now include local runtime-estimate provenance, estimated
+  serial duration, case-seed count, and execution-confirmation metadata.
+- The profile is dry-run-first, forces one case worker, and rejects physical
+  execution unless `--confirm-targeted-run` is explicitly supplied.
+- The dry-run and rejection paths were exercised without starting PySDM.
+- All 37 unit/integration tests and project integrity passed after the change.
+
+Decision: preserve this as a reviewed execution plan only. Existing physical
+interpretation does not change until the 40 runs are explicitly authorized and
+completed.
+
+Plan: [`docs/TARGETED_RESPONSE_PLAN.md`](docs/TARGETED_RESPONSE_PLAN.md)
 
 ## Lab-server and bounded parallel execution update
 

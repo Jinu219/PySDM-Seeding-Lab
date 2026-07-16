@@ -50,6 +50,17 @@ The completed 800-super-droplet, three-seed pilot passed all 36 absolute rain-st
 checks but only 4/63 seeding-response checks. See
 [`docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`](docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md).
 
+Before considering the 70-execution standard response profile, inspect the
+dry-run-first 40-execution targeted plan:
+
+```powershell
+& .\.conda\python.exe scripts\run_numerical_qualification.py --config configs\marine.yaml --profile rain_response_targeted --adapter pysdm_parcel --dry-run
+```
+
+The targeted profile cannot start physical models unless
+`--confirm-targeted-run` is also supplied. No targeted physical run has been
+performed yet; see [`docs/TARGETED_RESPONSE_PLAN.md`](docs/TARGETED_RESPONSE_PLAN.md).
+
 Run an instrumented real-PySDM ensemble benchmark with:
 
 ```powershell

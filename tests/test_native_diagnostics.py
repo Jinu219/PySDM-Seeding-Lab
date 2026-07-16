@@ -652,6 +652,43 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             800,
         )
 
+        targeted = build_qualification_config(
+            cfg,
+            profile="rain_response_targeted",
+            adapter="pysdm_parcel",
+        )
+        targeted_plan = qualification_plan(
+            targeted,
+            profile="rain_response_targeted",
+        )
+        targeted_cases = generate_sweep_cases(targeted)
+        self.assertEqual(targeted_plan["case_count"], 4)
+        self.assertEqual(targeted_plan["case_seed_pair_count"], 20)
+        self.assertEqual(targeted_plan["model_execution_count"], 40)
+        self.assertEqual(targeted_plan["n_common_random_seeds"], 5)
+        self.assertEqual(len(set(targeted_plan["common_random_seeds"])), 5)
+        self.assertTrue(targeted_plan["execution_confirmation_required"])
+        self.assertIn("may underestimate", targeted_plan["runtime_estimate_warning"])
+        self.assertEqual(
+            targeted_plan["execution_confirmation_flag"],
+            "--confirm-targeted-run",
+        )
+        self.assertEqual(targeted["execution"]["max_workers"], 1)
+        self.assertEqual(
+            targeted_cases[0].parameter_values,
+            {
+                "environment.timestep": 2.5,
+                "seeding.number_superdroplets": 1600,
+                "background_aerosol.number_superdroplets": 1600,
+            },
+        )
+        self.assertTrue(
+            all(
+                len(case.parameter_values) == 3
+                for case in targeted_cases
+            )
+        )
+
         benchmark = build_benchmark_config(cfg, profile="large")
         self.assertEqual(benchmark["simulation"]["adapter"], "pysdm_parcel")
         self.assertEqual(benchmark["ensemble"]["n_members"], 24)

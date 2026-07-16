@@ -39,13 +39,14 @@ from analysis.reporting import (
 from simulation.progress import StdoutProgressReporter
 from analysis.ensemble_statistics import member_seed_list
 from simulation.runner import run_experiment
+from simulation.run_plan import estimate_run_plan
 from simulation.schema import normalize_config
 from simulation.sweep import count_sweep_cases
 from simulation.sweep import flatten_nested_dict
 from simulation.validation import validate_config_detailed
 
 
-QUALIFICATION_BUILD_ID = "numerical-qualification-v4-common-seeds-20260715"
+QUALIFICATION_BUILD_ID = "numerical-qualification-v5-targeted-response-20260716"
 QUALIFICATION_PROFILES: Dict[str, Dict[str, Any]] = {
     "pilot": {
         "description": "Fast workflow qualification; not sufficient for publication claims.",
@@ -132,6 +133,25 @@ QUALIFICATION_PROFILES: Dict[str, Dict[str, Any]] = {
         "common_seed_members": 5,
         "seed_start": 32001,
         "seed_step": 1009,
+    },
+    "rain_response_targeted": {
+        "description": (
+            "Dry-run-first five-seed collision-ON response plan using only the "
+            "finest and next-finest level on each numerical axis."
+        ),
+        "timestep_seconds": [2.5, 5],
+        "seeding_superdroplets": [800, 1600],
+        "background_superdroplets": [800, 1600],
+        "duration_seconds": 1500,
+        "injection_start_seconds": 900,
+        "injection_end_seconds": 1200,
+        "collision": True,
+        "rain_signal_required": True,
+        "rain_signal_floor_kg_kg": 1.0e-8,
+        "common_seed_members": 5,
+        "seed_start": 32001,
+        "seed_step": 1009,
+        "requires_explicit_confirmation": True,
     },
 }
 
@@ -297,6 +317,8 @@ def build_qualification_config(
         cfg.setdefault("microphysics", {})["collision"] = bool(
             profile_settings["collision"]
         )
+    if profile_settings.get("requires_explicit_confirmation", False):
+        cfg.setdefault("execution", {})["max_workers"] = 1
 
     cfg["sweep"] = {
         "design": "one_factor_at_reference",
@@ -335,6 +357,8 @@ def qualification_plan(config: Dict[str, Any], *, profile: str) -> Dict[str, Any
     ensemble_enabled = bool(config.get("ensemble", {}).get("enabled", False))
     seeds = member_seed_list(config) if ensemble_enabled else []
     case_count = count_sweep_cases(config)
+    profile_settings = QUALIFICATION_PROFILES[profile]
+    runtime_plan = estimate_run_plan(config, results_dir=PROJECT_ROOT / "results")
     return {
         "build_id": QUALIFICATION_BUILD_ID,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -343,6 +367,17 @@ def qualification_plan(config: Dict[str, Any], *, profile: str) -> Dict[str, Any
         "adapter": adapter,
         "case_count": case_count,
         "model_execution_count": 2 * case_count * max(1, len(seeds)),
+        "case_seed_pair_count": case_count * len(seeds),
+        "estimated_seconds_per_model_run": runtime_plan.estimated_seconds_per_run,
+        "estimated_serial_total_seconds": runtime_plan.estimated_total_seconds,
+        "estimated_serial_total_duration": runtime_plan.estimated_total_duration,
+        "runtime_estimate_basis": runtime_plan.runtime_basis,
+        "runtime_estimate_is_measured": runtime_plan.runtime_is_measured,
+        "runtime_estimate_warning": (
+            "This adapter-level median is not scaled for the 1600-super-droplet "
+            "reference and may underestimate the targeted physical workload."
+        ),
+        "configured_case_workers": runtime_plan.configured_workers,
         "parameters": config.get("sweep", {}).get("parameters", []),
         "sweep_design": config.get("sweep", {}).get("design", "cartesian"),
         "acceptance_rule": (
@@ -363,12 +398,20 @@ def qualification_plan(config: Dict[str, Any], *, profile: str) -> Dict[str, Any
         "common_random_seed_pairing": ensemble_enabled,
         "common_random_seeds": seeds,
         "n_common_random_seeds": len(seeds),
+        "execution_confirmation_required": bool(
+            profile_settings.get("requires_explicit_confirmation", False)
+        ),
+        "execution_confirmation_flag": (
+            "--confirm-targeted-run"
+            if profile_settings.get("requires_explicit_confirmation", False)
+            else None
+        ),
         "microphysics": dict(config.get("microphysics", {})),
         "rain_signal_required": bool(
-            QUALIFICATION_PROFILES[profile].get("rain_signal_required", False)
+            profile_settings.get("rain_signal_required", False)
         ),
         "rain_signal_floor_kg_kg": float(
-            QUALIFICATION_PROFILES[profile].get("rain_signal_floor_kg_kg", 1.0e-8)
+            profile_settings.get("rain_signal_floor_kg_kg", 1.0e-8)
         ),
         "evidence_scope": (
             "placeholder_warm_cloud qualifies only the software workflow; pysdm_parcel is "
@@ -397,6 +440,14 @@ def main() -> None:
     )
     parser.add_argument("--output-dir", default="artifacts/numerical_qualification")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without running models.")
+    parser.add_argument(
+        "--confirm-targeted-run",
+        action="store_true",
+        help=(
+            "Explicitly authorize execution of a dry-run-first targeted profile. "
+            "Without this flag, rain_response_targeted only permits --dry-run."
+        ),
+    )
     parser.add_argument(
         "--refresh-result",
         default=None,
@@ -432,6 +483,11 @@ def main() -> None:
     print(json.dumps(plan, ensure_ascii=False, indent=2))
     if args.dry_run:
         return
+    if plan["execution_confirmation_required"] and not args.confirm_targeted_run:
+        raise SystemExit(
+            "This targeted high-resolution profile is dry-run-first. Review the plan, "
+            "then rerun with --confirm-targeted-run to authorize physical model execution."
+        )
 
     output_dir = Path(args.output_dir)
     if not output_dir.is_absolute():
