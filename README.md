@@ -2,6 +2,14 @@
 
 PySDM Seeding Lab is a research-oriented simulation platform for designing, running, and visualizing cloud seeding experiments based on PySDM.
 
+For persistent Linux lab-server hosting, detached simulation jobs, SSH-tunnel
+access, and bounded multi-core sweep execution, see
+[`docs/SERVER_DEPLOYMENT.md`](docs/SERVER_DEPLOYMENT.md). The short server command is:
+
+```bash
+bash scripts/server_web.sh start
+```
+
 New results include Markdown, self-contained HTML, and paginated PDF research
 reports. The automatic PDF embeds the most relevant available water-budget,
 spectrum-transition, or numerical-convergence figure. Results Dashboard also
@@ -13,6 +21,7 @@ Run a reproducible numerical qualification plan from the CLI:
 ```powershell
 & .\.conda\python.exe scripts\run_numerical_qualification.py --profile pilot --adapter placeholder_warm_cloud --dry-run
 & .\.conda\python.exe scripts\run_numerical_qualification.py --profile standard --adapter pysdm_parcel --output-dir artifacts\numerical_qualification
+& .\.conda\python.exe scripts\run_numerical_qualification.py --config configs\marine.yaml --profile rain_standard --adapter pysdm_parcel --output-dir artifacts\numerical_qualification
 ```
 
 `pilot` is a fast software-workflow check. Only the `pysdm_parcel` standard run
@@ -24,16 +33,64 @@ for the tested marine collision-OFF profile: all 12 non-zero next-finest checks
 passed, with a 1.731% maximum difference. It is not yet rain-producing evidence.
 See [`docs/evidence/NUMERICAL_QUALIFICATION_20260714.md`](docs/evidence/NUMERICAL_QUALIFICATION_20260714.md).
 
+The collision-ON `rain_standard` profile uses a 7-case one-factor-at-reference
+design and requires real rain-water in both reference runs. The 2026-07-15 result
+supports the 5% threshold for absolute rain-water state (12/12 checks, maximum
+3.285%) but not for seeding-minus-control response (2/21 checks). See
+[`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md).
+
+For stochastic response qualification, use paired common random seeds rather than
+comparing unrelated ensemble means:
+
+```powershell
+& .\.conda\python.exe scripts\run_numerical_qualification.py --config configs\marine.yaml --profile rain_response_pilot --adapter pysdm_parcel --output-dir artifacts\numerical_qualification
+```
+
+The completed 800-super-droplet, three-seed pilot passed all 36 absolute rain-state
+checks but only 4/63 seeding-response checks. See
+[`docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`](docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md).
+
 Run an instrumented real-PySDM ensemble benchmark with:
 
 ```powershell
 & .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile large --output-dir artifacts\ensemble_benchmark
 ```
 
+For a matched retained-memory A/B, rerun the same profile with
+`--gc-between-members`, then compare the two result directories:
+
+```powershell
+& .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile standard --gc-between-members --output-dir artifacts\ensemble_benchmark
+& .\.conda\python.exe scripts\compare_ensemble_memory_benchmarks.py --baseline BASELINE_RESULT_DIR --explicit-gc GC_RESULT_DIR --output docs\evidence\ensemble_memory_ab.json
+```
+
+Explicit member-boundary GC is diagnostic-only and remains disabled by default.
+The measured 12-member A/B did not reduce peak or retained RSS; see
+[`docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md`](docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md).
+
+For member-level process isolation, run a matched backend A/B:
+
+```powershell
+& .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile pilot --member-execution-backend in_process --output-dir artifacts\ensemble_backend_ab
+& .\.conda\python.exe scripts\run_ensemble_benchmark.py --config configs\marine.yaml --profile pilot --member-execution-backend subprocess --output-dir artifacts\ensemble_backend_ab
+& .\.conda\python.exe scripts\compare_ensemble_execution_backends.py --in-process IN_PROCESS_RESULT --subprocess SUBPROCESS_RESULT --output docs\evidence\ensemble_backend_ab.json
+```
+
+`subprocess` returns almost all cross-member retained parent RSS at child exit, but
+the measured pilot doubled runtime and raised process-tree peak. It therefore
+remains opt-in; see
+[`docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md`](docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md).
+
 The latest measured RSS and streaming-I/O record is in
 [`docs/evidence/ENSEMBLE_BENCHMARK_20260714.md`](docs/evidence/ENSEMBLE_BENCHMARK_20260714.md).
 The spectrum-transition threshold and checkpoint rationale is documented in
 [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md).
+
+Result directories use compact `case_###` and `member_###` components and enforce
+a 240-character portable absolute-path budget. Long scenario names are retained in
+metadata while filesystem components are shortened with a stable hash. If the
+configured output root itself is too deep, execution stops before running the model
+and asks for a shorter location such as `C:\pysdm_results`.
 
 This project starts from a clean scaffold and does not depend on previous experiment folders or legacy experiment names.  
 The goal is to build a reusable platform where cloud environment settings, background aerosol properties, seeding particle parameters, and microphysical options can be configured through YAML files and an interactive Streamlit interface.
@@ -229,9 +286,9 @@ a particle-history activation event.
 
 Steps 0-19 and the current research-evidence pass are complete; see
 `DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: collision-ON convergence qualification, retained-memory ownership
-profiling, a columnar internal cache comparison, and observational calibration of
-the operational transition floor are the next gates.
+`ROADMAP.md`: process-isolated backend memory measurement, a bounded targeted
+1600-super-droplet response qualification, a columnar internal cache comparison,
+and observational calibration of the operational transition floor are the next gates.
 
 ## Research Direction
 
@@ -323,6 +380,9 @@ microphysics:
   collision:
   sedimentation:
 
+execution:
+  max_workers:  # parallel sweep cases; 1 keeps serial execution
+
 output:
   base_dir:
   save_config:
@@ -338,8 +398,10 @@ The app provides separate pages for editing the working configuration:
 - `02_aerosol.py`: background aerosol size distribution and hygroscopicity
 - `03_seeding.py`: seeding particle properties and injection timing
 - `04_dynamics.py`: dynamic parameters and future parameterization inputs
-- `05_run.py`: validation and simulation execution
-- `06_results.py`: result loading and basic visualization
+- `05_parameter_sweep.py`: sensitivity design, ensemble, and server worker settings
+- `06_run.py`: validation, foreground execution, and detached job submission
+- `07_results.py`: result loading and research visualization
+- `08_server_jobs.py`: persistent job progress, PID, result path, and worker logs
 
 All input pages edit `configs/default.yaml` as the current working configuration.
 Scenario files such as `configs/marine.yaml` and `configs/urban.yaml` can be loaded from the main app page.
@@ -889,6 +951,8 @@ ensemble.enabled
 ensemble.n_members
 ensemble.seed_start
 ensemble.seed_step
+ensemble.execution_backend  # in_process or subprocess
+execution.max_workers        # independent sweep-case worker processes
 ```
 
 When enabled, each case is repeated with different random seeds and summarized into:

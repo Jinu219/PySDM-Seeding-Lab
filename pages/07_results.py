@@ -193,7 +193,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "research-quality-panels-20260714"
+RESULTS_UI_BUILD_ID = "ensemble-process-isolation-20260715"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -258,12 +258,14 @@ control_water_budget_df = loaded.get("control_water_budget", pd.DataFrame())
 seeding_water_budget_df = loaded.get("seeding_water_budget", pd.DataFrame())
 water_budget_comparison_df = loaded.get("water_budget_comparison", pd.DataFrame())
 numerical_convergence_df = loaded.get("numerical_convergence", pd.DataFrame())
+paired_seed_metrics_df = loaded.get("paired_seed_metrics", pd.DataFrame())
 spectrum_transition_df = loaded.get("spectrum_transition", pd.DataFrame())
 spectrum_transition_robustness_df = loaded.get(
     "spectrum_transition_onset_robustness", pd.DataFrame()
 )
 ensemble_aggregation_diagnostics = loaded.get("ensemble_aggregation_diagnostics", {})
 ensemble_benchmark = loaded.get("ensemble_benchmark", {})
+ensemble_memory_checkpoints = loaded.get("ensemble_memory_checkpoints", {})
 summary = loaded["summary"]
 metadata = loaded["metadata"]
 config = loaded["config"]
@@ -960,6 +962,38 @@ if is_ensemble:
         st.subheader("Ensemble Statistics")
         st.caption("Mean ± std and median + IQR uncertainty views for repeated random seeds.")
 
+        ensemble_runtime = summary.get("ensemble", {})
+        execution_backend = str(
+            ensemble_runtime.get(
+                "execution_backend",
+                metadata.get("ensemble_execution_backend", "in_process"),
+            )
+        )
+        member_process_resources = ensemble_runtime.get(
+            "member_process_resources",
+            metadata.get("member_process_resources", {}),
+        )
+        runtime_cols = st.columns(4)
+        runtime_cols[0].metric("Member backend", execution_backend)
+        runtime_cols[1].metric(
+            "Successful members",
+            ensemble_runtime.get("n_success", metadata.get("n_success", 0)),
+        )
+        runtime_cols[2].metric(
+            "Failed members",
+            ensemble_runtime.get("n_failed", metadata.get("n_failed", 0)),
+        )
+        runtime_cols[3].metric(
+            "Max isolated child RSS",
+            (
+                f"{(member_process_resources.get('max_child_process_tree_rss_bytes') or 0) / (1024.0**2):.1f} MiB"
+                if execution_backend == "subprocess"
+                else "N/A"
+            ),
+        )
+        if execution_backend == "subprocess":
+            st.caption(str(member_process_resources.get("scope", "")))
+
         if ensemble_aggregation_diagnostics:
             st.markdown("#### Streaming aggregation benchmark")
             benchmark_cols = st.columns(6)
@@ -1008,23 +1042,102 @@ if is_ensemble:
         if ensemble_benchmark:
             st.markdown("#### End-to-end PySDM benchmark")
             full_rss = ensemble_benchmark.get("full_process_rss", {})
-            full_cols = st.columns(4)
+            process_tree_rss = full_rss.get("process_tree", {})
+            benchmark_backend = ensemble_benchmark.get(
+                "member_execution_backend", "in_process"
+            )
+            full_cols = st.columns(5)
             full_cols[0].metric(
                 "Profile",
                 ensemble_benchmark.get("profile", "unknown"),
             )
             full_cols[1].metric(
+                "Backend",
+                benchmark_backend,
+            )
+            full_cols[2].metric(
                 "Full wall time",
                 f"{ensemble_benchmark.get('full_run_elapsed_seconds', 0.0):.1f} s",
             )
-            full_cols[2].metric(
-                "Full-process peak RSS",
-                f"{(full_rss.get('peak_rss_bytes') or 0) / (1024.0**2):.1f} MiB",
-            )
             full_cols[3].metric(
-                "Peak RSS increase",
+                "Process-tree peak RSS",
+                f"{(process_tree_rss.get('peak_rss_bytes') or full_rss.get('peak_rss_bytes') or 0) / (1024.0**2):.1f} MiB",
+            )
+            full_cols[4].metric(
+                "Parent peak increase",
                 f"{(full_rss.get('peak_rss_increase_bytes') or 0) / (1024.0**2):.1f} MiB",
             )
+            memory_checkpoints = ensemble_benchmark.get(
+                "memory_checkpoint_summary", {}
+            )
+            if memory_checkpoints:
+                retained_cols = st.columns(4)
+                retained_cols[0].metric(
+                    "Member boundaries",
+                    memory_checkpoints.get("n_member_boundaries", 0),
+                )
+                retained_cols[1].metric(
+                    "First-to-last member RSS",
+                    f"{(memory_checkpoints.get('member_boundary_rss_increase_bytes') or 0) / (1024.0**2):.1f} MiB",
+                )
+                retained_cols[2].metric(
+                    "RSS slope/member",
+                    f"{(memory_checkpoints.get('member_boundary_rss_slope_bytes_per_member') or 0) / (1024.0**2):.2f} MiB",
+                )
+                retained_cols[3].metric(
+                    "GC event RSS reclaimed (sum)",
+                    f"{(memory_checkpoints.get('gc_reclaimed_rss_total_bytes') or 0) / (1024.0**2):.1f} MiB",
+                )
+                st.caption(str(memory_checkpoints.get("scope", "")))
+                gc_enabled = bool(
+                    ensemble_benchmark.get("collect_garbage_between_members", False)
+                )
+                st.caption(
+                    f"Member-boundary explicit GC: {'ON' if gc_enabled else 'OFF'}. "
+                    "The reclaimed value is the sum of per-member RSS drops, not net "
+                    "end-of-run memory saved."
+                )
+            checkpoint_rows = ensemble_memory_checkpoints.get("checkpoints", [])
+            if checkpoint_rows:
+                with st.expander("Show member/stage memory checkpoints"):
+                    checkpoint_df = pd.DataFrame(checkpoint_rows)
+                    visible_columns = [
+                        column
+                        for column in (
+                            "elapsed_seconds",
+                            "stage",
+                            "current",
+                            "total",
+                            "rss_bytes",
+                            "uss_bytes",
+                            "gc_tracked_objects",
+                            "num_threads",
+                            "matplotlib_open_figures",
+                        )
+                        if column in checkpoint_df.columns
+                    ]
+                    st.dataframe(
+                        checkpoint_df[visible_columns],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    member_boundaries = checkpoint_df[
+                        checkpoint_df.get("stage", pd.Series(dtype=str)).eq(
+                            "ensemble_member_complete"
+                        )
+                    ].copy()
+                    if not member_boundaries.empty:
+                        member_boundaries["rss_mib"] = (
+                            pd.to_numeric(member_boundaries["rss_bytes"], errors="coerce")
+                            / (1024.0**2)
+                        )
+                        member_boundaries["uss_mib"] = (
+                            pd.to_numeric(member_boundaries["uss_bytes"], errors="coerce")
+                            / (1024.0**2)
+                        )
+                        st.line_chart(
+                            member_boundaries.set_index("current")[["rss_mib", "uss_mib"]]
+                        )
             st.caption(str(ensemble_benchmark.get("interpretation", "")))
 
         bases = dash.ensemble_available_bases(ensemble_df)
@@ -2037,7 +2150,121 @@ if tab_convergence is not None:
                     "Near-zero exclusions",
                     convergence_evidence.get("n_near_zero_reference_checks", 0),
                 )
+                if convergence_evidence.get("common_random_seed_pairing"):
+                    common_seed_cols = st.columns(3)
+                    common_seed_cols[0].metric(
+                        "Observed common seeds",
+                        convergence_evidence.get("n_common_random_seeds", 0),
+                    )
+                    common_seed_cols[1].metric(
+                        "Seed coverage",
+                        "COMPLETE"
+                        if convergence_evidence.get("common_seed_coverage_complete")
+                        else "INCOMPLETE",
+                    )
+                    common_seed_cols[2].metric(
+                        "Pairing rule",
+                        "SAME SEED PER RESOLUTION",
+                    )
+                    seed_rows = []
+                    for seed, seed_summary in convergence_evidence.get(
+                        "common_seed_evidence", {}
+                    ).items():
+                        seed_rows.append(
+                            {
+                                "random_seed": seed,
+                                "status": seed_summary.get("status"),
+                                "checks": seed_summary.get("n_checks"),
+                                "within_tolerance": seed_summary.get(
+                                    "n_checks_within_tolerance"
+                                ),
+                                "median_difference_percent": seed_summary.get(
+                                    "median_relative_difference_percent"
+                                ),
+                                "max_difference_percent": seed_summary.get(
+                                    "max_relative_difference_percent"
+                                ),
+                            }
+                        )
+                    if seed_rows:
+                        st.dataframe(
+                            pd.DataFrame(seed_rows),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                family_evidence = convergence_evidence.get(
+                    "metric_family_evidence", {}
+                )
+                if family_evidence:
+                    family_rows = []
+                    for family, family_summary in family_evidence.items():
+                        family_rows.append(
+                            {
+                                "metric_family": str(family).replace("_", " "),
+                                "status": family_summary.get("status"),
+                                "checks": family_summary.get("n_checks"),
+                                "within_tolerance": family_summary.get(
+                                    "n_checks_within_tolerance"
+                                ),
+                                "median_difference_percent": family_summary.get(
+                                    "median_relative_difference_percent"
+                                ),
+                                "p95_difference_percent": family_summary.get(
+                                    "p95_relative_difference_percent"
+                                ),
+                                "max_difference_percent": family_summary.get(
+                                    "max_relative_difference_percent"
+                                ),
+                            }
+                        )
+                    st.dataframe(
+                        pd.DataFrame(family_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                if convergence_evidence.get("rain_signal_required"):
+                    rain_cols = st.columns(2)
+                    rain_cols[0].metric(
+                        "Required rain signal",
+                        "DETECTED"
+                        if convergence_evidence.get("rain_signal_detected")
+                        else "MISSING",
+                    )
+                    rain_cols[1].metric(
+                        "Rain signal floor",
+                        dash.format_metric_value(
+                            convergence_evidence.get("rain_signal_floor_kg_kg")
+                        )
+                        + " kg/kg",
+                    )
+                    rain_by_seed = convergence_evidence.get("rain_signal_by_seed", {})
+                    if rain_by_seed:
+                        st.dataframe(
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "random_seed": seed,
+                                        "rain_signal_detected": row.get("detected"),
+                                        **row.get("reference_values_kg_kg", {}),
+                                    }
+                                    for seed, row in rain_by_seed.items()
+                                ]
+                            ),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
                 st.caption(str(convergence_evidence.get("interpretation", "")))
+                if not paired_seed_metrics_df.empty:
+                    with st.expander("Show paired common-seed scalar source table"):
+                        st.caption(
+                            "One row per successful resolution case and random seed. "
+                            "The convergence table compares only rows with identical seeds."
+                        )
+                        st.dataframe(
+                            paired_seed_metrics_df,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
             available_convergence_metrics = dash.convergence_metrics(numerical_convergence_df)
             selected_convergence_metric = st.selectbox(
                 "Response metric",

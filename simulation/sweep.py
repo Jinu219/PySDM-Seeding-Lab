@@ -47,8 +47,11 @@ def _safe_case_token(value: Any) -> str:
 
 def _format_case_name(case_index: int, parameter_values: Dict[str, Any]) -> str:
     parts = [f"case_{case_index:03d}"]
+    short_keys = [key.split(".")[-1] for key in parameter_values]
     for key, value in parameter_values.items():
         short_key = key.split(".")[-1]
+        if short_keys.count(short_key) > 1:
+            short_key = key.replace(".", "_")
         parts.append(f"{short_key}_{_safe_case_token(value)}")
     return "__".join(parts)
 
@@ -64,21 +67,70 @@ def active_sweep_parameters(config: Dict[str, Any]) -> List[Dict[str, Any]]:
         name = param.get("name")
         values = param.get("values", [])
         if name and isinstance(values, list) and len(values) > 0:
-            active.append({"name": name, "values": values})
+            item = {"name": name, "values": values}
+            if "reference" in param:
+                item["reference"] = param["reference"]
+            active.append(item)
 
     return active
 
 
 def count_sweep_cases(config: Dict[str, Any]) -> int:
     """Count the number of generated cases."""
+    cfg = normalize_config(config)
     params = active_sweep_parameters(config)
     if not params:
         return 0
+
+    design = str(cfg.get("sweep", {}).get("design", "cartesian"))
+    if design == "one_factor_at_reference":
+        return int(
+            1
+            + sum(
+                max(0, len(dict.fromkeys(param["values"])) - 1)
+                for param in params
+            )
+        )
 
     count = 1
     for param in params:
         count *= len(param["values"])
     return int(count)
+
+
+def _reference_value(param: Dict[str, Any]) -> Any:
+    values = list(param["values"])
+    selector = param.get("reference")
+    if selector == "min":
+        return min(values)
+    if selector == "max":
+        return max(values)
+    if selector in values:
+        return selector
+    raise ValueError(
+        f"Sweep parameter {param['name']!r} must define reference='min', "
+        "reference='max', or an explicit value present in values for "
+        "one_factor_at_reference design."
+    )
+
+
+def _one_factor_at_reference_cases(
+    params: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Return one reference case plus each non-reference value varied alone."""
+    reference = {param["name"]: _reference_value(param) for param in params}
+    cases = [reference]
+    for param in params:
+        name = param["name"]
+        reference_value = reference[name]
+        unique_values = list(dict.fromkeys(param["values"]))
+        for value in unique_values:
+            if value == reference_value:
+                continue
+            case = dict(reference)
+            case[name] = value
+            cases.append(case)
+    return cases
 
 
 def generate_sweep_cases(config: Dict[str, Any]) -> List[SweepCase]:
@@ -104,12 +156,23 @@ def generate_sweep_cases(config: Dict[str, Any]) -> List[SweepCase]:
         )
 
     names = [param["name"] for param in params]
-    values_product = itertools.product(*[param["values"] for param in params])
+    design = str(sweep.get("design", "cartesian"))
+    if design == "cartesian":
+        parameter_sets = [
+            dict(zip(names, values))
+            for values in itertools.product(*[param["values"] for param in params])
+        ]
+    elif design == "one_factor_at_reference":
+        parameter_sets = _one_factor_at_reference_cases(params)
+    else:
+        raise ValueError(
+            f"Unsupported sweep design {design!r}; use 'cartesian' or "
+            "'one_factor_at_reference'."
+        )
 
     cases: List[SweepCase] = []
 
-    for idx, values in enumerate(values_product, start=1):
-        parameter_values = dict(zip(names, values))
+    for idx, parameter_values in enumerate(parameter_sets, start=1):
 
         case_cfg = copy.deepcopy(cfg)
         case_cfg.setdefault("experiment", {})["mode"] = run_mode
@@ -217,6 +280,10 @@ def build_sweep_row(
         "comparison.efficiency.cloud_to_rain_conversion_delta",
         "comparison.efficiency.effective_radius_final_delta_um",
         "comparison.efficiency.droplet_number_final_delta_cm3",
+        "comparison.control.final_rain_water_mixing_ratio",
+        "comparison.seeding.final_rain_water_mixing_ratio",
+        "comparison.control.max_rain_water_mixing_ratio",
+        "comparison.seeding.max_rain_water_mixing_ratio",
         "comparison.delta_final_all_activated_water_mixing_ratio",
         "comparison.delta_final_supersaturation_percent",
         "comparison.research_quality.water_budget.control.max_abs_closed_window_relative_drift_percent",

@@ -1,5 +1,161 @@
 # Development Notes
 
+## Process-per-member ensemble isolation
+
+Changes:
+- Added validated `ensemble.execution_backend` choices: `in_process` (default) and
+  `subprocess` (opt-in).
+- The isolated path serializes an ensemble-disabled member config, invokes the same
+  production `run_experiment` entry point in a fresh interpreter, and preserves
+  stdout, stderr, status, return code, elapsed time, and process-tree RSS peak.
+- Successful and failed child telemetry is flattened into `member_summary.csv`.
+  Ensemble metadata/summary includes aggregate child resource statistics.
+- The benchmark now samples the parent plus live descendants as a fair peak measure,
+  while member checkpoints continue to measure retained parent RSS.
+- Added a matched backend comparison CLI, Results metrics, Parameter Sweep controls,
+  validation/integrity contracts, and a real subprocess integration regression.
+
+Execution evidence:
+- Matched 3-member real-PySDM pilots completed 3/3 members in both backends.
+- Parent first-to-last retention fell 99.669% (37.797 MiB to 0.125 MiB).
+- Process-tree peak increase worsened 13.606% (879.238 MiB to 998.867 MiB).
+- Wall time worsened 113.374% (248.725 s to 530.714 s).
+
+Decision:
+- Keep `in_process` as default and present `subprocess` as a retention-control tool,
+  not as a general memory or speed optimization.
+- Prototype bounded warm-worker batches before any 70-execution standard run.
+
+Validation:
+- All 32 tests passed in 293.2 s, including two real PySDM integrations and both
+  successful and failed child-process regression paths.
+- Project integrity passed. Parameter Sweep and Results AppTests had zero rendered
+  errors and zero exceptions.
+
+Evidence: `docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md`
+
+## Higher-resolution paired common-seed rain response
+
+Changes:
+- Added three-seed `rain_response_pilot` and five-seed `rain_response_standard`
+  numerical qualification profiles.
+- Preserved convergence scalar metrics in every ensemble member summary and added
+  `paired_seed_metrics.csv` as the auditable case × seed source table.
+- Numerical convergence now treats random seed as a condition, preventing a seed
+  from being compared with another seed or hidden inside a case mean.
+- Added complete case-seed coverage validation, per-seed rain-signal requirements,
+  per-seed family evidence, portable report fields, and Results tables.
+
+Execution evidence:
+- The 24-execution placeholder workflow completed in 56.2 s and validated artifact
+  generation only.
+- The full collision-ON PySDM pilot completed 24/24 executions in 956.4 s with all
+  four cases and all 12 case-seed pairs successful.
+- Absolute rain state passed 36/36 5% checks (max 2.366%). Seeding response passed
+  4/63 (median 39.093%, max 526.314%); every seed rejected response support.
+
+Decision:
+- Keep the paired-seed design as mandatory for stochastic response qualification.
+- Do not run the 70-execution standard blindly. First bound retained memory with
+  member process isolation, then target the axes identified by this pilot.
+
+Validation:
+- All 29 unit/integration tests passed in 263.3 s, including two real PySDM tests
+  and a compact 16-execution nested common-seed regression.
+- Project integrity passed. Results AppTest loaded the actual PySDM pilot with zero
+  exceptions and zero rendered errors and exposed the paired scalar source table.
+
+Evidence: `docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`
+
+## Ensemble member-boundary retained-memory profiling
+
+Changes:
+- Added a process checkpoint profiler for ensemble member completion, optional GC,
+  streaming aggregation, result finalization, and CLI return boundaries.
+- Each checkpoint records RSS, USS, VMS, thread count, GC generation/object state,
+  and open Matplotlib figure count.
+- Added `ensemble.collect_garbage_between_members` with blocking boolean validation;
+  it defaults to false and is exposed by the benchmark CLI only as an A/B diagnostic.
+- Added a matched-workload comparison function and CLI that rejects mismatched
+  profiles/workloads and stores peak, retained, slope, and wall-time differences.
+- Added Results raw-checkpoint inspection and member-boundary RSS/USS line charts.
+
+Execution evidence:
+- Baseline and explicit-GC standard profiles each completed 12 real PySDM members.
+- Baseline: 475.329 s, 878.137 MiB peak increase, 252.883 MiB first-to-last
+  retention, 23.461 MiB/member fitted slope.
+- Explicit GC: 493.260 s, 880.859 MiB peak increase, 256.715 MiB retention,
+  24.472 MiB/member slope.
+- GC reduced tracked Python objects and caused 198.676 MiB of cumulative transient
+  RSS drops, but did not reduce peak or net retained RSS. No figures accumulated.
+
+Decision:
+- Keep explicit member-boundary GC disabled by default. The next memory experiment
+  is child-process isolation to probe PySDM/Numba/backend allocator lifetime.
+- Preserve the streaming aggregator, whose incremental RSS stayed near 0.26 MiB.
+
+Evidence:
+- `docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md`
+- `docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.json`
+
+## Collision-ON rain qualification and OFAT execution design
+
+Changes:
+- Added `rain_pilot` and `rain_standard` CLI profiles with collision forced ON,
+  explicit rain-signal requirements, and stored signal floors.
+- Added a generic `one_factor_at_reference` sweep design. Qualification parameters
+  declare `reference: min` or `reference: max`, producing one reference case plus
+  each non-reference level varied alone.
+- Reduced a three-level, three-axis qualification from 27 to 7 cases while retaining
+  every reference and next-finest comparison consumed by the convergence analysis.
+- Added absolute control/seeding rain-water metrics to sweep and convergence outputs.
+- Qualification evidence now requires physical rain for rain profiles and reports
+  `absolute_state` and `seeding_response` metric families separately.
+- Results Dashboard and portable reports expose family-level status and the rain
+  signal gate instead of presenting one pooled percentage without context.
+
+Execution evidence:
+- A 1500-second collision-ON probe produced rain onset at 525 s and non-zero final
+  rain water in both control and seeding cases.
+- The four-case `rain_pilot` completed in 433 s, detected rain, and appropriately
+  rejected 5% support at the 60/100-super-droplet levels.
+- The seven-case `rain_standard` completed 14 real PySDM executions in 699 s with
+  zero failures. Absolute rain-state convergence passed 12/12 checks with a 3.285%
+  maximum; seeding-response convergence passed only 2/21 checks.
+
+Scientific limitation:
+- Collision/coalescence is enabled, but sedimentation and surface precipitation are
+  not. The supported family is parcel rain-water state, not rainfall at the ground.
+- The current numerical reference is insufficient for quantitative seeding-effect
+  claims even though its absolute rain state passes the 5% gate.
+
+Validation:
+- All 26 unit/integration tests passed in 249 seconds, including two real PySDM
+  tests. Project integrity, portable path checks, and Results AppTest passed with
+  zero exceptions or rendered errors.
+
+## Absolute result-path budget hardening
+
+Changes:
+- Extended the compact nested path policy with a 240-character portable absolute
+  path ceiling and workflow-specific descendant reserves for single, comparison,
+  ensemble, and sweep results.
+- Long scenario/result components are shortened with a readable prefix plus stable
+  hash according to the actual remaining absolute-path budget.
+- Output roots that leave insufficient room now raise `ResultPathBudgetError`
+  before an adapter starts, avoiding another empty 24-case/240-member result.
+- Kept full run IDs, scenario names, and sweep parameters in stored metadata rather
+  than using filesystem components as the scientific record.
+
+Regression coverage:
+- Runs a sweep-ensemble under a deliberately deep output parent and long experiment
+  name, then checks every artifact remains within the portable limit.
+- Verifies stable shortening of a very long result name.
+- Verifies an impossibly deep output root fails early with actionable guidance.
+- Project integrity now exercises the complete sweep/case/member/comparison path.
+- All 25 unit/integration tests passed in 213 seconds, including the two real PySDM
+  integration tests, and the project integrity check passed.
+
 ## Full PySDM qualification, transition calibration, and benchmark evidence
 
 Changes:

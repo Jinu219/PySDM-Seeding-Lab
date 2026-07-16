@@ -1,6 +1,57 @@
 # Roadmap
 
-## Current milestone snapshot (2026-07-14)
+## Current milestone snapshot (2026-07-15)
+
+Lab-server execution gate completed on 2026-07-15:
+- Added persistent headless Streamlit management, SSH-tunnel guidance, detached
+  experiment jobs, and a durable server-job monitor.
+- Added a bounded spawn-based process pool for independent sweep cases. Workers
+  are warm-reused within one sweep and exit when the pool closes.
+- The first server showcase is configured for four workers; worker count remains
+  bounded by case count and must be scaled against measured RAM.
+
+Process-isolation gate completed on 2026-07-15:
+- Added a production subprocess backend with durable per-member audit artifacts and
+  separate child process-tree resource telemetry.
+- Matched 3-member PySDM pilots reduced cross-member parent RSS retention by 99.669%.
+- The isolated pilot also increased fair process-tree peak by 13.606% and wall time
+  by 113.374%, so it remains an opt-in safety mechanism rather than the default.
+- The warm-worker prototype now exists. Its real-PySDM wall-time/RSS A/B benchmark
+  is the next gate before the planned 70-execution response run.
+
+Collision-ON rain qualification completed on 2026-07-15:
+- A new 7-case OFAT design replaced the 27-case Cartesian qualification grid.
+- The full `rain_standard` profile completed 14 real PySDM executions in 699 s.
+- Both control and seeding produced physical rain-water signals above the required
+  floor. Absolute rain state passed all 12 next-finest 5% checks (max 3.285%).
+- Seeding-response metrics did not converge (2/21 passed), so quantitative seeding
+  enhancement remains outside the supported interpretation scope.
+
+Revised next ordered gates:
+1. Benchmark serial versus 4/8-worker real-PySDM sweep wall time and process-tree RSS.
+2. Use those measured bounds to target a reduced 1600-super-droplet response plan.
+3. Prototype a columnar internal cache with CSV numerical-equality regression.
+4. Validate or revise the operational 1% transition floor using observations.
+
+Higher-resolution common-seed gate completed on 2026-07-15:
+- A paired-seed scalar audit now preserves every case × seed response and rejects
+  incomplete case-seed coverage.
+- The 800-super-droplet, three-seed pilot completed all 24 physical executions.
+- Absolute rain state passed 36/36 checks; response passed 4/63. All three seeds
+  independently rejected quantitative response support.
+- The five-seed / 1600 standard plan remains available, but its 70 executions are
+  gated behind process isolation and a targeted resource plan rather than launched
+  automatically after a strongly non-converged pilot.
+
+Retained-memory gate completed on 2026-07-15:
+- Member/stage checkpoints now record RSS, USS, GC-tracked objects, threads, and
+  open Matplotlib figures during real-PySDM ensembles.
+- Matched 12-member standard runs compared normal execution with `gc.collect()`
+  after every member.
+- Explicit GC made peak RSS 0.310% worse, retained RSS 1.515% worse, and wall time
+  3.772% longer despite cumulative transient RSS drops of 198.676 MiB.
+- The default remains GC OFF. Process isolation is the next ownership experiment;
+  the evidence does not support Python cyclic garbage as the dominant owner.
 
 Research-evidence gate completed:
 - The standard full-PySDM qualification completed 27 cases / 54 model executions.
@@ -16,8 +67,8 @@ Research-evidence gate completed:
   in Results. Step 19 now has actual legacy-result and schema-migration fixtures.
 
 Next ordered gates:
-1. Collision-ON, rain-producing convergence qualification.
-2. Retained-memory ownership profiling across ensemble members.
+1. Bounded warm-worker serial/4/8-worker real-PySDM A/B benchmark.
+2. Targeted, resource-bounded 1600-super-droplet response qualification.
 3. Columnar internal-cache prototype with CSV equality regression.
 4. Observational validation or revision of the operational 1% transition floor.
 

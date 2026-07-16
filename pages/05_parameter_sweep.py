@@ -65,6 +65,7 @@ if scenario_memo:
 sweep = cfg.setdefault("sweep", {})
 experiment = cfg.setdefault("experiment", {})
 ensemble = cfg.setdefault("ensemble", {})
+execution = cfg.setdefault("execution", {})
 
 with st.container(border=True):
     st.subheader("Execution Design")
@@ -134,8 +135,72 @@ with st.container(border=True):
         )
 
     if ensemble.get("enabled", False):
+        backend_col, gc_col = st.columns([1.3, 1])
+        with backend_col:
+            backend_options = ["in_process", "subprocess"]
+            current_backend = str(ensemble.get("execution_backend", "in_process"))
+            ensemble["execution_backend"] = st.selectbox(
+                "Member execution backend",
+                backend_options,
+                index=(
+                    backend_options.index(current_backend)
+                    if current_backend in backend_options
+                    else 0
+                ),
+                format_func=lambda value: (
+                    "In-process (faster)"
+                    if value == "in_process"
+                    else "Subprocess (memory-isolated)"
+                ),
+                help=(
+                    "Subprocess starts a fresh Python process for every member so native/JIT "
+                    "memory is returned to the OS when that member exits."
+                ),
+            )
+        with gc_col:
+            ensemble["collect_garbage_between_members"] = st.toggle(
+                "Explicit GC between members",
+                value=bool(
+                    ensemble.get("collect_garbage_between_members", False)
+                ),
+                disabled=ensemble["execution_backend"] == "subprocess",
+                help="Diagnostic A/B option for the in-process backend.",
+            )
+        if ensemble["execution_backend"] == "subprocess":
+            st.info(
+                "Memory isolation is enabled. Each member keeps its config, status, stdout, "
+                "stderr, elapsed time, and child-process peak RSS in the result folder. "
+                "Interpreter and PySDM/Numba startup overhead is paid once per member."
+            )
         st.caption(
             "Ensemble은 stochastic uncertainty용입니다. timestep/super-droplet sweep은 별도의 numerical convergence 실험으로 해석하세요."
+        )
+
+
+with st.container(border=True):
+    st.subheader("Server / Parallel Execution")
+    worker_col, guidance_col = st.columns([1, 2])
+    with worker_col:
+        execution["max_workers"] = st.number_input(
+            "Maximum parallel sweep workers",
+            min_value=1,
+            max_value=256,
+            value=int(execution.get("max_workers", 1)),
+            step=1,
+            help=(
+                "Only independent sweep cases run in parallel. Ensemble members inside "
+                "one case remain sequential, preventing nested process oversubscription."
+            ),
+        )
+    with guidance_col:
+        st.info(
+            "Use 1 on a laptop. On a lab server, start with 4 workers and raise it only "
+            "after checking RAM. Recent real-PySDM measurements reached about 1 GiB per "
+            "active worker, so 20 workers can require more than 20 GiB plus overhead."
+        )
+        st.caption(
+            "The effective worker count is min(max_workers, number of sweep cases). "
+            "A 10-case OFAT scenario therefore uses at most 10 workers even if 20 is configured."
         )
 
 
@@ -191,10 +256,14 @@ def _parse_values(spec: SweepParameterSpec, raw_text: str) -> list[Any]:
 
 
 catalog_lookup = parameter_spec_lookup()
-existing_params = {
-    str(param.get("name")): list(param.get("values", []))
+existing_parameter_definitions = {
+    str(param.get("name")): dict(param)
     for param in sweep.get("parameters", [])
     if param.get("name") and isinstance(param.get("values", []), list)
+}
+existing_params = {
+    name: list(param.get("values", []))
+    for name, param in existing_parameter_definitions.items()
 }
 
 source_identity = str(
@@ -281,14 +350,32 @@ for spec in COMMON_SWEEP_PARAMETERS:
         continue
     try:
         raw_text = spec.default_values if spec.value_type == "bool" else str(st.session_state[_values_key(spec)])
-        params.append({"name": spec.name, "values": _parse_values(spec, raw_text)})
+        values = _parse_values(spec, raw_text)
+        parameter = {"name": spec.name, "values": values}
+        existing_reference = existing_parameter_definitions.get(spec.name, {}).get(
+            "reference"
+        )
+        if (
+            isinstance(existing_reference, str)
+            and existing_reference in {"min", "max"}
+        ) or any(existing_reference == value for value in values):
+            parameter["reference"] = existing_reference
+        params.append(parameter)
     except Exception as exc:
         parse_error = exc
         break
 
 # Preserve advanced dotted-key parameters that are not yet part of the common catalog.
 custom_params = [
-    {"name": name, "values": values}
+    {
+        "name": name,
+        "values": values,
+        **(
+            {"reference": existing_parameter_definitions[name]["reference"]}
+            if "reference" in existing_parameter_definitions[name]
+            else {}
+        ),
+    }
     for name, values in existing_params.items()
     if name not in catalog_lookup
 ]

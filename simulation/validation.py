@@ -7,6 +7,7 @@ from simulation.schema import (
     ADAPTER_NAMES,
     AEROSOL_DISTRIBUTION_TYPES,
     DELIVERY_METHODS,
+    ENSEMBLE_EXECUTION_BACKENDS,
     EXPERIMENT_MODES,
     SEEDING_MATERIAL_TYPES,
     SCHEMA_VERSION,
@@ -47,6 +48,9 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
     dyn = cfg.get("dynamics", {})
     microphysics = cfg.get("microphysics", {})
     diagnostics = cfg.get("diagnostics", {})
+    sweep = cfg.get("sweep", {})
+    ensemble = cfg.get("ensemble", {})
+    qualification = cfg.get("qualification", {})
     output = cfg.get("output", {})
 
     # -------------------------------------------------------------------------
@@ -91,6 +95,97 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                 "Use an integer seed if stochastic reproducibility is needed.",
             )
         )
+
+    sweep_design = str(sweep.get("design", "cartesian"))
+    if sweep_design not in {"cartesian", "one_factor_at_reference"}:
+        issues.append(
+            _issue(
+                "error",
+                "sweep.design",
+                "sweep.design must be cartesian or one_factor_at_reference.",
+                "Use one_factor_at_reference only when every parameter declares a reference.",
+            )
+        )
+    elif sweep_design == "one_factor_at_reference":
+        for index, parameter in enumerate(sweep.get("parameters", [])):
+            values = parameter.get("values", [])
+            reference = parameter.get("reference")
+            reference_is_selector = isinstance(reference, str) and reference in {
+                "min",
+                "max",
+            }
+            reference_is_explicit = any(reference == value for value in values)
+            if not reference_is_selector and not reference_is_explicit:
+                issues.append(
+                    _issue(
+                        "error",
+                        f"sweep.parameters.{index}.reference",
+                        "Each one-factor parameter needs reference=min, reference=max, "
+                        "or an explicit value present in values.",
+                        "Mark the finest numerical level as the reference.",
+                    )
+                )
+
+    if not isinstance(ensemble.get("collect_garbage_between_members", False), bool):
+        issues.append(
+            _issue(
+                "error",
+                "ensemble.collect_garbage_between_members",
+                "collect_garbage_between_members must be true or false.",
+                "Leave it false for normal runs; enable it only for memory A/B tests.",
+            )
+        )
+
+    if ensemble.get("execution_backend", "in_process") not in ENSEMBLE_EXECUTION_BACKENDS:
+        issues.append(
+            _issue(
+                "error",
+                "ensemble.execution_backend",
+                f"execution_backend must be one of {ENSEMBLE_EXECUTION_BACKENDS}.",
+                "Use in_process for minimum overhead or subprocess for member-level memory isolation.",
+            )
+        )
+
+    execution = cfg.get("execution", {})
+    max_workers = execution.get("max_workers", 1)
+    if isinstance(max_workers, bool) or not isinstance(max_workers, int):
+        issues.append(
+            _issue(
+                "error",
+                "execution.max_workers",
+                "max_workers must be an integer.",
+                "Use 1 for serial execution or a positive worker count for a server sweep.",
+            )
+        )
+    elif not 1 <= max_workers <= 256:
+        issues.append(
+            _issue(
+                "error",
+                "execution.max_workers",
+                "max_workers must be between 1 and 256.",
+                "Choose a worker count that also fits the server memory budget.",
+            )
+        )
+
+    if qualification.get("common_random_seed_pairing", False):
+        if not ensemble.get("enabled", False):
+            issues.append(
+                _issue(
+                    "error",
+                    "qualification.common_random_seed_pairing",
+                    "Common-seed pairing requires ensemble execution.",
+                    "Enable ensemble and use at least two members.",
+                )
+            )
+        if int(ensemble.get("n_members", 0)) < 2:
+            issues.append(
+                _issue(
+                    "error",
+                    "ensemble.n_members",
+                    "Common-seed qualification requires at least two members.",
+                    "Use two or more deterministic member seeds.",
+                )
+            )
 
 
     # -------------------------------------------------------------------------

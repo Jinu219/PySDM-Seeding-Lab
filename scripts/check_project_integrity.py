@@ -83,6 +83,7 @@ def check_page_files() -> None:
         "05_parameter_sweep.py",
         "06_run.py",
         "07_results.py",
+        "08_server_jobs.py",
     }
     forbidden = {
         "05_run.py",
@@ -222,16 +223,146 @@ def check_native_diagnostic_contract() -> None:
         raise RuntimeError("Invalid diagnostic threshold ordering is not rejected.")
 
 
+def check_result_path_policy() -> None:
+    from simulation.path_policy import (
+        COMPARISON_RESULT_DESCENDANT_RESERVE,
+        ENSEMBLE_RESULT_DESCENDANT_RESERVE,
+        SWEEP_RESULT_DESCENDANT_RESERVE,
+        WINDOWS_PORTABLE_PATH_LIMIT,
+        path_character_count,
+        resolve_result_directory,
+    )
+
+    sweep_dir = resolve_result_directory(
+        PROJECT_ROOT / "results",
+        "very_long_scenario_name_" * 20,
+        descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
+    )
+    case_dir = resolve_result_directory(
+        sweep_dir / "cases",
+        "case_001",
+        directory_name="case_001",
+        descendant_reserve=ENSEMBLE_RESULT_DESCENDANT_RESERVE,
+    )
+    comparison_dir = resolve_result_directory(
+        case_dir / "members" / "member_001",
+        "comparison",
+        directory_name="comparison",
+        descendant_reserve=COMPARISON_RESULT_DESCENDANT_RESERVE,
+    )
+    representative_artifact = (
+        comparison_dir / "seeding" / "diagnostic_provenance.json"
+    )
+    if path_character_count(representative_artifact) > WINDOWS_PORTABLE_PATH_LIMIT:
+        raise RuntimeError("Compact nested sweep path exceeds the portable path limit.")
+
+
+def check_rain_qualification_contract() -> None:
+    from scripts.run_numerical_qualification import (
+        build_qualification_config,
+        qualification_plan,
+    )
+    from simulation.schema import default_config
+
+    config = build_qualification_config(
+        default_config(),
+        profile="rain_standard",
+        adapter="pysdm_parcel",
+    )
+    plan = qualification_plan(config, profile="rain_standard")
+    if plan["case_count"] != 7 or plan["model_execution_count"] != 14:
+        raise RuntimeError("Rain qualification lost its seven-case OFAT design.")
+    if not config["microphysics"]["collision"] or not plan["rain_signal_required"]:
+        raise RuntimeError("Rain qualification no longer enforces collision and rain signal.")
+
+    response_config = build_qualification_config(
+        default_config(),
+        profile="rain_response_pilot",
+        adapter="pysdm_parcel",
+    )
+    response_plan = qualification_plan(
+        response_config,
+        profile="rain_response_pilot",
+    )
+    if response_plan["case_count"] != 4 or response_plan["model_execution_count"] != 24:
+        raise RuntimeError("Rain response pilot lost its 4-case / 3-seed paired design.")
+    if not response_plan["common_random_seed_pairing"]:
+        raise RuntimeError("Rain response pilot no longer enforces common seed pairing.")
+
+
+def check_ensemble_memory_comparison_contract() -> None:
+    from analysis.resource_monitor import (
+        compare_ensemble_execution_backends,
+        compare_ensemble_memory_benchmarks,
+    )
+
+    baseline = {
+        "profile": "pilot",
+        "workload": {"n_members": 3},
+        "collect_garbage_between_members": False,
+        "full_run_elapsed_seconds": 10.0,
+        "full_process_rss": {"peak_rss_increase_bytes": 100},
+        "memory_checkpoint_summary": {
+            "member_boundary_rss_increase_bytes": 50,
+            "member_boundary_rss_slope_bytes_per_member": 25.0,
+        },
+    }
+    explicit_gc = {
+        "profile": "pilot",
+        "workload": {"n_members": 3},
+        "collect_garbage_between_members": True,
+        "full_run_elapsed_seconds": 11.0,
+        "full_process_rss": {"peak_rss_increase_bytes": 105},
+        "memory_checkpoint_summary": {
+            "member_boundary_rss_increase_bytes": 55,
+            "member_boundary_rss_slope_bytes_per_member": 27.5,
+            "gc_reclaimed_rss_total_bytes": 20,
+        },
+    }
+    comparison = compare_ensemble_memory_benchmarks(baseline, explicit_gc)
+    if comparison["recommend_collect_garbage_between_members_default"]:
+        raise RuntimeError("Memory comparison incorrectly recommends a regressive GC run.")
+
+    in_process = {
+        **baseline,
+        "member_execution_backend": "in_process",
+        "full_process_rss": {
+            "process_tree": {"peak_rss_increase_bytes": 100},
+        },
+    }
+    isolated = {
+        **baseline,
+        "member_execution_backend": "subprocess",
+        "full_run_elapsed_seconds": 13.0,
+        "full_process_rss": {
+            "process_tree": {"peak_rss_increase_bytes": 95},
+        },
+        "memory_checkpoint_summary": {
+            "member_boundary_rss_increase_bytes": 5,
+        },
+        "member_process_resources": {
+            "max_child_process_tree_rss_bytes": 80,
+        },
+    }
+    backend_comparison = compare_ensemble_execution_backends(in_process, isolated)
+    if not backend_comparison["recommend_subprocess_for_memory_bounded_ensembles"]:
+        raise RuntimeError("Backend comparison lost the bounded-memory recommendation.")
+
+
 def main() -> None:
     check_page_files()
     check_safe_read_csv_no_recursion()
     check_sweep_catalog()
     check_native_diagnostic_contract()
+    check_result_path_policy()
+    check_rain_qualification_contract()
+    check_ensemble_memory_comparison_contract()
     py_compile.compile(str(PROJECT_ROOT / "app.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "ui_helpers.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep_catalog.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "sweep.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "path_policy.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "member_process.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "native_parcel_simulation.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "pysdm_parcel_adapter.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "wet_radius_spectrum.py"), doraise=True)
@@ -250,8 +381,13 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "pages" / "08_server_jobs.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "server_jobs.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "simulation" / "server_job_worker.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_numerical_qualification.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_ensemble_benchmark.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_memory_benchmarks.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_execution_backends.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 
@@ -264,6 +400,9 @@ def main() -> None:
     print("Project integrity check passed.")
     print("Dashboard exports are complete.")
     print("Native diagnostic contract is complete (proxy-free synthetic mapping).")
+    print("Portable result-path budget check passed.")
+    print("Collision-ON rain qualification contract passed.")
+    print("Ensemble retained-memory A/B comparison contract passed.")
     print(f"Dashboard build: {getattr(dashboard, 'DASHBOARD_BUILD_ID', 'unknown')}")
 
 

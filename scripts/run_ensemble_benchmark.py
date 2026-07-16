@@ -17,7 +17,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-from analysis.resource_monitor import ProcessRSSMonitor
+from analysis.resource_monitor import ProcessRSSCheckpointProfiler, ProcessRSSMonitor
+from analysis.result_files import describe_result_files
 from simulation.config import load_config
 from simulation.progress import StdoutProgressReporter
 from simulation.runner import run_experiment
@@ -25,7 +26,7 @@ from simulation.schema import normalize_config
 from simulation.validation import validate_config_detailed
 
 
-ENSEMBLE_BENCHMARK_BUILD_ID = "pysdm-ensemble-benchmark-v1-20260714"
+ENSEMBLE_BENCHMARK_BUILD_ID = "pysdm-ensemble-benchmark-v3-process-isolation-20260715"
 BENCHMARK_PROFILES: Dict[str, Dict[str, int]] = {
     "pilot": {
         "n_members": 3,
@@ -51,7 +52,13 @@ BENCHMARK_PROFILES: Dict[str, Dict[str, int]] = {
 }
 
 
-def build_benchmark_config(base_config: Dict[str, Any], *, profile: str) -> Dict[str, Any]:
+def build_benchmark_config(
+    base_config: Dict[str, Any],
+    *,
+    profile: str,
+    collect_garbage_between_members: bool = False,
+    member_execution_backend: str = "in_process",
+) -> Dict[str, Any]:
     """Build a deterministic single-mode ensemble workload for resource measurement."""
     if profile not in BENCHMARK_PROFILES:
         raise ValueError(f"Unknown benchmark profile: {profile}")
@@ -76,6 +83,10 @@ def build_benchmark_config(base_config: Dict[str, Any], *, profile: str) -> Dict
             "n_members": settings["n_members"],
             "seed_start": 7000,
             "seed_step": 17,
+            "execution_backend": str(member_execution_backend),
+            "collect_garbage_between_members": bool(
+                collect_garbage_between_members
+            ),
         }
     )
     cfg["benchmark"] = {
@@ -86,6 +97,10 @@ def build_benchmark_config(base_config: Dict[str, Any], *, profile: str) -> Dict
             "Real PySDM condensation/seeding ensemble. Collision remains whatever the base "
             "configuration declares; this benchmark measures software resources, not efficacy."
         ),
+        "collect_garbage_between_members": bool(
+            collect_garbage_between_members
+        ),
+        "member_execution_backend": str(member_execution_backend),
     }
     return normalize_config(cfg)
 
@@ -105,12 +120,28 @@ def main() -> None:
     parser.add_argument("--output-dir", default="artifacts/ensemble_benchmark")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--gc-between-members",
+        action="store_true",
+        help="Run gc.collect() after every member for an A/B retained-memory benchmark.",
+    )
+    parser.add_argument(
+        "--member-execution-backend",
+        choices=["in_process", "subprocess"],
+        default="in_process",
+        help="Run members in the benchmark parent or in one isolated child process per member.",
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config)
     if not config_path.is_absolute():
         config_path = PROJECT_ROOT / config_path
-    cfg = build_benchmark_config(load_config(config_path), profile=args.profile)
+    cfg = build_benchmark_config(
+        load_config(config_path),
+        profile=args.profile,
+        collect_garbage_between_members=args.gc_between_members,
+        member_execution_backend=args.member_execution_backend,
+    )
     errors = [issue for issue in validate_config_detailed(cfg) if issue.severity == "error"]
     if errors:
         raise SystemExit("; ".join(f"{issue.field}: {issue.message}" for issue in errors))
@@ -128,32 +159,72 @@ def main() -> None:
     if not output_dir.is_absolute():
         output_dir = PROJECT_ROOT / output_dir
     reporter = StdoutProgressReporter(enabled=not args.quiet)
-    full_run_monitor = ProcessRSSMonitor(sample_interval_seconds=0.05)
+    checkpoint_profiler = ProcessRSSCheckpointProfiler()
+
+    def progress(stage: str, current: int, total: int, message: str) -> None:
+        reporter(stage, current, total, message)
+        checkpoint_profiler(stage, current, total, message)
+
+    full_run_monitor = ProcessRSSMonitor(
+        sample_interval_seconds=0.05,
+        include_children=True,
+    )
     with full_run_monitor:
         started = time.perf_counter()
-        result_dir = run_experiment(cfg, output_dir, progress_callback=reporter)
+        result_dir = run_experiment(cfg, output_dir, progress_callback=progress)
         full_run_seconds = time.perf_counter() - started
+    checkpoint_profiler.record(
+        "benchmark_return",
+        cfg["ensemble"]["n_members"],
+        cfg["ensemble"]["n_members"],
+        "Benchmark runner returned to CLI",
+    )
 
     aggregation = _read_json(result_dir / "ensemble_aggregation_diagnostics.json")
+    result_summary = _read_json(result_dir / "summary.json")
+    member_process_resources = result_summary.get("ensemble", {}).get(
+        "member_process_resources", {}
+    )
+    checkpoint_payload = {
+        "build_id": ENSEMBLE_BENCHMARK_BUILD_ID,
+        "summary": checkpoint_profiler.summary(),
+        "checkpoints": checkpoint_profiler.checkpoints,
+    }
+    _write_json(result_dir / "ensemble_memory_checkpoints.json", checkpoint_payload)
     evidence = {
         **plan,
         "result_dir": str(result_dir),
         "full_run_elapsed_seconds": float(full_run_seconds),
         "full_process_rss": full_run_monitor.summary(),
         "streaming_aggregation": aggregation,
+        "memory_checkpoint_summary": checkpoint_payload["summary"],
+        "member_execution_backend": str(args.member_execution_backend),
+        "member_process_resources": member_process_resources,
+        "garbage_collection_between_members": bool(args.gc_between_members),
         "interpretation": (
-            "full_process_rss covers model execution, result writes, and aggregation. "
-            "streaming_aggregation.process_rss covers only the aggregation window."
+            "full_process_rss separates parent RSS from a parent-plus-live-children process-tree peak. "
+            "streaming_aggregation.process_rss covers only the aggregation window. "
+            "memory_checkpoint_summary estimates parent member-boundary retention and optional "
+            "explicit-GC reclamation; member_process_resources summarizes isolated children."
         ),
     }
     _write_json(result_dir / "ensemble_benchmark.json", evidence)
 
     metadata = _read_json(result_dir / "metadata.json")
     metadata.setdefault("result_files", {})["ensemble_benchmark"] = "ensemble_benchmark.json"
+    metadata["result_files"][
+        "ensemble_memory_checkpoints"
+    ] = "ensemble_memory_checkpoints.json"
+    metadata["file_roles"] = describe_result_files(
+        list(metadata["result_files"].values())
+    )
     metadata["ensemble_benchmark"] = evidence
     _write_json(result_dir / "metadata.json", metadata)
     manifest = _read_json(result_dir / "result_manifest.json")
     manifest.setdefault("files", {})["ensemble_benchmark"] = "ensemble_benchmark.json"
+    manifest["files"][
+        "ensemble_memory_checkpoints"
+    ] = "ensemble_memory_checkpoints.json"
     _write_json(result_dir / "result_manifest.json", manifest)
     print(json.dumps(evidence, ensure_ascii=False, indent=2))
 

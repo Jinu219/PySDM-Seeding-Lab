@@ -17,6 +17,11 @@ ADAPTER_NAMES = [
     "pysdm_parcel",
 ]
 
+ENSEMBLE_EXECUTION_BACKENDS = [
+    "in_process",
+    "subprocess",
+]
+
 SEEDING_MATERIAL_TYPES = [
     "hygroscopic",
     "custom",
@@ -128,6 +133,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
     },
     "sweep": {
+        "design": "cartesian",
         "run_mode": "control_vs_seeding",
         "max_runs": 100,
         "ranking_metric": "comparison.efficiency.seeding_efficiency_score",
@@ -141,6 +147,20 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "values": [0.8, 1.0, 1.2],
             },
         ],
+    },
+    "ensemble": {
+        "enabled": False,
+        "n_members": 5,
+        "seed_start": 1000,
+        "seed_step": 1,
+        "execution_backend": "in_process",
+        "collect_garbage_between_members": False,
+    },
+    "execution": {
+        # Sweep cases are independent and can be distributed across a bounded
+        # process pool. Keep the portable/local default serial; lab servers can
+        # opt in after choosing a worker count that fits available RAM.
+        "max_workers": 1,
     },
     "output": {
         "base_dir": "results",

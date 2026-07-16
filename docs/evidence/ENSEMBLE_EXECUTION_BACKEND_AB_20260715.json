@@ -1,0 +1,33 @@
+{
+  "build_id": "ensemble-execution-backend-ab-v1-20260715",
+  "matched_workload": true,
+  "profile": "pilot",
+  "workload": {
+    "n_members": 3,
+    "duration_seconds": 60,
+    "timestep_seconds": 15,
+    "background_superdroplets": 50,
+    "seeding_superdroplets": 50
+  },
+  "in_process": {
+    "full_run_elapsed_seconds": 248.72454450000077,
+    "process_tree_peak_rss_increase_bytes": 921948160,
+    "member_boundary_rss_increase_bytes": 39632896
+  },
+  "subprocess": {
+    "full_run_elapsed_seconds": 530.7136565999972,
+    "process_tree_peak_rss_increase_bytes": 1047388160,
+    "member_boundary_rss_increase_bytes": 131072,
+    "max_child_process_tree_rss_bytes": 1077870592,
+    "median_child_process_tree_rss_bytes": 1047252992.0
+  },
+  "observed_differences": {
+    "process_tree_peak_rss_improvement_percent": -13.60597107759291,
+    "member_boundary_rss_improvement_percent": 99.6692848284415,
+    "wall_time_overhead_percent": 113.37405910898977
+  },
+  "conclusion": "observed_parent_retained_rss_release",
+  "recommend_subprocess_for_memory_bounded_ensembles": false,
+  "recommend_subprocess_as_default": false,
+  "interpretation": "Process-tree peak includes the parent and live descendants, while member-boundary RSS measures what remains in the parent after each child exits. Subprocess remains opt-in because interpreter/JIT startup can increase wall time even when retention falls."
+}

@@ -160,6 +160,14 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
             "resolution_rank=1 is the acceptance check."
         ),
     },
+    "paired_seed_metrics.csv": {
+        "when": "After a common-random-seed numerical qualification sweep",
+        "answers": "Which scalar response belongs to each matched seed and resolution case?",
+        "description": (
+            "Audit table with one successful ensemble-member row per sweep case and common "
+            "random seed. Numerical convergence is computed within each seed condition."
+        ),
+    },
     "qualification_evidence.json": {
         "when": "After a numerical-qualification sweep",
         "answers": "Does this physical profile empirically support the configured tolerance?",
@@ -198,6 +206,14 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
         "description": (
             "Workload contract plus full-run sampled process RSS and the aggregation-only "
             "CSV scan, throughput, allocation, and RSS diagnostics."
+        ),
+    },
+    "ensemble_memory_checkpoints.json": {
+        "when": "During an instrumented PySDM ensemble benchmark",
+        "answers": "At which member or processing stage is process memory retained?",
+        "description": (
+            "Member/stage boundary RSS, USS, GC-tracked object, thread, and open-figure "
+            "evidence, including optional explicit-GC reclamation."
         ),
     },
     "sweep_summary.csv": {

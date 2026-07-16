@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Sequence
 
 
-REPORT_BUILD_ID = "research-report-v4-publication-figure-20260714"
+REPORT_BUILD_ID = "research-report-v5-common-seed-evidence-20260715"
 
 
 def _flatten(payload: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
@@ -85,6 +85,15 @@ def _quality_rows(summary: Dict[str, Any]) -> list[tuple[str, Any]]:
         "numerical_convergence_evidence.status",
         "numerical_convergence_evidence.p95_relative_difference_percent",
         "numerical_convergence_evidence.max_relative_difference_percent",
+        "numerical_convergence_evidence.rain_signal_detected",
+        "numerical_convergence_evidence.common_random_seed_pairing",
+        "numerical_convergence_evidence.n_common_random_seeds",
+        "numerical_convergence_evidence.common_seed_coverage_complete",
+        "numerical_convergence_evidence.common_seed_case_coverage_complete",
+        "numerical_convergence_evidence.metric_family_evidence.absolute_state.status",
+        "numerical_convergence_evidence.metric_family_evidence.absolute_state.max_relative_difference_percent",
+        "numerical_convergence_evidence.metric_family_evidence.seeding_response.status",
+        "numerical_convergence_evidence.metric_family_evidence.seeding_response.max_relative_difference_percent",
         "spectrum_transition.status",
         "spectrum_transition.transition_onset_shift_s",
         "spectrum_transition.threshold_shift_direction_consistent",

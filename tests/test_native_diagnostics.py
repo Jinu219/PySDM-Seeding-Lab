@@ -21,10 +21,19 @@ from analysis.ensemble_statistics import (
     build_ensemble_statistics,
     build_ensemble_statistics_from_paths,
 )
+from analysis.resource_monitor import (
+    ProcessRSSCheckpointProfiler,
+    compare_ensemble_execution_backends,
+    compare_ensemble_memory_benchmarks,
+)
 from analysis.numerical_convergence import (
+    MEMBER_CONVERGENCE_METRIC_PREFIX,
+    build_common_seed_convergence_input,
     build_numerical_convergence_table,
+    summarize_common_seed_case_coverage,
     summarize_numerical_convergence,
 )
+from analysis.qualification_evidence import build_qualification_evidence
 from analysis.result_manifest import inspect_result_compatibility
 from analysis.reporting import REPORT_BUILD_ID, build_pdf_report
 from analysis.dashboard import sweep_execution_status_table
@@ -35,18 +44,28 @@ from analysis.spectrum_transition import (
 )
 from analysis.water_budget import build_water_budget_table, summarize_water_budget
 from simulation.builder import build_run_spec
+from simulation.experiment_manager import apply_scenario_identity, read_scenario
 from simulation.pysdm_parcel_adapter import (
     _output_to_dataframe,
     run_pysdm_parcel_simulation,
 )
-from simulation.path_policy import filesystem_token, path_character_count
+from simulation.path_policy import (
+    ResultPathBudgetError,
+    SWEEP_RESULT_DESCENDANT_RESERVE,
+    WINDOWS_PORTABLE_PATH_LIMIT,
+    filesystem_token,
+    path_character_count,
+    resolve_result_directory,
+)
 from simulation.runner import (
     ExperimentExecutionError,
     run_ensemble_experiment,
     run_experiment,
     run_parameter_sweep,
 )
+from simulation.run_plan import estimate_run_plan
 from simulation.schema import default_config
+from simulation.sweep import generate_sweep_cases
 from simulation.validation import validate_config_detailed
 from simulation.wet_radius_spectrum import (
     build_spectrum_bin_edges,
@@ -81,6 +100,75 @@ def _small_native_config() -> dict:
 
 
 class NativeDiagnosticMappingTests(unittest.TestCase):
+    def test_marine_showcase_scenario_is_runnable(self):
+        scenario_path = (
+            Path(__file__).resolve().parents[1]
+            / "experiments"
+            / "scenarios"
+            / "marine_showcase_ofat_v1.yaml"
+        )
+        payload = read_scenario(scenario_path)
+        cfg = apply_scenario_identity(payload["config"], scenario_path)
+        cases = generate_sweep_cases(cfg)
+        plan = estimate_run_plan(cfg)
+        errors = [
+            issue
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        ]
+        case_errors = [
+            issue
+            for case in cases
+            for issue in validate_config_detailed(case.config)
+            if issue.severity == "error"
+        ]
+
+        self.assertFalse(errors)
+        self.assertFalse(case_errors)
+        self.assertEqual(len(cases), 10)
+        self.assertEqual(plan.total_model_runs, 60)
+        self.assertEqual(cfg["simulation"]["adapter"], "pysdm_parcel")
+        self.assertEqual(cfg["ensemble"]["execution_backend"], "in_process")
+        self.assertEqual(
+            sorted(
+                {
+                    (
+                        case.config["seeding"]["injection_start"],
+                        case.config["seeding"]["injection_end"],
+                    )
+                    for case in cases
+                }
+            ),
+            [(600, 900), (900, 1200), (1200, 1500)],
+        )
+
+    def test_run_plan_uses_ofat_case_count(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "parameter_sweep"
+        cfg["sweep"].update(
+            {
+                "design": "one_factor_at_reference",
+                "parameters": [
+                    {
+                        "name": "seeding.kappa",
+                        "values": [0.4, 0.8, 1.2],
+                        "reference": 0.8,
+                    },
+                    {
+                        "name": "microphysics.collision",
+                        "values": [False, True],
+                        "reference": True,
+                    },
+                ],
+            }
+        )
+        cfg["ensemble"].update({"enabled": True, "n_members": 3})
+
+        plan = estimate_run_plan(cfg)
+
+        self.assertEqual(plan.case_count, 4)
+        self.assertEqual(plan.total_model_runs, 24)
+
     def test_nested_sweep_ensemble_uses_compact_paths(self):
         cfg = default_config()
         cfg["experiment"]["name"] = "long experiment name " * 5
@@ -98,7 +186,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         cfg["ensemble"]["n_members"] = 2
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            output_dir = Path(tmp_dir) / "deep_parent"
+            output_dir = Path(tmp_dir) / ("deep_parent_" + "x" * 45)
             result_dir = run_experiment(cfg, output_dir)
             sweep = pd.read_csv(result_dir / "sweep_summary.csv")
             compact_case = result_dir / "cases" / "case_001"
@@ -116,9 +204,37 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             "ensemble.member_metrics.seeding_efficiency_score.mean",
         )
         self.assertTrue(comparison_exists)
-        self.assertLess(max(all_path_lengths), 260)
+        self.assertLessEqual(max(all_path_lengths), WINDOWS_PORTABLE_PATH_LIMIT)
         self.assertLessEqual(len(filesystem_token("x" * 200)), 48)
         self.assertEqual(filesystem_token("CON.txt"), "_CON.txt")
+
+    def test_result_path_budget_hashes_long_name_before_execution(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir) / ("portable_parent_" + "x" * 35)
+            result_dir = resolve_result_directory(
+                output_dir,
+                "very_long_scenario_name_" * 20,
+                descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
+            )
+
+        self.assertRegex(result_dir.name, r"_[0-9a-f]{8}$")
+        self.assertLessEqual(
+            path_character_count(result_dir) + SWEEP_RESULT_DESCENDANT_RESERVE,
+            WINDOWS_PORTABLE_PATH_LIMIT,
+        )
+
+    def test_result_path_budget_rejects_output_root_that_is_already_too_deep(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_dir = Path(tmp_dir) / ("x" * 70) / ("y" * 70)
+            with self.assertRaisesRegex(
+                ResultPathBudgetError,
+                "Choose a shorter output root",
+            ):
+                resolve_result_directory(
+                    output_dir,
+                    "scenario",
+                    descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
+                )
 
     def test_all_failed_ensemble_writes_health_then_raises(self):
         cfg = default_config()
@@ -383,6 +499,86 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertTrue(pdf_report.startswith(b"%PDF"))
         self.assertTrue(aggregation["process_rss"]["available"])
 
+    def test_subprocess_ensemble_preserves_member_audit_and_resource_data(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "single"
+        cfg["simulation"]["adapter"] = "placeholder_warm_cloud"
+        cfg["environment"]["duration"] = 20
+        cfg["environment"]["timestep"] = 10
+        cfg.setdefault("ensemble", {}).update(
+            {
+                "enabled": True,
+                "n_members": 2,
+                "execution_backend": "subprocess",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result_dir = run_experiment(cfg, Path(tmp_dir))
+            member_summary = pd.read_csv(result_dir / "member_summary.csv")
+            summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
+            member_dirs = sorted((result_dir / "members").glob("member_*"))
+            audit_files_exist = all(
+                (member_dir / filename).exists()
+                for member_dir in member_dirs
+                for filename in (
+                    "isolated_member_config.yaml",
+                    "isolated_member_stdout.log",
+                    "isolated_member_stderr.log",
+                    "isolated_member_status.json",
+                )
+            )
+
+        self.assertEqual(len(member_summary), 2)
+        self.assertTrue(member_summary["success"].all())
+        self.assertEqual(set(member_summary["execution_backend"]), {"subprocess"})
+        self.assertTrue((member_summary["member_process_return_code"] == 0).all())
+        self.assertTrue(audit_files_exist)
+        resources = summary["ensemble"]["member_process_resources"]
+        self.assertTrue(resources["member_process_isolation"])
+        self.assertEqual(resources["successful_child_processes"], 2)
+        self.assertGreater(resources["max_child_process_tree_rss_bytes"], 0)
+
+    def test_invalid_ensemble_execution_backend_is_blocking(self):
+        cfg = default_config()
+        cfg["ensemble"]["execution_backend"] = "thread"
+        fields = {
+            issue.field
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        }
+        self.assertIn("ensemble.execution_backend", fields)
+
+    def test_subprocess_member_failure_preserves_child_error(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "single"
+        cfg["simulation"]["adapter"] = "missing_test_adapter"
+        cfg.setdefault("ensemble", {}).update(
+            {
+                "enabled": True,
+                "n_members": 1,
+                "execution_backend": "subprocess",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with self.assertRaises(ExperimentExecutionError) as raised:
+                run_ensemble_experiment(cfg, Path(tmp_dir))
+            result_dir = raised.exception.result_dir
+            member_summary = pd.read_csv(result_dir / "member_summary.csv")
+            status_path = (
+                result_dir
+                / "members"
+                / "member_001"
+                / "isolated_member_status.json"
+            )
+            child_status = json.loads(status_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(member_summary.loc[0, "execution_backend"], "subprocess")
+        self.assertNotEqual(member_summary.loc[0, "member_process_return_code"], 0)
+        self.assertFalse(child_status["success"])
+        self.assertIn("adapter", child_status["error_message"].lower())
+
     def test_pdf_report_and_qualification_plan_contracts(self):
         cfg = default_config()
         metadata = {
@@ -399,7 +595,7 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         )
         self.assertTrue(report.startswith(b"%PDF"))
         self.assertGreater(len(report), 2_000)
-        self.assertIn("research-report-v4", REPORT_BUILD_ID)
+        self.assertIn("research-report-v5", REPORT_BUILD_ID)
 
         pilot = build_qualification_config(
             cfg,
@@ -407,18 +603,160 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             adapter="placeholder_warm_cloud",
         )
         plan = qualification_plan(pilot, profile="pilot")
-        self.assertEqual(plan["case_count"], 8)
-        self.assertEqual(plan["model_execution_count"], 16)
+        self.assertEqual(plan["case_count"], 4)
+        self.assertEqual(plan["model_execution_count"], 8)
+        self.assertEqual(plan["sweep_design"], "one_factor_at_reference")
         self.assertEqual(pilot["environment"]["duration"], 60)
         self.assertEqual(pilot["seeding"]["injection_start"], 20)
         self.assertTrue(pilot["diagnostics"]["numerical_convergence"]["enabled"])
         self.assertFalse(pilot["ensemble"]["enabled"])
         self.assertFalse(plan["ensemble_enabled"])
+        pilot_cases = generate_sweep_cases(pilot)
+        reference = pilot_cases[0].parameter_values
+        self.assertEqual(len(pilot_cases), 4)
+        self.assertTrue(
+            all(
+                sum(values[key] != reference[key] for key in reference) <= 1
+                for values in [case.parameter_values for case in pilot_cases]
+            )
+        )
+
+        rain_standard = build_qualification_config(
+            cfg,
+            profile="rain_standard",
+            adapter="pysdm_parcel",
+        )
+        rain_plan = qualification_plan(rain_standard, profile="rain_standard")
+        self.assertTrue(rain_standard["microphysics"]["collision"])
+        self.assertEqual(rain_plan["case_count"], 7)
+        self.assertEqual(rain_plan["model_execution_count"], 14)
+        self.assertTrue(rain_plan["rain_signal_required"])
+
+        response_pilot = build_qualification_config(
+            cfg,
+            profile="rain_response_pilot",
+            adapter="pysdm_parcel",
+        )
+        response_plan = qualification_plan(
+            response_pilot,
+            profile="rain_response_pilot",
+        )
+        self.assertTrue(response_pilot["ensemble"]["enabled"])
+        self.assertEqual(response_pilot["ensemble"]["n_members"], 3)
+        self.assertEqual(response_plan["case_count"], 4)
+        self.assertEqual(response_plan["model_execution_count"], 24)
+        self.assertTrue(response_plan["common_random_seed_pairing"])
+        self.assertEqual(len(response_plan["common_random_seeds"]), 3)
+        self.assertEqual(
+            max(response_pilot["sweep"]["parameters"][1]["values"]),
+            800,
+        )
 
         benchmark = build_benchmark_config(cfg, profile="large")
         self.assertEqual(benchmark["simulation"]["adapter"], "pysdm_parcel")
         self.assertEqual(benchmark["ensemble"]["n_members"], 24)
         self.assertEqual(benchmark["environment"]["duration"], 600)
+        benchmark_gc = build_benchmark_config(
+            cfg,
+            profile="pilot",
+            collect_garbage_between_members=True,
+        )
+        self.assertTrue(
+            benchmark_gc["ensemble"]["collect_garbage_between_members"]
+        )
+        benchmark_subprocess = build_benchmark_config(
+            cfg,
+            profile="pilot",
+            member_execution_backend="subprocess",
+        )
+        self.assertEqual(
+            benchmark_subprocess["ensemble"]["execution_backend"],
+            "subprocess",
+        )
+        profiler = ProcessRSSCheckpointProfiler()
+        profiler("ensemble_member_complete_pre_gc", 1, 2, "before gc")
+        profiler("ensemble_member_complete", 1, 2, "after gc")
+        profiler("ensemble_member_complete_pre_gc", 2, 2, "before gc")
+        profiler("ensemble_member_complete", 2, 2, "after gc")
+        profile_summary = profiler.summary()
+        self.assertEqual(profile_summary["n_member_boundaries"], 2)
+        self.assertEqual(len(profile_summary["gc_reclaimed_rss_bytes"]), 2)
+
+        baseline_evidence = {
+            "profile": "standard",
+            "workload": {"n_members": 12},
+            "collect_garbage_between_members": False,
+            "full_run_elapsed_seconds": 100.0,
+            "full_process_rss": {"peak_rss_increase_bytes": 1_000},
+            "memory_checkpoint_summary": {
+                "member_boundary_rss_increase_bytes": 500,
+                "member_boundary_rss_slope_bytes_per_member": 50.0,
+            },
+        }
+        gc_evidence = {
+            "profile": "standard",
+            "workload": {"n_members": 12},
+            "collect_garbage_between_members": True,
+            "full_run_elapsed_seconds": 105.0,
+            "full_process_rss": {"peak_rss_increase_bytes": 1_010},
+            "memory_checkpoint_summary": {
+                "member_boundary_rss_increase_bytes": 510,
+                "member_boundary_rss_slope_bytes_per_member": 51.0,
+                "gc_reclaimed_rss_total_bytes": 200,
+            },
+        }
+        memory_comparison = compare_ensemble_memory_benchmarks(
+            baseline_evidence,
+            gc_evidence,
+        )
+        self.assertTrue(memory_comparison["matched_workload"])
+        self.assertEqual(
+            memory_comparison["conclusion"],
+            "no_observed_peak_and_retained_rss_reduction",
+        )
+        self.assertFalse(
+            memory_comparison["recommend_collect_garbage_between_members_default"]
+        )
+        self.assertAlmostEqual(
+            memory_comparison["observed_differences"]["wall_time_overhead_percent"],
+            5.0,
+        )
+
+        backend_baseline = {
+            **baseline_evidence,
+            "member_execution_backend": "in_process",
+            "full_process_rss": {
+                "process_tree": {"peak_rss_increase_bytes": 1_000},
+            },
+        }
+        backend_isolated = {
+            **baseline_evidence,
+            "member_execution_backend": "subprocess",
+            "full_run_elapsed_seconds": 130.0,
+            "full_process_rss": {
+                "process_tree": {"peak_rss_increase_bytes": 950},
+            },
+            "memory_checkpoint_summary": {
+                "member_boundary_rss_increase_bytes": 50,
+            },
+            "member_process_resources": {
+                "max_child_process_tree_rss_bytes": 800,
+            },
+        }
+        backend_comparison = compare_ensemble_execution_backends(
+            backend_baseline,
+            backend_isolated,
+        )
+        self.assertEqual(
+            backend_comparison["conclusion"],
+            "observed_parent_retained_rss_release",
+        )
+        self.assertTrue(
+            backend_comparison[
+                "recommend_subprocess_for_memory_bounded_ensembles"
+            ]
+        )
+        self.assertFalse(backend_comparison["recommend_subprocess_as_default"])
 
         pilot_with_duration = build_qualification_config(
             cfg,
@@ -430,6 +768,163 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         second_spec = build_run_spec(cfg)
         self.assertNotEqual(first_spec.run_id, second_spec.run_id)
         self.assertIn("T", first_spec.metadata["created_at"])
+
+    def test_rain_qualification_evidence_requires_physical_rain_signal(self):
+        rows = []
+        for metric, reference in (
+            ("comparison.control.max_rain_water_mixing_ratio", 3.0e-3),
+            ("comparison.seeding.max_rain_water_mixing_ratio", 2.8e-3),
+        ):
+            rows.extend(
+                [
+                    {
+                        "metric": metric,
+                        "varied_parameter": "param.environment.timestep",
+                        "resolution_rank": 0,
+                        "reference_value": reference,
+                        "relative_difference_percent": 0.0,
+                    },
+                    {
+                        "metric": metric,
+                        "varied_parameter": "param.environment.timestep",
+                        "resolution_rank": 1,
+                        "reference_value": reference,
+                        "relative_difference_percent": 1.0,
+                    },
+                ]
+            )
+        cfg = default_config()
+        cfg["qualification"] = {
+            "profile": "rain_standard",
+            "rain_signal_required": True,
+            "rain_signal_floor_kg_kg": 1.0e-8,
+        }
+        evidence = build_qualification_evidence(pd.DataFrame(rows), cfg)
+        self.assertEqual(evidence["status"], "supported_for_profile")
+        self.assertTrue(evidence["rain_signal_detected"])
+        self.assertEqual(
+            evidence["metric_family_evidence"]["absolute_state"]["status"],
+            "supported_for_profile",
+        )
+
+        missing = pd.DataFrame(rows)
+        missing["reference_value"] = 0.0
+        evidence = build_qualification_evidence(missing, cfg)
+        self.assertEqual(evidence["status"], "missing_required_rain_signal")
+        self.assertFalse(evidence["rain_signal_detected"])
+
+    def test_common_seed_convergence_pairs_identical_seeds(self):
+        metric = "comparison.control.max_rain_water_mixing_ratio"
+        cases = [
+            ("case_001", 5, 800, 800, {101: 1.0, 202: 2.0}),
+            ("case_002", 10, 800, 800, {101: 1.02, 202: 2.04}),
+            ("case_003", 5, 400, 800, {101: 1.03, 202: 2.06}),
+            ("case_004", 5, 800, 400, {101: 1.04, 202: 2.08}),
+        ]
+        sweep_rows = []
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            for case_name, timestep, seed_nsd, background_nsd, values in cases:
+                case_dir = root / "cases" / case_name
+                case_dir.mkdir(parents=True)
+                pd.DataFrame(
+                    [
+                        {
+                            "random_seed": seed,
+                            "success": True,
+                            f"{MEMBER_CONVERGENCE_METRIC_PREFIX}{metric}": value,
+                        }
+                        for seed, value in values.items()
+                    ]
+                ).to_csv(case_dir / "member_summary.csv", index=False)
+                sweep_rows.append(
+                    {
+                        "case_name": case_name,
+                        "result_dir": f"cases/{case_name}",
+                        "param.environment.timestep": timestep,
+                        "param.seeding.number_superdroplets": seed_nsd,
+                        "param.background_aerosol.number_superdroplets": background_nsd,
+                    }
+                )
+            paired = build_common_seed_convergence_input(
+                pd.DataFrame(sweep_rows), root
+            )
+
+        cfg = default_config()
+        cfg["diagnostics"]["numerical_convergence"]["metrics"] = [metric]
+        cfg["qualification"] = {
+            "common_random_seeds": [101, 202],
+        }
+        coverage = summarize_common_seed_case_coverage(
+            paired,
+            cfg,
+            n_cases=4,
+        )
+        table = build_numerical_convergence_table(paired, cfg)
+        next_finest = table[table["resolution_rank"] == 1]
+
+        self.assertEqual(len(paired), 8)
+        self.assertEqual(set(paired["param.experiment.random_seed"]), {101, 202})
+        self.assertEqual(len(next_finest), 6)
+        self.assertTrue(coverage["complete"])
+        self.assertEqual(coverage["observed_case_seed_pairs"], 8)
+        self.assertEqual(set(next_finest["random_seed"]), {101, 202})
+        self.assertTrue((next_finest["relative_difference_percent"] <= 5.0).all())
+
+    def test_common_seed_evidence_requires_complete_seed_rain_coverage(self):
+        rows = []
+        for seed in (101, 202):
+            for metric in (
+                "comparison.control.max_rain_water_mixing_ratio",
+                "comparison.seeding.max_rain_water_mixing_ratio",
+            ):
+                reference = 2.0e-3
+                if seed == 202 and metric.startswith("comparison.control"):
+                    reference = 0.0
+                rows.extend(
+                    [
+                        {
+                            "metric": metric,
+                            "varied_parameter": "param.environment.timestep",
+                            "resolution_rank": 0,
+                            "reference_value": reference,
+                            "relative_difference_percent": 0.0,
+                            "random_seed": seed,
+                        },
+                        {
+                            "metric": metric,
+                            "varied_parameter": "param.environment.timestep",
+                            "resolution_rank": 1,
+                            "reference_value": reference,
+                            "relative_difference_percent": 1.0,
+                            "random_seed": seed,
+                        },
+                    ]
+                )
+        cfg = default_config()
+        cfg["qualification"] = {
+            "profile": "rain_response_pilot",
+            "rain_signal_required": True,
+            "rain_signal_floor_kg_kg": 1.0e-8,
+            "common_random_seed_pairing": True,
+            "common_random_seeds": [101, 202],
+            "common_seed_case_coverage": {
+                "expected_case_seed_pairs": 8,
+                "observed_case_seed_pairs": 8,
+                "complete": True,
+            },
+        }
+        evidence = build_qualification_evidence(pd.DataFrame(rows), cfg)
+        self.assertTrue(evidence["common_seed_coverage_complete"])
+        self.assertEqual(evidence["n_common_random_seeds"], 2)
+        self.assertEqual(evidence["status"], "missing_required_rain_signal")
+        self.assertFalse(evidence["rain_signal_by_seed"]["202"]["detected"])
+
+        incomplete = pd.DataFrame(rows)
+        incomplete = incomplete[incomplete["random_seed"] == 101]
+        evidence = build_qualification_evidence(incomplete, cfg)
+        self.assertEqual(evidence["status"], "incomplete_common_seed_coverage")
+        self.assertFalse(evidence["common_seed_coverage_complete"])
 
     def test_spectrum_transition_onset_is_interpolated_and_audited(self):
         cfg = default_config()
@@ -552,6 +1047,9 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         cfg["diagnostics"]["water_budget"]["failure_relative_drift_percent"] = 0.1
         cfg["diagnostics"]["numerical_convergence"]["relative_tolerance_percent"] = 0.0
         cfg["diagnostics"]["spectrum_transition"]["rain_volume_fraction_threshold"] = 1.0
+        cfg["sweep"]["design"] = "one_factor_at_reference"
+        cfg["ensemble"]["collect_garbage_between_members"] = "yes"
+        cfg["qualification"] = {"common_random_seed_pairing": True}
         error_fields = {
             issue.field
             for issue in validate_config_detailed(cfg)
@@ -569,6 +1067,9 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             "diagnostics.spectrum_transition.rain_volume_fraction_threshold",
             error_fields,
         )
+        self.assertIn("sweep.parameters.0.reference", error_fields)
+        self.assertIn("ensemble.collect_garbage_between_members", error_fields)
+        self.assertIn("qualification.common_random_seed_pairing", error_fields)
 
     def test_placeholder_numerical_sweep_writes_convergence_audit(self):
         cfg = default_config()
@@ -620,6 +1121,77 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             manifest["files"]["qualification_plan"],
             "qualification_plan.json",
         )
+
+    def test_placeholder_common_seed_sweep_writes_paired_audit(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "parameter_sweep"
+        cfg["experiment"]["name"] = "paired_seed_regression"
+        cfg["simulation"]["adapter"] = "placeholder_warm_cloud"
+        cfg["environment"]["duration"] = 20
+        cfg["environment"]["timestep"] = 5
+        cfg["seeding"]["injection_start"] = 10
+        cfg["seeding"]["injection_end"] = 20
+        cfg["ensemble"].update(
+            {
+                "enabled": True,
+                "n_members": 2,
+                "seed_start": 101,
+                "seed_step": 101,
+            }
+        )
+        cfg["sweep"] = {
+            "design": "one_factor_at_reference",
+            "run_mode": "control_vs_seeding",
+            "max_runs": 10,
+            "ranking_metric": "comparison.efficiency.seeding_efficiency_score",
+            "parameters": [
+                {
+                    "name": "environment.timestep",
+                    "values": [5, 10],
+                    "reference": "min",
+                },
+                {
+                    "name": "seeding.number_superdroplets",
+                    "values": [10, 20],
+                    "reference": "max",
+                },
+                {
+                    "name": "background_aerosol.number_superdroplets",
+                    "values": [20, 40],
+                    "reference": "max",
+                },
+            ],
+        }
+        cfg["qualification"] = {
+            "build_id": "paired-seed-regression",
+            "profile": "software_test",
+            "common_random_seed_pairing": True,
+            "common_random_seeds": [101, 202],
+            "rain_signal_required": False,
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result_dir = run_experiment(cfg, Path(tmp_dir))
+            paired = pd.read_csv(result_dir / "paired_seed_metrics.csv")
+            convergence = pd.read_csv(result_dir / "numerical_convergence.csv")
+            evidence = json.loads(
+                (result_dir / "qualification_evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            manifest = json.loads(
+                (result_dir / "result_manifest.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(len(paired), 8)
+        self.assertEqual(set(paired["param.experiment.random_seed"]), {101, 202})
+        self.assertEqual(set(convergence["random_seed"]), {101, 202})
+        self.assertTrue(evidence["common_seed_case_coverage_complete"])
+        self.assertEqual(
+            evidence["common_seed_case_coverage"]["observed_case_seed_pairs"],
+            8,
+        )
+        self.assertEqual(manifest["files"]["paired_seed_metrics"], "paired_seed_metrics.csv")
 
     def test_legacy_result_without_manifest_is_inferred(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

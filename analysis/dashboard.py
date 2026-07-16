@@ -50,7 +50,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "qualification-benchmark-report-migration-20260714"
+DASHBOARD_BUILD_ID = "common-seed-rain-response-evidence-20260715"
 
 
 @dataclass(frozen=True)
@@ -152,6 +152,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
         pdf_report_path = entry.path / "report.pdf"
         aggregation_diagnostics_path = entry.path / "ensemble_aggregation_diagnostics.json"
         ensemble_benchmark_path = entry.path / "ensemble_benchmark.json"
+        ensemble_memory_checkpoints_path = entry.path / "ensemble_memory_checkpoints.json"
         diagnostic_provenance_path = _representative_diagnostic_provenance_path(entry.path)
 
         stats_df = safe_read_csv(stats_path)
@@ -180,6 +181,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "report_pdf": _read_bytes(pdf_report_path),
             "ensemble_aggregation_diagnostics": _read_json(aggregation_diagnostics_path),
             "ensemble_benchmark": _read_json(ensemble_benchmark_path),
+            "ensemble_memory_checkpoints": _read_json(ensemble_memory_checkpoints_path),
             "result_compatibility": compatibility,
             "files": {
                 "ensemble_statistics": stats_path,
@@ -194,12 +196,14 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
                 "report_pdf": pdf_report_path,
                 "ensemble_aggregation_diagnostics": aggregation_diagnostics_path,
                 "ensemble_benchmark": ensemble_benchmark_path,
+                "ensemble_memory_checkpoints": ensemble_memory_checkpoints_path,
             },
         }
 
     if entry.result_type == "parameter_sweep":
         sweep_path = entry.path / "sweep_summary.csv"
         convergence_path = entry.path / "numerical_convergence.csv"
+        paired_seed_metrics_path = entry.path / "paired_seed_metrics.csv"
         report_path = entry.path / "report.md"
         html_report_path = entry.path / "report.html"
         pdf_report_path = entry.path / "report.pdf"
@@ -221,6 +225,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "wet_radius_spectrum": pd.DataFrame(),
             "threshold_robustness": pd.DataFrame(),
             "numerical_convergence": safe_read_csv(convergence_path),
+            "paired_seed_metrics": safe_read_csv(paired_seed_metrics_path),
             "summary": _read_json(summary_path),
             "metadata": _read_json(metadata_path),
             "config": _read_yaml(config_path),
@@ -235,6 +240,7 @@ def load_result(entry: ResultEntry) -> Dict[str, Any]:
             "files": {
                 "sweep_summary": sweep_path,
                 "numerical_convergence": convergence_path,
+                "paired_seed_metrics": paired_seed_metrics_path,
                 "summary": summary_path,
                 "metadata": metadata_path,
                 "config": config_path,

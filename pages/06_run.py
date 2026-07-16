@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import re
 
 import pandas as pd
@@ -10,6 +11,7 @@ from simulation.runner import ExperimentExecutionError, run_experiment
 from simulation.run_plan import estimate_run_plan, run_plan_rows
 from simulation.run_timing import format_seconds
 from simulation.schema import diagnostic_radius_thresholds
+from simulation.server_jobs import list_background_jobs, submit_background_job
 from simulation.validation import (
     validate_config,
     validation_report_rows,
@@ -79,10 +81,17 @@ p2.metric("Ensemble members", plan.ensemble_members)
 p3.metric("Control/seeding factor", plan.control_factor)
 p4.metric("Estimated model runs", plan.total_model_runs)
 
-t1, t2 = st.columns(2)
+t1, t2, t3 = st.columns(3)
 t1.metric("Estimated time per run", format_seconds(plan.estimated_seconds_per_run))
-t2.metric("Estimated total runtime", plan.estimated_total_duration)
+t2.metric("Serial-equivalent runtime", plan.estimated_total_duration)
+t3.metric("Case workers", f"{plan.effective_workers}/{plan.configured_workers}")
 st.caption(f"Runtime estimate basis: {plan.runtime_basis}")
+if plan.effective_workers > 1:
+    idealized_seconds = plan.estimated_total_seconds / plan.effective_workers
+    st.caption(
+        f"Idealized parallel lower estimate: {format_seconds(idealized_seconds)}. "
+        "Actual wall time is longer because of worker startup, I/O, and memory contention."
+    )
 
 st.caption(plan.description)
 
@@ -145,7 +154,62 @@ with st.expander("Current configuration"):
 
 run_disabled = summary["error"] > 0
 
-if st.button("Run Experiment", disabled=run_disabled, width="stretch"):
+st.subheader("Execution Session")
+server_default = os.environ.get("PYSDM_LAB_SERVER_MODE", "0") == "1"
+run_in_background = st.toggle(
+    "Run as a detached background job",
+    value=server_default,
+    help=(
+        "Recommended on a lab server. The simulation runs in a separate process, so it "
+        "continues after this browser tab disconnects or Streamlit reruns the page."
+    ),
+)
+if run_in_background:
+    st.info(
+        "The configuration is snapshotted before launch. Track the persistent job from "
+        "08. Server Jobs; closing this browser tab will not stop it."
+    )
+else:
+    st.caption("Foreground mode keeps the existing live progress display in this browser session.")
+
+recent_jobs = list_background_jobs(Path(__file__).resolve().parents[1], limit=1)
+if recent_jobs:
+    latest = recent_jobs[0]
+    st.caption(
+        f"Latest server job: `{latest.get('job_id')}` · state `{latest.get('state')}` · "
+        f"{latest.get('completed_model_runs', 0)}/{latest.get('total_model_runs', 0)} model runs"
+    )
+    st.caption("Open **08. Server Jobs** from the sidebar for persistent monitoring.")
+
+background_clicked = False
+if run_in_background:
+    background_clicked = st.button(
+        "Submit Background Job",
+        disabled=run_disabled,
+        width="stretch",
+    )
+    if background_clicked:
+        record = submit_background_job(
+            cfg,
+            project_root=Path(__file__).resolve().parents[1],
+        )
+        if record.get("state") == "failed":
+            st.error(f"Background job launch failed: {record.get('error')}")
+        else:
+            st.success(
+                f"Background job submitted: {record.get('job_id')} (PID {record.get('pid')})"
+            )
+            st.info("You can close this tab and monitor progress from 08. Server Jobs.")
+
+foreground_clicked = False
+if not run_in_background:
+    foreground_clicked = st.button(
+        "Run Experiment",
+        disabled=run_disabled,
+        width="stretch",
+    )
+
+if foreground_clicked:
     plan = estimate_run_plan(cfg)
 
     st.subheader("Live Progress")

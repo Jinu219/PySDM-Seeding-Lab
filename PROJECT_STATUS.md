@@ -1,10 +1,148 @@
 # Project Status
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 Active branch: `develop`
 
-Current milestone: Full PySDM qualification and large-ensemble evidence completed
+Current milestone: Linux server deployment and bounded multi-core sweep execution completed
+
+## Lab-server and bounded parallel execution update
+
+Completed on 2026-07-15:
+- Added a Linux `nohup` service script with start, stop, restart, status, PID,
+  private log, headless Streamlit, configurable interpreter/host/port, and a
+  secure loopback-plus-SSH-tunnel default.
+- Added detached experiment jobs. Each job preserves an immutable YAML snapshot,
+  PID, state, progress, error, log, and result path under `.runtime/jobs/`; it is
+  independent of browser and Streamlit page lifetimes.
+- Added the Server Jobs page for persistent monitoring and diagnostics.
+- Added bounded process-pool execution for independent sweep cases through
+  `execution.max_workers`. Ensemble members remain sequential inside each worker,
+  preventing nested oversubscription.
+- Process workers use spawn semantics and are reused across cases until the sweep
+  ends. Timing-history writes are now inter-process locked and atomically replaced.
+- The marine showcase scenario starts at four workers. Its 10 cases can use at
+  most 10 workers; a 20-worker setting only becomes effective for 20 or more cases.
+- Added server deployment, SSH tunnel, RAM sizing, and rollout guidance under
+  `docs/SERVER_DEPLOYMENT.md`.
+- All 37 unit/integration tests and project integrity passed. Parameter Sweep,
+  Run, and Server Jobs AppTests rendered with zero exceptions and zero errors.
+
+Decision: server use is supported, but worker count remains opt-in and defaults to
+one. Recent PySDM evidence reached about 1.03 GiB per active isolated child, so the
+first lab-server run should use four workers and scale only after measuring RAM.
+
+## Process-isolated ensemble backend update
+
+Completed on 2026-07-15:
+- Added opt-in `ensemble.execution_backend: subprocess`. Every member runs in a
+  fresh Python process and preserves its normalized config, status, stdout, stderr,
+  return code, elapsed time, and sampled child process-tree peak RSS.
+- Kept `in_process` as the compatibility and speed default. Invalid backend values
+  are blocking validation errors, and the Parameter Sweep page explains the choice.
+- Ensemble summaries and Results now separate parent/member-boundary RSS from child
+  peak RSS. The benchmark samples the fair parent-plus-live-children process tree.
+- Matched real-PySDM 3-member pilots both succeeded. Subprocess reduced first-to-last
+  parent RSS from 37.797 MiB to 0.125 MiB (99.669%), confirming process-lifetime
+  ownership of the retained memory.
+- The tradeoff was unfavorable for a default: wall time increased from 248.725 s
+  to 530.714 s (+113.374%), and process-tree peak increase rose from 879.238 MiB
+  to 998.867 MiB (+13.606%).
+- All 32 unit/integration tests and project integrity passed. Parameter Sweep and
+  Results AppTests rendered with zero exceptions and zero error elements.
+
+Decision: keep subprocess opt-in. It controls cross-member retention but does not
+lower instantaneous memory or runtime for the tested pilot. The next performance
+prototype should use bounded-lifetime warm workers or batches before attempting the
+70-execution common-seed standard qualification.
+
+Evidence: [`docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md`](docs/evidence/ENSEMBLE_EXECUTION_BACKEND_AB_20260715.md)
+
+## Higher-resolution common-seed rain-response update
+
+Completed on 2026-07-15:
+- Added `rain_response_pilot` and `rain_response_standard` profiles. The pilot uses
+  a 5 s / 800-super-droplet reference and three paired common random seeds; the
+  standard plan reaches 2.5 s / 1600 super-droplets and five seeds.
+- Ensemble member summaries now preserve every convergence scalar. Sweep results
+  store `paired_seed_metrics.csv`, and identical seeds are compared across OFAT
+  resolution cases before evidence is pooled.
+- Coverage requires every configured seed in every case. Rain-signal gates are also
+  evaluated per seed instead of accepting the maximum from any seed.
+- The full pilot completed 4 cases, 12 case-seed pairs, and 24/24 physical PySDM
+  executions in 956.4 s. All three seeds produced rain.
+- Absolute rain state passed 36/36 checks (maximum 2.366%). Seeding response passed
+  only 4/63 checks (median 39.093%, maximum 526.314%), so quantitative response
+  remains unsupported.
+- All 29 tests, project integrity, and an actual-result Results AppTest passed;
+  the dashboard rendered the paired-seed evidence with zero errors or exceptions.
+
+Decision: preserve the common-seed workflow, but gate the planned 70-execution
+standard run behind process isolation and a targeted high-resolution plan.
+
+Evidence: [`docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`](docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md)
+
+## Ensemble retained-memory ownership update
+
+Completed on 2026-07-15:
+- Added member/stage RSS, USS, GC-object, thread, and open-figure checkpoints to
+  reproducible PySDM ensemble benchmarks.
+- Added opt-in `gc.collect()` between members and a matched-workload A/B comparison
+  CLI. Normal ensemble execution keeps the option disabled.
+- Ran two 12-member standard real-PySDM ensembles. Explicit GC reclaimed objects and
+  produced 198.676 MiB of cumulative per-event RSS drops, but peak RSS was 0.310%
+  worse, first-to-last retained RSS was 1.515% worse, and wall time was 3.772% higher.
+- No Matplotlib figures accumulated. Streaming aggregation remained about 0.26 MiB
+  incremental RSS in both runs.
+- Results Dashboard now exposes raw stage checkpoints and member-boundary RSS/USS
+  trends. Machine-readable A/B evidence is preserved with the interpretation rule.
+
+Decision: keep member-boundary GC disabled by default. The result does not support
+GC-reclaimable Python cycles as the dominant retained-RSS explanation; the next
+performance experiment should isolate PySDM/Numba/backend lifetime at process exit.
+
+Evidence: [`docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md`](docs/evidence/ENSEMBLE_MEMORY_OWNERSHIP_20260715.md)
+
+## Collision-ON rain qualification update
+
+Completed on 2026-07-15:
+- Added `rain_pilot` and `rain_standard` qualification profiles that force real
+  PySDM collision/coalescence and require non-zero rain-water in both control and
+  seeding reference cases.
+- Replaced qualification-only 3-axis Cartesian execution with a one-factor-at-
+  reference design. A three-level qualification now uses 7 cases / 14 model
+  executions instead of 27 cases / 54 executions without removing any comparison
+  used by the OFAT convergence decision.
+- The full collision-ON run completed all 7 cases in 699 seconds. The finest
+  reference produced 0.002558 kg/kg control and 0.002634 kg/kg seeding rain water.
+- All 12 absolute rain-state checks passed 5% (maximum 3.285%). Only 2 of 21
+  seeding-response checks passed, so the overall result correctly remains
+  `not_supported_for_profile` for quantitative seeding-effect claims.
+- Results and reports now separate absolute-state convergence from the more
+  sensitive seeding-minus-control response and display the required rain-signal gate.
+
+Evidence: [`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md)
+
+Next priority: prototype bounded-lifetime warm worker batches, then use the measured
+resource bounds to target—not blindly launch—the 1600-super-droplet response plan.
+
+## Portable path-budget hardening
+
+The historical `20260714_190022_727349_0714_18_58_parameter_sweep` failure was
+caused by every nested ensemble member exceeding the Windows path limit before a
+time series could be written. The original compact `case_###/member_###` fix is now
+reinforced by an absolute-path budget:
+
+- all result modes reserve space for their deepest known artifact;
+- result/scenario names are shortened with a stable hash only when required;
+- generated paths target a 240-character portable ceiling rather than relying on
+  the 260-character legacy boundary;
+- an output root that is already too deep fails before model execution with a clear
+  suggestion to choose a shorter result root;
+- full run IDs and scientific parameter labels remain in metadata and configuration.
+
+The original failed result contains no recoverable member time series and must be
+rerun. Ensemble execution remains supported.
 
 ## Latest research-evidence update
 
@@ -34,8 +172,8 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Repeat qualification with collision enabled and a rain-producing configuration.
-2. Profile retained RSS ownership across ensemble members and backend/JIT lifetimes.
+1. Test process-per-member isolation for backend/JIT retained memory.
+2. Target a bounded 1600-super-droplet common-seed response qualification.
 3. Compare a columnar internal cache with CSV using numerical-equality regressions.
 4. Validate the operational 1% transition floor against an observational dataset.
 
@@ -159,17 +297,16 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. numerical convergence preset을 full PySDM으로 실행해 5% 기본 tolerance의 경험적 근거를 축적한다.
-2. spectrum transition 1% threshold와 checkpoint 간격을 관측 또는 문헌 기준으로 보정한다.
-3. 대형 PySDM ensemble에서 whole-process RSS와 streaming CSV I/O 시간을 benchmark한다.
-4. Step 18 report를 PDF로 확장하고 선택한 publication figure를 포함한다.
-5. 실제 구버전 결과 fixture를 보존하고 schema 변경 때 migration 회귀 테스트를 추가한다.
+1. ensemble member를 child process로 격리해 PySDM/Numba backend RSS가 process 종료 시 회수되는지 측정한다.
+2. 격리 benchmark의 자원 한도 안에서 1600-super-droplet common-seed response run을 설계한다.
+3. CSV와 수치적으로 동일한 columnar internal cache prototype을 benchmark한다.
+4. spectrum transition 1% threshold와 checkpoint 간격을 관측 자료로 보정한다.
 
 ## 검증 명령
 
 ```powershell
-& 'C:\Users\PC\anaconda3\envs\PySDM\python.exe' -m unittest -v tests.test_native_diagnostics
-& 'C:\Users\PC\anaconda3\envs\PySDM\python.exe' scripts\check_project_integrity.py
+& .\.conda\python.exe -m unittest -v tests.test_native_diagnostics
+& .\.conda\python.exe scripts\check_project_integrity.py
 ```
 
 Streamlit 화면 회귀 검사는 `pages/02_aerosol.py`, `pages/06_run.py`,

@@ -14,8 +14,10 @@ results/*
 
 logs/
 *.log
+.runtime/
 
 # Reproducible local research runs can be large. Commit their compact evidence
 # summaries under docs/evidence instead of the raw member/case directories.
 artifacts/numerical_qualification/
 artifacts/ensemble_benchmark/
+artifacts/ensemble_backend_ab/

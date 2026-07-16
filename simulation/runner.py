@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import copy
+import gc
 import json
+import multiprocessing as mp
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -25,9 +28,13 @@ from analysis.growth_pathway_diagnostics import (
 )
 from analysis.metrics import summarize_timeseries
 from analysis.numerical_convergence import (
+    DEFAULT_CONVERGENCE_METRICS,
+    MEMBER_CONVERGENCE_METRIC_PREFIX,
+    build_common_seed_convergence_input,
     build_numerical_convergence_table,
     convergence_metrics,
     plot_numerical_convergence,
+    summarize_common_seed_case_coverage,
     summarize_numerical_convergence,
 )
 from analysis.qualification_evidence import build_qualification_evidence
@@ -59,7 +66,18 @@ from analysis.ensemble_statistics import (
     member_summary_rows,
 )
 from simulation.builder import build_run_spec
-from simulation.path_policy import filesystem_token, resolve_result_directory
+from simulation.member_process import (
+    MemberProcessExecutionError,
+    run_member_subprocess,
+)
+from simulation.path_policy import (
+    COMPARISON_RESULT_DESCENDANT_RESERVE,
+    ENSEMBLE_RESULT_DESCENDANT_RESERVE,
+    SINGLE_RESULT_DESCENDANT_RESERVE,
+    SWEEP_RESULT_DESCENDANT_RESERVE,
+    filesystem_token,
+    resolve_result_directory,
+)
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.pysdm_adapter import run_adapter
 from simulation.run_timing import record_run_timing
@@ -112,10 +130,17 @@ def _member_result_metrics(result_dir: Path) -> Dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     flat = flatten_nested_dict(payload)
-    return {
+    metrics = {
         f"metric.{short_name}": flat.get(dotted_name)
         for short_name, dotted_name in ENSEMBLE_MEMBER_SUMMARY_METRICS.items()
     }
+    metrics.update(
+        {
+            f"{MEMBER_CONVERGENCE_METRIC_PREFIX}{metric}": flat.get(metric)
+            for metric in DEFAULT_CONVERGENCE_METRICS
+        }
+    )
+    return metrics
 
 
 def _summarize_member_metrics(member_summary_df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
@@ -357,7 +382,12 @@ def run_single_experiment(
     emit_progress(progress_callback, "runner", 2, total_stages, "Building run specification")
     spec = build_run_spec(cfg)
 
-    run_dir = resolve_result_directory(output_dir, spec.run_id, result_dir_name)
+    run_dir = resolve_result_directory(
+        output_dir,
+        spec.run_id,
+        result_dir_name,
+        descendant_reserve=SINGLE_RESULT_DESCENDANT_RESERVE,
+    )
     run_dir.mkdir(parents=True, exist_ok=True)
 
     emit_progress(progress_callback, "runner", 3, total_stages, f"Running adapter: {spec.adapter_name}")
@@ -415,7 +445,12 @@ def run_control_vs_seeding(
     now = datetime.now()
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{filesystem_token(experiment_name)}_control_vs_seeding"
-    run_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
+    run_dir = resolve_result_directory(
+        output_dir,
+        run_id,
+        result_dir_name,
+        descendant_reserve=COMPARISON_RESULT_DESCENDANT_RESERVE,
+    )
     run_dir.mkdir(parents=True, exist_ok=True)
 
     control_cfg = copy.deepcopy(cfg)
@@ -641,6 +676,58 @@ def _primary_member_data_path(member_dir: Path, mode: str) -> Path:
     return path
 
 
+def _summarize_member_process_resources(
+    member_summary_df: pd.DataFrame,
+    execution_backend: str,
+) -> Dict[str, Any]:
+    """Summarize isolated-child cost without mixing it with parent RSS."""
+    payload: Dict[str, Any] = {
+        "execution_backend": execution_backend,
+        "member_process_isolation": execution_backend == "subprocess",
+        "successful_child_processes": 0,
+        "max_child_process_tree_rss_bytes": None,
+        "median_child_process_tree_rss_bytes": None,
+        "total_child_elapsed_seconds": None,
+        "median_child_elapsed_seconds": None,
+        "scope": (
+            "Child peak values sum the isolated member process and its descendants. "
+            "Parent-process RSS is measured separately by the benchmark profiler."
+            if execution_backend == "subprocess"
+            else "Members executed in the parent Python process; no child-process telemetry exists."
+        ),
+    }
+    if execution_backend != "subprocess" or member_summary_df.empty:
+        return payload
+
+    return_codes = pd.to_numeric(
+        member_summary_df.get("member_process_return_code"), errors="coerce"
+    )
+    peak_rss = pd.to_numeric(
+        member_summary_df.get("member_process_peak_tree_rss_bytes"), errors="coerce"
+    ).dropna()
+    elapsed = pd.to_numeric(
+        member_summary_df.get("member_process_elapsed_seconds"), errors="coerce"
+    ).dropna()
+    payload.update(
+        {
+            "successful_child_processes": int((return_codes == 0).sum()),
+            "max_child_process_tree_rss_bytes": (
+                int(peak_rss.max()) if not peak_rss.empty else None
+            ),
+            "median_child_process_tree_rss_bytes": (
+                float(peak_rss.median()) if not peak_rss.empty else None
+            ),
+            "total_child_elapsed_seconds": (
+                float(elapsed.sum()) if not elapsed.empty else None
+            ),
+            "median_child_elapsed_seconds": (
+                float(elapsed.median()) if not elapsed.empty else None
+            ),
+        }
+    )
+    return payload
+
+
 def run_ensemble_experiment(
     config: Dict[str, Any],
     output_dir: Path,
@@ -678,7 +765,12 @@ def run_ensemble_experiment(
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{filesystem_token(experiment_name)}_{mode}_ensemble"
 
-    run_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
+    run_dir = resolve_result_directory(
+        output_dir,
+        run_id,
+        result_dir_name,
+        descendant_reserve=ENSEMBLE_RESULT_DESCENDANT_RESERVE,
+    )
     members_dir = run_dir / "members"
     run_dir.mkdir(parents=True, exist_ok=True)
     members_dir.mkdir(parents=True, exist_ok=True)
@@ -687,6 +779,12 @@ def run_ensemble_experiment(
 
     member_records = []
     member_data_paths: list[Path] = []
+    collect_garbage = bool(
+        cfg.get("ensemble", {}).get("collect_garbage_between_members", False)
+    )
+    execution_backend = str(
+        cfg.get("ensemble", {}).get("execution_backend", "in_process")
+    )
 
     for idx, seed in enumerate(seeds, start=1):
         emit_progress(progress_callback, "ensemble", idx + 1, n_members + 2, f"Running ensemble member {idx}/{n_members}")
@@ -698,8 +796,15 @@ def run_ensemble_experiment(
         member_parent = members_dir / f"member_{idx:03d}"
         member_parent.mkdir(parents=True, exist_ok=True)
 
+        process_telemetry: Dict[str, Any] = {}
         try:
-            if mode == "control_vs_seeding":
+            if execution_backend == "subprocess":
+                member_result_dir, process_telemetry = run_member_subprocess(
+                    member_cfg,
+                    member_parent,
+                    mode=mode,
+                )
+            elif mode == "control_vs_seeding":
                 member_result_dir = run_control_vs_seeding(
                     member_cfg,
                     member_parent,
@@ -720,6 +825,7 @@ def run_ensemble_experiment(
                 "member_index": idx,
                 "random_seed": int(seed),
                 "success": True,
+                "execution_backend": execution_backend,
                 "result_dir": str(member_result_dir.relative_to(run_dir)),
                 "error": "",
                 "error_type": "",
@@ -727,24 +833,70 @@ def run_ensemble_experiment(
                 "error_errno": None,
                 "error_winerror": None,
             }
+            member_record.update(process_telemetry)
             member_record.update(_member_result_metrics(member_result_dir))
             member_records.append(member_record)
         except Exception as exc:
+            error_fields = _exception_fields(exc)
+            if isinstance(exc, MemberProcessExecutionError):
+                process_telemetry = exc.telemetry
+                for key in (
+                    "error",
+                    "error_type",
+                    "error_message",
+                    "error_errno",
+                    "error_winerror",
+                ):
+                    if exc.status.get(key) not in (None, ""):
+                        error_fields[key] = exc.status[key]
             member_records.append(
                 {
                     "member_index": idx,
                     "random_seed": int(seed),
                     "success": False,
+                    "execution_backend": execution_backend,
                     "result_dir": "",
-                    **_exception_fields(exc),
+                    **process_telemetry,
+                    **error_fields,
                 }
             )
 
+        emit_progress(
+            progress_callback,
+            "ensemble_member_complete_pre_gc",
+            idx,
+            n_members,
+            f"Completed ensemble member {idx}/{n_members} before optional garbage collection",
+        )
+        collected_objects = int(gc.collect()) if collect_garbage else 0
+        member_records[-1]["gc_collected_objects"] = collected_objects
+        emit_progress(
+            progress_callback,
+            "ensemble_member_complete",
+            idx,
+            n_members,
+            f"Completed ensemble member {idx}/{n_members}; gc_collected={collected_objects}",
+        )
+
     emit_progress(progress_callback, "ensemble", n_members + 2, n_members + 2, "Writing ensemble statistics")
+    emit_progress(
+        progress_callback,
+        "ensemble_aggregation_start",
+        0,
+        1,
+        "Starting streaming ensemble aggregation",
+    )
 
     member_summary_df = member_summary_rows(member_records)
     stats_df, aggregation_diagnostics = benchmark_ensemble_statistics_from_paths(
         member_data_paths
+    )
+    emit_progress(
+        progress_callback,
+        "ensemble_aggregation_complete",
+        1,
+        1,
+        "Completed streaming ensemble aggregation",
     )
 
     _write_yaml(run_dir / "config.yaml", cfg)
@@ -756,6 +908,10 @@ def run_ensemble_experiment(
     n_success = int(member_summary_df["success"].sum()) if "success" in member_summary_df.columns else 0
     n_failed = int(len(member_summary_df) - n_success)
     member_metric_summary = _summarize_member_metrics(member_summary_df)
+    member_process_resources = _summarize_member_process_resources(
+        member_summary_df,
+        execution_backend,
+    )
     execution_status = (
         "failed"
         if n_success == 0
@@ -773,6 +929,7 @@ def run_ensemble_experiment(
         "requested_members": n_members,
         "successful_members": n_success,
         "failed_members": n_failed,
+        "execution_backend": execution_backend,
         "first_errors": first_member_errors,
     }
 
@@ -789,6 +946,8 @@ def run_ensemble_experiment(
         "n_failed": n_failed,
         "execution_status": execution_status,
         "execution": execution_payload,
+        "ensemble_execution_backend": execution_backend,
+        "member_process_resources": member_process_resources,
         "member_metric_summary": member_metric_summary,
         "ensemble_statistics_build_id": ENSEMBLE_BUILD_ID,
         "ensemble_aggregation_method": "column_streaming_from_member_csv",
@@ -836,6 +995,8 @@ def run_ensemble_experiment(
             "n_members_requested": n_members,
             "n_success": n_success,
             "n_failed": n_failed,
+            "execution_backend": execution_backend,
+            "member_process_resources": member_process_resources,
             "aggregation_method": "column_streaming_from_member_csv",
             "aggregation": aggregation_diagnostics,
             "member_seeds": seeds,
@@ -883,6 +1044,14 @@ def run_ensemble_experiment(
         ),
     )
 
+    emit_progress(
+        progress_callback,
+        "ensemble_complete",
+        n_members,
+        n_members,
+        "Completed ensemble result and reports",
+    )
+
     if n_success == 0:
         first_error = first_member_errors[0] if first_member_errors else "unknown member failure"
         raise ExperimentExecutionError(
@@ -891,6 +1060,54 @@ def run_ensemble_experiment(
         )
 
     return run_dir
+
+
+def _execute_sweep_case(
+    case_config: Dict[str, Any],
+    cases_dir: Path,
+    case_directory_name: str,
+    progress_callback: ProgressCallback = None,
+) -> Dict[str, str]:
+    """Execute one sweep case and return a process-safe status payload."""
+    case_status = "success"
+    case_error = ""
+    try:
+        case_result_dir = run_experiment(
+            case_config,
+            cases_dir,
+            progress_callback=progress_callback,
+            result_dir_name=case_directory_name,
+        )
+    except ExperimentExecutionError as exc:
+        case_result_dir = exc.result_dir
+        case_status = "failed"
+        case_error = str(exc)
+    except Exception as exc:
+        case_result_dir = cases_dir / case_directory_name
+        case_result_dir.mkdir(parents=True, exist_ok=True)
+        case_status = "failed"
+        case_error = repr(exc)
+
+    return {
+        "result_dir": str(case_result_dir),
+        "case_status": case_status,
+        "case_error": case_error,
+    }
+
+
+def _failed_parallel_case_payload(
+    cases_dir: Path,
+    case_directory_name: str,
+    exc: BaseException,
+) -> Dict[str, str]:
+    """Preserve a directory and diagnostic when a worker future itself fails."""
+    case_result_dir = cases_dir / case_directory_name
+    case_result_dir.mkdir(parents=True, exist_ok=True)
+    return {
+        "result_dir": str(case_result_dir),
+        "case_status": "failed",
+        "case_error": f"Parallel worker failure: {exc!r}",
+    }
 
 
 def run_parameter_sweep(
@@ -937,7 +1154,12 @@ def run_parameter_sweep(
     timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
     run_id = f"{timestamp}_{filesystem_token(experiment_name)}_parameter_sweep"
 
-    sweep_dir = resolve_result_directory(output_dir, run_id, result_dir_name)
+    sweep_dir = resolve_result_directory(
+        output_dir,
+        run_id,
+        result_dir_name,
+        descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
+    )
     cases_dir = sweep_dir / "cases"
     sweep_dir.mkdir(parents=True, exist_ok=True)
     cases_dir.mkdir(parents=True, exist_ok=True)
@@ -950,36 +1172,95 @@ def run_parameter_sweep(
         f"Generated {total_cases} sweep cases",
     )
 
-    rows = []
+    configured_workers = max(int(cfg.get("execution", {}).get("max_workers", 1)), 1)
+    effective_workers = min(configured_workers, total_cases)
+    outcomes: list[Dict[str, str] | None] = [None] * total_cases
 
-    for idx, case in enumerate(cases, start=1):
+    if effective_workers == 1:
+        for idx, case in enumerate(cases, start=1):
+            emit_progress(
+                progress_callback,
+                "sweep",
+                idx + 1,
+                total_cases + 2,
+                f"Running sweep case {idx}/{total_cases}: {case.case_name}",
+            )
+            outcomes[idx - 1] = _execute_sweep_case(
+                case.config,
+                cases_dir,
+                f"case_{idx:03d}",
+                progress_callback=progress_callback,
+            )
+    else:
         emit_progress(
             progress_callback,
             "sweep",
-            idx + 1,
+            1,
             total_cases + 2,
-            f"Running sweep case {idx}/{total_cases}: {case.case_name}",
+            f"Starting {total_cases} sweep cases with {effective_workers} worker processes",
         )
+        spawn_context = mp.get_context("spawn")
+        with ProcessPoolExecutor(
+            max_workers=effective_workers,
+            mp_context=spawn_context,
+        ) as executor:
+            future_map = {
+                executor.submit(
+                    _execute_sweep_case,
+                    case.config,
+                    cases_dir,
+                    f"case_{idx:03d}",
+                ): (idx, case)
+                for idx, case in enumerate(cases, start=1)
+            }
+            completed_cases = 0
+            for future in as_completed(future_map):
+                idx, case = future_map[future]
+                try:
+                    outcomes[idx - 1] = future.result()
+                except Exception as exc:
+                    outcomes[idx - 1] = _failed_parallel_case_payload(
+                        cases_dir,
+                        f"case_{idx:03d}",
+                        exc,
+                    )
+                completed_cases += 1
+                emit_progress(
+                    progress_callback,
+                    "sweep",
+                    completed_cases + 1,
+                    total_cases + 2,
+                    f"Completed sweep case {idx}/{total_cases}: {case.case_name}",
+                )
 
-        case_directory_name = f"case_{idx:03d}"
-        case_status = "success"
-        case_error = ""
-        try:
-            case_result_dir = run_experiment(
-                case.config,
+                case_mode = str(case.config.get("sweep", {}).get("run_mode", "control_vs_seeding"))
+                control_factor = 2 if case_mode == "control_vs_seeding" else 1
+                ensemble_cfg = case.config.get("ensemble", {})
+                member_factor = (
+                    max(int(ensemble_cfg.get("n_members", 1)), 1)
+                    if bool(ensemble_cfg.get("enabled", False))
+                    else 1
+                )
+                for completed_unit in range(control_factor * member_factor):
+                    emit_progress(
+                        progress_callback,
+                        "model_run_complete",
+                        completed_unit + 1,
+                        control_factor * member_factor,
+                        f"Completed parallel case unit: {case.case_name}",
+                    )
+
+    rows = []
+    for case, outcome in zip(cases, outcomes):
+        if outcome is None:
+            outcome = _failed_parallel_case_payload(
                 cases_dir,
-                progress_callback=progress_callback,
-                result_dir_name=case_directory_name,
+                f"case_{case.case_index:03d}",
+                RuntimeError("No worker outcome was returned."),
             )
-        except ExperimentExecutionError as exc:
-            case_result_dir = exc.result_dir
-            case_status = "failed"
-            case_error = str(exc)
-        except Exception as exc:
-            case_result_dir = cases_dir / case_directory_name
-            case_result_dir.mkdir(parents=True, exist_ok=True)
-            case_status = "failed"
-            case_error = repr(exc)
+        case_result_dir = Path(outcome["result_dir"])
+        case_status = outcome["case_status"]
+        case_error = outcome["case_error"]
 
         summary_path = case_result_dir / "summary.json"
         if summary_path.exists():
@@ -1041,13 +1322,34 @@ def run_parameter_sweep(
         "successful_cases": n_successful_cases,
         "partial_cases": n_partial_cases,
         "failed_cases": n_failed_cases,
+        "configured_case_workers": configured_workers,
+        "effective_case_workers": effective_workers,
     }
     convergence_input = (
         sweep_df[sweep_df["case_status"] != "failed"].copy()
         if "case_status" in sweep_df.columns
         else sweep_df
     )
-    convergence_table = build_numerical_convergence_table(convergence_input, cfg)
+    common_seed_pairing = bool(
+        cfg.get("qualification", {}).get("common_random_seed_pairing", False)
+    )
+    common_seed_input = (
+        build_common_seed_convergence_input(convergence_input, sweep_dir)
+        if common_seed_pairing
+        else pd.DataFrame()
+    )
+    convergence_source = (
+        common_seed_input if not common_seed_input.empty else convergence_input
+    )
+    if common_seed_pairing:
+        cfg.setdefault("qualification", {})[
+            "common_seed_case_coverage"
+        ] = summarize_common_seed_case_coverage(
+            common_seed_input,
+            cfg,
+            n_cases=total_cases,
+        )
+    convergence_table = build_numerical_convergence_table(convergence_source, cfg)
     convergence_summary = summarize_numerical_convergence(convergence_table)
     qualification_evidence = build_qualification_evidence(convergence_table, cfg)
 
@@ -1060,6 +1362,8 @@ def run_parameter_sweep(
     )
 
     sweep_df.to_csv(sweep_dir / "sweep_summary.csv", index=False)
+    if not common_seed_input.empty:
+        common_seed_input.to_csv(sweep_dir / "paired_seed_metrics.csv", index=False)
     if not convergence_table.empty:
         convergence_table.to_csv(sweep_dir / "numerical_convergence.csv", index=False)
     _write_yaml(sweep_dir / "config.yaml", cfg)
@@ -1112,6 +1416,11 @@ def run_parameter_sweep(
                 else {}
             ),
             **(
+                {"paired_seed_metrics": "paired_seed_metrics.csv"}
+                if not common_seed_input.empty
+                else {}
+            ),
+            **(
                 {"numerical_convergence": "numerical_convergence.csv"}
                 if not convergence_table.empty
                 else {}
@@ -1128,6 +1437,11 @@ def run_parameter_sweep(
                 "report.html",
                 "report.pdf",
                 "result_manifest.json",
+                *(
+                    ["paired_seed_metrics.csv"]
+                    if not common_seed_input.empty
+                    else []
+                ),
                 *(
                     ["qualification_plan.json"]
                     if isinstance(qualification_payload, dict) and qualification_payload
