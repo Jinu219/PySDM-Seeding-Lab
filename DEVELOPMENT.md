@@ -1,5 +1,29 @@
 # Development Notes
 
+## Targeted high-resolution common-seed qualification
+
+Execution and evidence:
+- Completed the explicitly authorized `rain_response_targeted` profile with real
+  `pysdm_parcel`: four OFAT cases, five common seeds, 20 case-seed pairs, and 40/40
+  successful control/seeding model runs.
+- The serial run finished in 1688.8 s (28 min 8.8 s), 1.847x the adapter-level
+  dry-run estimate. No case or ensemble member failed.
+- Every seed produced control and seeding rain above the configured floor, and
+  common-seed case coverage was complete.
+- Absolute rain state passed 60/60 next-finest checks at 5% (maximum 4.180%).
+- Seeding response passed only 11/105 checks (median 34.350%, maximum 2465.158%);
+  every seed independently rejected response support.
+- The finest reference produced positive final rain enhancement for 5/5 seeds,
+  but effect direction is not treated as convergence or publication support.
+
+Decision:
+- Retain profile-scoped support for absolute rain state only.
+- Do not escalate to the 70-execution standard profile as a way to seek a passing
+  response result. Diagnose response estimands and uncertainty before more costly
+  resolution expansion.
+
+Evidence: `docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md`
+
 ## Windows background-status write hardening
 
 Changes:
@@ -64,7 +88,8 @@ Validation:
 - A second resume reused every member, and a changed execution config was rejected
   before model execution.
 - Targeted resume, paired-seed audit, qualification-plan contract, and parallel-sweep
-  regressions passed together. No 40-execution physical run was started.
+  regressions passed together. No 40-execution physical run was started during this
+  implementation test; the later authorized run is documented above.
 - All 45 unit/integration tests passed in 265 seconds, including both real PySDM
   integrations. Project integrity and diff whitespace checks passed.
 

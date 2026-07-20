@@ -4,7 +4,28 @@ Last updated: 2026-07-20
 
 Active branch: `develop`
 
-Current milestone: cross-platform CI and validated dependency baseline
+Current milestone: targeted high-resolution response evidence completed
+
+## Targeted common-seed qualification result
+
+Completed on 2026-07-20:
+- Ran the explicitly authorized `rain_response_targeted` profile serially with real
+  `pysdm_parcel`: 4 cases, 5 common seeds, 20/20 case-seed pairs, and 40/40
+  successful control/seeding model executions.
+- Actual wall time was 1688.8 s (28 min 8.8 s), 1.847x the 914.3 s dry-run estimate.
+- All five reference seed pairs exceeded the rain-signal floor. Absolute control
+  and seeding rain state passed 60/60 checks at 5%, with a 4.180% maximum.
+- Seeding-minus-control response passed 11/105 checks; its median error was 34.350%
+  and maximum was 2465.158%. Every seed independently failed response support.
+- All five finest-reference seeds had positive final rain enhancement, but the
+  response remains too resolution-sensitive for a quantitative effect claim.
+
+Decision: retain profile-scoped support for absolute rain state only. Do not run
+the 70-execution standard profile merely to seek convergence. The next development
+gate is a response-estimand and uncertainty audit; observational validation of the
+operational 1% transition floor remains a separate scientific gate.
+
+Evidence: [`docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md`](docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md)
 
 ## Continuous-integration update
 
@@ -126,9 +147,9 @@ Completed on 2026-07-16:
 - The dry-run and rejection paths were exercised without starting PySDM.
 - All 37 unit/integration tests and project integrity passed after the change.
 
-Decision: preserve this as a reviewed execution plan only. Existing physical
-interpretation does not change until the 40 runs are explicitly authorized and
-completed.
+Decision at the planning milestone: preserve this as a reviewed execution plan
+until explicitly authorized. The run was subsequently authorized and completed;
+the current interpretation is recorded in the targeted result section above.
 
 Plan: [`docs/TARGETED_RESPONSE_PLAN.md`](docs/TARGETED_RESPONSE_PLAN.md)
 

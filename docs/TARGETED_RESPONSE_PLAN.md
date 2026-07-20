@@ -2,6 +2,11 @@
 
 Date: 2026-07-16
 
+Status: executed on 2026-07-20. All 40 model executions succeeded; absolute rain
+state passed 60/60 checks at 5%, while seeding response passed 11/105 and remains
+unsupported. See
+[`evidence/RAIN_RESPONSE_TARGETED_20260720.md`](evidence/RAIN_RESPONSE_TARGETED_20260720.md).
+
 ## Purpose
 
 The three-seed `rain_response_pilot` supported absolute parcel rain-water state

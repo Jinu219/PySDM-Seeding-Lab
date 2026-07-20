@@ -64,16 +64,18 @@ The completed 800-super-droplet, three-seed pilot passed all 36 absolute rain-st
 checks but only 4/63 seeding-response checks. See
 [`docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`](docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md).
 
-Before considering the 70-execution standard response profile, inspect the
-dry-run-first 40-execution targeted plan:
+The 40-execution targeted profile remains dry-run-first:
 
 ```powershell
 & .\.conda\python.exe scripts\run_numerical_qualification.py --config configs\marine.yaml --profile rain_response_targeted --adapter pysdm_parcel --dry-run
 ```
 
 The targeted profile cannot start physical models unless
-`--confirm-targeted-run` is also supplied. No targeted physical run has been
-performed yet; see [`docs/TARGETED_RESPONSE_PLAN.md`](docs/TARGETED_RESPONSE_PLAN.md).
+`--confirm-targeted-run` is also supplied. The authorized 2026-07-20 run completed
+40/40 models: absolute rain state passed 60/60 checks at 5%, while seeding response
+passed only 11/105. Do not interpret the positive finest-reference response as a
+converged effect. See
+[`docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md`](docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md).
 
 If an authorized common-seed qualification is interrupted, resume the same result
 directory with the original config and profile:
@@ -346,8 +348,7 @@ a particle-history activation event.
 
 Steps 0-19, process-isolation evidence, and the columnar-cache comparison are
 complete; see `DEVELOPMENT.md` for the full changelog. The prioritized plan now
-lives in `ROADMAP.md`: review the targeted run's resource estimate, explicitly
-authorize and execute the resumable 40-execution common-seed qualification,
+lives in `ROADMAP.md`: audit the non-converged response estimands and uncertainty,
 validate the operational transition floor against observations, and later benchmark
 serial/4/8-worker execution on the lab server.
 

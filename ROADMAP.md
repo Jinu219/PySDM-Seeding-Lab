@@ -22,7 +22,18 @@ Resumable targeted common-seed execution completed on 2026-07-20:
   reused and included in rebuilt aggregation, convergence, evidence, and reports.
 - Resume attempts and reused/rerun counts are retained in
   `qualification_plan.json`. The targeted profile still requires explicit execution
-  confirmation; this implementation generated no new physical evidence.
+  confirmation.
+
+Targeted high-resolution response evidence completed on 2026-07-20:
+- The authorized serial run completed 4 cases, 5 common seeds, 20/20 case-seed
+  pairs, and 40/40 real `pysdm_parcel` control/seeding executions in 1688.8 s.
+- Absolute rain state passed 60/60 next-finest checks at 5% (maximum 4.180%).
+- Seeding response passed 11/105 checks (median 34.350%, maximum 2465.158%);
+  every seed independently rejected response support.
+- Positive finest-reference response direction in 5/5 seeds is retained as a
+  finite-sample observation, not as a converged quantitative effect.
+- The 70-execution standard profile is no longer the next gate. First audit the
+  response estimands, near-zero handling, and uncertainty representation.
 
 Spectrum-transition literature gate completed on 2026-07-20:
 - The 1% activated-liquid fraction remains an operational floor with mandatory
@@ -37,9 +48,8 @@ Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
 - The plan uses 4 OFAT cases and 5 common seeds: 40 physical executions rather
   than the 70-execution three-level standard profile.
-- Physical execution requires an explicit confirmation flag and remains unrun.
-- The next scientific gate is review of the printed runtime/resource estimate,
-  followed by an explicitly authorized serial execution when resources allow.
+- Physical execution remains protected by an explicit confirmation flag; the
+  reviewed 40-execution run is now complete as recorded above.
 
 Internal columnar cache evidence gate completed on 2026-07-20:
 - Results reads can use an atomically written Arrow IPC cache while CSV remains the
@@ -77,10 +87,10 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Review the 40-execution targeted response plan and local runtime estimate.
-2. Run the targeted profile serially, with resume protection, only after explicit authorization.
-3. Validate or revise the operational 1% transition floor using observations.
-4. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
+1. Audit response estimands, near-zero handling, and uncertainty representation
+   before adding more expensive resolution levels.
+2. Validate or revise the operational 1% transition floor using observations.
+3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
 
 Higher-resolution common-seed gate completed on 2026-07-15:
 - A paired-seed scalar audit now preserves every case × seed response and rejects

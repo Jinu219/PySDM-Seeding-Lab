@@ -1,0 +1,63 @@
+{
+  "build_id": "targeted-common-seed-rain-response-summary-v1-20260720",
+  "source_result": "20260720_153443_866135_qualification_rain_re_8c365f71",
+  "profile": "rain_response_targeted",
+  "adapter": "pysdm_parcel",
+  "execution": {
+    "case_count": 4,
+    "common_random_seeds": [32001, 33010, 34019, 35028, 36037],
+    "case_seed_pairs": 20,
+    "model_execution_count": 40,
+    "failed_cases": 0,
+    "failed_members": 0,
+    "wall_time_seconds": 1688.8,
+    "estimated_wall_time_seconds": 914.2679539998062,
+    "actual_to_estimated_ratio": 1.847
+  },
+  "reference_resolution": {
+    "timestep_seconds": 2.5,
+    "seeding_superdroplets": 1600,
+    "background_superdroplets": 1600
+  },
+  "rain_signal": {
+    "detected_for_every_seed": true,
+    "minimum_control_reference_kg_kg": 0.0025021815978727,
+    "minimum_seeding_reference_kg_kg": 0.0026562897967685
+  },
+  "absolute_state": {
+    "status": "supported_for_profile",
+    "checks_within_tolerance": 60,
+    "checks": 60,
+    "median_relative_difference_percent": 0.6423872293020791,
+    "p95_relative_difference_percent": 2.304545325675619,
+    "max_relative_difference_percent": 4.179905077937543
+  },
+  "seeding_response": {
+    "status": "not_supported_for_profile",
+    "checks_within_tolerance": 11,
+    "checks": 105,
+    "median_relative_difference_percent": 34.35044205594897,
+    "p95_relative_difference_percent": 296.88046916833724,
+    "max_relative_difference_percent": 2465.157704615268,
+    "seed_checks_within_tolerance": {
+      "32001": "4/21",
+      "33010": "0/21",
+      "34019": "3/21",
+      "35028": "0/21",
+      "36037": "4/21"
+    },
+    "axis_max_relative_difference_percent": {
+      "timestep": 1630.411156685893,
+      "seeding_superdroplets": 2272.467608225089,
+      "background_superdroplets": 2465.157704615268
+    }
+  },
+  "finest_reference_response": {
+    "rain_enhancement_final_mean": 0.00013769325802386,
+    "rain_enhancement_final_positive_seeds": "5/5",
+    "accumulated_rain_enhancement_mean": 0.039323268444577,
+    "seeding_efficiency_score_mean": 0.521573356087423,
+    "cloud_to_rain_conversion_delta_mean": 0.0582944214595167
+  },
+  "decision": "Retain 5% support for absolute rain state only. Do not claim a quantitatively converged seeding response, and do not escalate to the 70-execution standard profile as a convergence remedy."
+}
