@@ -103,7 +103,7 @@ def run_validation(
         _markdown_report(summary, result_dir), encoding="utf-8"
     )
     manifest = {
-        "artifact_schema_version": 1,
+        "artifact_schema_version": 2,
         "build_id": TRANSITION_OBSERVATION_VALIDATION_BUILD_ID,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_result_dir": str(result_dir),
@@ -112,6 +112,7 @@ def run_validation(
         "observation_source_file": observations_path.name,
         "observation_source_sha256": _sha256(observations_path),
         "evidence_classes": summary["evidence_classes"],
+        "mapping_statuses": summary["mapping_statuses"],
         "files": {
             "observation_events": "observation_events.csv",
             "validation": "transition_observation_validation.csv",

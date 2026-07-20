@@ -365,13 +365,21 @@ are documented in [`docs/TRANSITION_OBSERVATION_VALIDATION.md`](docs/TRANSITION_
 Synthetic rows test the workflow only and are never presented as observational
 support for the operational 1% floor.
 
+Public EUREC4A ATR42 BASTALIAS L2 NetCDF files can be converted into this contract
+with `scripts/extract_bastalias_drizzle_event.py` after installing
+`requirements-observations.txt`. The importer audits the −15/−17/−20 dBZ drizzle
+definitions, time quality, pixel persistence, source hash, and event window. Because
+the moving aircraft samples different horizontal volumes, its output is always
+`spatiotemporal_proxy`, not direct parcel-time validation. See
+[`docs/BASTALIAS_OBSERVATION_IMPORT.md`](docs/BASTALIAS_OBSERVATION_IMPORT.md).
+
 ## Development Roadmap
 
 Steps 0-19, process-isolation evidence, and the columnar-cache comparison are
 complete; see `DEVELOPMENT.md` for the full changelog. The prioritized plan now
-lives in `ROADMAP.md`: populate the new transition-validation contract with a real
-observational dataset, review its event-to-model mapping, and later benchmark
-serial/4/8-worker execution on the lab server.
+lives in `ROADMAP.md`: populate the transition-validation contract with a real
+direct-temporal observational dataset, review its event-to-model mapping, and later
+benchmark serial/4/8-worker execution on the lab server.
 
 ## Research Direction
 

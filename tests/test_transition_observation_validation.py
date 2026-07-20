@@ -83,7 +83,10 @@ class TransitionObservationValidationTests(unittest.TestCase):
         )
 
     def test_observational_rows_are_reported_separately(self) -> None:
-        observations = self.observations.assign(evidence_class="observation")
+        observations = self.observations.assign(
+            evidence_class="observation",
+            mapping_status="direct_temporal",
+        )
         validation = build_transition_observation_validation(
             self.candidates,
             observations,
@@ -97,6 +100,24 @@ class TransitionObservationValidationTests(unittest.TestCase):
 
         self.assertEqual(summary["status"], "observational_comparison_available")
         self.assertEqual(summary["evidence_classes"], ["observation"])
+        self.assertEqual(summary["mapping_statuses"], ["direct_temporal"])
+
+        proxy_observations = observations.assign(
+            mapping_status="spatiotemporal_proxy"
+        )
+        proxy_validation = build_transition_observation_validation(
+            self.candidates,
+            proxy_observations,
+        )
+        proxy_summary = summarize_transition_observation_validation(
+            proxy_observations,
+            proxy_validation,
+            score_transition_candidates(proxy_validation),
+        )
+        self.assertEqual(
+            proxy_summary["status"],
+            "observational_mapping_review_required",
+        )
 
     def test_invalid_contract_is_rejected(self) -> None:
         invalid = self.observations.drop(columns=["source_id"])
@@ -106,6 +127,10 @@ class TransitionObservationValidationTests(unittest.TestCase):
         invalid = self.observations.assign(evidence_class="inferred")
         with self.assertRaisesRegex(ValueError, "observation or synthetic"):
             normalize_observation_events(invalid)
+
+        invalid_mapping = self.observations.assign(mapping_status="direct_temporal")
+        with self.assertRaisesRegex(ValueError, "Synthetic evidence rows"):
+            normalize_observation_events(invalid_mapping)
 
         missing_provenance = self.observations.copy()
         missing_provenance.loc[0, "source_id"] = pd.NA
@@ -152,7 +177,7 @@ class TransitionObservationValidationTests(unittest.TestCase):
                     encoding="utf-8"
                 )
             )
-            self.assertEqual(manifest["artifact_schema_version"], 1)
+            self.assertEqual(manifest["artifact_schema_version"], 2)
             self.assertEqual(manifest["evidence_classes"], ["synthetic"])
             self.assertEqual(len(manifest["observation_source_sha256"]), 64)
             self.assertEqual(len(manifest["source_transition_table_sha256"]), 64)

@@ -4,7 +4,30 @@ Last updated: 2026-07-20
 
 Active branch: `develop`
 
-Current milestone: observational transition-comparison workflow completed
+Current milestone: BASTALIAS observation import verified; direct temporal mapping pending
+
+## BASTALIAS real-data import update
+
+Completed on 2026-07-20:
+- Added an optional NetCDF importer for the public EUREC4A ATR42 BASTALIAS L2
+  radar–lidar dataset (DOI `10.25326/316`).
+- Added explicit event definition, sampling context, and mapping status to the
+  observation contract. Only `direct_temporal` rows can reach the direct
+  observational-comparison workflow status.
+- The importer checks `time_issue_flag`, drizzle pixel persistence, event window,
+  source hash, and −15/−17/−20 dBZ classification sensitivity.
+- Downloaded and verified the 196,977,022-byte F11 source. Its 09:50–10:00 UTC
+  window contained 400/400 quality-valid samples and resolved onset at 10.121 s
+  for −15 dBZ and 7.121 s for −17/−20 dBZ.
+- The real-data comparison remained `observational_mapping_review_required` with
+  zero direct-temporal rows, as required.
+
+Decision: BASTALIAS verifies real-data ingestion and classification sensitivity,
+but its moving-aircraft horizontal sampling is a spatiotemporal proxy. It does not
+validate or revise the operational 1% model floor. The next scientific gate is a
+defensible direct temporal dataset and parcel-time mapping.
+
+Evidence: [`docs/evidence/BASTALIAS_IMPORT_20260720.md`](docs/evidence/BASTALIAS_IMPORT_20260720.md)
 
 ## Observation transition-validation update
 
@@ -345,9 +368,10 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Populate the implemented transition-event contract with a real observational dataset.
-2. Review event definition, time-origin mapping, uncertainty, and representativeness.
-3. Validate or revise the operational 1% transition floor from that reviewed comparison.
+1. Identify a direct-temporal drizzle-onset dataset that samples a defensibly
+   comparable volume rather than a moving-aircraft spatial transect.
+2. Establish its event definition, time origin, uncertainty, and parcel-time mapping.
+3. Only then validate or revise the operational 1% transition floor.
 4. When server work resumes, benchmark matched serial/4/8-worker execution.
 
 ## Latest execution-robustness update
@@ -469,9 +493,9 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. 실제 관측 drizzle-onset event 자료를 새 CSV 계약에 연결한다.
-2. event 정의, time origin, timing uncertainty, 대표성 mapping을 검토한다.
-3. 검토된 비교를 바탕으로 현재 운영 1% floor를 외부 검증하거나 수정한다.
+1. 이동 항공기 공간 transect가 아닌 직접 시간진화 drizzle-onset 자료를 찾는다.
+2. event 정의, time origin, timing uncertainty, parcel-time mapping을 확정한다.
+3. direct-temporal 비교가 확보된 뒤 현재 운영 1% floor를 검증하거나 수정한다.
 4. 서버 개발 재개 시 warm-worker serial/4/8-worker RSS 및 wall-time을 비교한다.
 
 ## 검증 명령

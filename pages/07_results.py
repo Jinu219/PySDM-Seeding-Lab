@@ -195,7 +195,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "transition-observation-validation-20260720"
+RESULTS_UI_BUILD_ID = "observation-mapping-audit-20260720"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -2047,7 +2047,8 @@ if tab_spectrum is not None:
                     help=(
                         "Required columns include event_id, case, observed onset and "
                         "uncertainty, model time offset, time origin, source ID, and an "
-                        "explicit observation or synthetic evidence class."
+                        "explicit method, event definition, sampling context, evidence "
+                        "class, and mapping status."
                     ),
                 )
                 if observation_upload is not None:
@@ -2087,11 +2088,21 @@ if tab_spectrum is not None:
                                 "Mixed evidence classes: keep synthetic rows separate before "
                                 "drawing an observational interpretation."
                             )
+                        elif status == "observational_mapping_review_required":
+                            st.warning(
+                                "Real observations were loaded, but their sampling is not a "
+                                "direct parcel-time mapping. Candidate scores are a mapping "
+                                "diagnostic and cannot validate the operational threshold."
+                            )
                         else:
                             st.info(
                                 "Observational comparison available. Candidate ranking remains "
                                 "descriptive and does not establish a universal threshold."
                             )
+                        st.caption(
+                            "Mapping status: "
+                            + ", ".join(observation_summary["mapping_statuses"])
+                        )
                         observation_metrics = st.columns(4)
                         observation_metrics[0].metric(
                             "Event/case rows",

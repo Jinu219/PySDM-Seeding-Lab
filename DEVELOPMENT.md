@@ -1,5 +1,45 @@
 # Development Notes
 
+## EUREC4A BASTALIAS observation importer
+
+Changes:
+- Extended the transition-observation contract with method, event definition,
+  sampling context, and mapping status. Synthetic rows and observational rows now
+  have compatible-but-distinct mapping states.
+- Added a local NetCDF importer for the public EUREC4A ATR42 BASTALIAS L2 product,
+  with lazy optional `netCDF4` dependency loading.
+- Added quality-valid persistent drizzle detection for the documented
+  `nb_drizzle_1`, `nb_drizzle_2`, and `nb_drizzle_3` variables and automatic
+  −15/−17/−20 dBZ onset sensitivity output.
+- Added immutable observation packages containing the normalized CSV, mapping audit,
+  threshold sensitivity, full source SHA-256, and source metadata.
+- Results now distinguishes direct temporal observations from spatial or
+  spatiotemporal proxies before presenting candidate scores.
+
+Real-data verification:
+- Downloaded the official 196,977,022-byte F11 NetCDF and verified SHA-256
+  `d70a9d5fa57e193ac6de790db4e5643a34892b41e1a5ef7f3e472a0ba16f0b7d`.
+- The reviewed 09:50–10:00 UTC window contained 400 quality-valid samples. A 3 s
+  persistent onset resolved at 10.121 s for −15 dBZ and 7.121 s for −17/−20 dBZ.
+- The model comparison correctly remained `observational_mapping_review_required`
+  with zero direct-temporal rows. No 1% floor calibration claim is supported.
+
+Scientific boundary:
+- BASTALIAS is a moving-aircraft horizontal sample. Its event is always emitted as
+  `spatiotemporal_proxy`; neither timing precision nor threshold consistency converts
+  it into temporal evolution of one parcel.
+- The user-supplied timing uncertainty excludes spatial representativeness and
+  parcel-mapping uncertainty.
+
+Validation:
+- All 55 fast CI regressions, dependency checks, project integrity, and diff checks
+  passed locally.
+- Results AppTest rendered with zero exceptions and zero error elements.
+- A real F11 observation package and a 27-candidate comparison package completed;
+  the latter retained `observational_mapping_review_required` as designed.
+
+Evidence: `docs/evidence/BASTALIAS_IMPORT_20260720.md`
+
 ## Observational transition-comparison workflow
 
 Changes:

@@ -55,6 +55,16 @@ Observation-comparison workflow completed on 2026-07-20:
 - Synthetic rows are workflow checks only. This completes the software mapping gate,
   not the external scientific validation gate.
 
+BASTALIAS real-data ingestion gate completed on 2026-07-20:
+- Added a NetCDF importer for EUREC4A ATR42 BASTALIAS L2 with source hashing,
+  time-quality filtering, persistence detection, and −15/−17/−20 dBZ sensitivity.
+- The reviewed F11 09:50–10:00 UTC window resolved all three classification
+  definitions within a 3 s spread.
+- Contract v2 distinguishes `direct_temporal`, `spatiotemporal_proxy`, and unresolved
+  mappings. BASTALIAS is forcibly classified as a spatiotemporal proxy because a
+  moving aircraft samples different horizontal volumes.
+- This is real observation ingestion, not external validation of the model's 1% floor.
+
 Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
 - The plan uses 4 OFAT cases and 5 common seeds: 40 physical executions rather
@@ -98,11 +108,11 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Populate the transition-event contract with a real, traceable observational
-   dataset and document the event/time-origin mapping.
-2. Review observational timing uncertainty and representativeness, then validate or
-   revise the operational 1% transition floor without treating candidate ranking as
-   universal calibration.
+1. Identify a direct-temporal drizzle-onset dataset with a sampled volume and time
+   origin that can be defensibly mapped to the parcel simulation.
+2. Review its uncertainty and representativeness, then validate or revise the
+   operational 1% transition floor without treating candidate ranking as universal
+   calibration.
 3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
 
 Higher-resolution common-seed gate completed on 2026-07-15:

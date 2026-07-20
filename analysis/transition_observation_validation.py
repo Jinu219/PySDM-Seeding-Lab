@@ -9,10 +9,16 @@ import pandas as pd
 
 
 TRANSITION_OBSERVATION_VALIDATION_BUILD_ID = (
-    "transition-observation-validation-v1-20260720"
+    "transition-observation-validation-v2-20260720"
 )
 OBSERVATION_EVIDENCE_CLASSES = {"observation", "synthetic"}
 OBSERVATION_CASES = {"control", "seeding"}
+OBSERVATION_MAPPING_STATUSES = {
+    "direct_temporal",
+    "spatiotemporal_proxy",
+    "unresolved",
+    "synthetic_workflow",
+}
 OBSERVATION_REQUIRED_COLUMNS = (
     "event_id",
     "case",
@@ -22,6 +28,10 @@ OBSERVATION_REQUIRED_COLUMNS = (
     "time_origin",
     "source_id",
     "evidence_class",
+    "observation_method",
+    "event_definition",
+    "sampling_context",
+    "mapping_status",
 )
 MODEL_REQUIRED_COLUMNS = (
     "activation_factor",
@@ -54,6 +64,10 @@ def observation_contract_template() -> pd.DataFrame:
                 "time_origin": "simulation_start",
                 "source_id": "replace_with_doi_url_or_dataset_id",
                 "evidence_class": "synthetic",
+                "observation_method": "synthetic_fixture",
+                "event_definition": "replace_with_explicit_detection_rule",
+                "sampling_context": "synthetic_workflow_test",
+                "mapping_status": "synthetic_workflow",
                 "notes": "Template row; replace before observational use.",
             }
         ]
@@ -73,7 +87,17 @@ def normalize_observation_events(observations: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("Observation CSV must contain at least one event row.")
 
     normalized = observations.copy()
-    for column in ("event_id", "case", "time_origin", "source_id", "evidence_class"):
+    for column in (
+        "event_id",
+        "case",
+        "time_origin",
+        "source_id",
+        "evidence_class",
+        "observation_method",
+        "event_definition",
+        "sampling_context",
+        "mapping_status",
+    ):
         if normalized[column].isna().any():
             raise ValueError(f"Observation column {column} cannot contain blanks.")
         normalized[column] = normalized[column].astype(str).str.strip()
@@ -81,6 +105,7 @@ def normalize_observation_events(observations: pd.DataFrame) -> pd.DataFrame:
             raise ValueError(f"Observation column {column} cannot contain blanks.")
     normalized["case"] = normalized["case"].str.lower()
     normalized["evidence_class"] = normalized["evidence_class"].str.lower()
+    normalized["mapping_status"] = normalized["mapping_status"].str.lower()
     invalid_cases = sorted(set(normalized["case"]) - OBSERVATION_CASES)
     if invalid_cases:
         raise ValueError(
@@ -94,6 +119,28 @@ def normalize_observation_events(observations: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(
             "Observation evidence_class must be observation or synthetic; found: "
             + ", ".join(invalid_classes)
+        )
+    invalid_mapping_statuses = sorted(
+        set(normalized["mapping_status"]) - OBSERVATION_MAPPING_STATUSES
+    )
+    if invalid_mapping_statuses:
+        raise ValueError(
+            "Observation mapping_status is invalid; found: "
+            + ", ".join(invalid_mapping_statuses)
+        )
+    synthetic_rows = normalized["evidence_class"].eq("synthetic")
+    if not normalized.loc[synthetic_rows, "mapping_status"].eq(
+        "synthetic_workflow"
+    ).all():
+        raise ValueError(
+            "Synthetic evidence rows must use mapping_status synthetic_workflow."
+        )
+    observation_rows = normalized["evidence_class"].eq("observation")
+    if normalized.loc[observation_rows, "mapping_status"].eq(
+        "synthetic_workflow"
+    ).any():
+        raise ValueError(
+            "Observation evidence rows cannot use mapping_status synthetic_workflow."
         )
 
     numeric_columns = (
@@ -266,10 +313,14 @@ def summarize_transition_observation_validation(
     """Summarize workflow state while preserving the observation/synthetic boundary."""
     events = normalize_observation_events(observations)
     evidence_classes = sorted(str(value) for value in events["evidence_class"].unique())
+    mapping_statuses = sorted(str(value) for value in events["mapping_status"].unique())
     if evidence_classes == ["synthetic"]:
         status = "synthetic_workflow_only"
     elif evidence_classes == ["observation"]:
-        status = "observational_comparison_available"
+        if mapping_statuses == ["direct_temporal"]:
+            status = "observational_comparison_available"
+        else:
+            status = "observational_mapping_review_required"
     else:
         status = "mixed_observation_and_synthetic_inputs"
     resolved = validation["comparison_status"].eq("resolved")
@@ -290,7 +341,11 @@ def summarize_transition_observation_validation(
         "available": bool(len(validation)),
         "status": status,
         "evidence_classes": evidence_classes,
+        "mapping_statuses": mapping_statuses,
         "n_event_case_rows": int(len(events)),
+        "n_direct_temporal_event_case_rows": int(
+            events["mapping_status"].eq("direct_temporal").sum()
+        ),
         "n_unique_events": int(events["event_id"].nunique()),
         "n_candidate_definitions": int(len(candidate_scores)),
         "n_comparisons": int(len(validation)),
@@ -303,6 +358,7 @@ def summarize_transition_observation_validation(
             "Candidate scores compare model and aligned observed onset times. The lowest-MAE "
             "candidate is descriptive and must not be treated as a universal calibrated "
             "threshold. Synthetic rows validate software workflow only; observational rows "
-            "still require source, timing-origin, representativeness, and uncertainty review."
+            "still require source, timing-origin, representativeness, and uncertainty review. "
+            "Spatiotemporal proxies cannot validate a parcel-model temporal threshold."
         ),
     }

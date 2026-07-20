@@ -19,6 +19,10 @@ Each row represents one event and one model case. The required columns are:
 | `time_origin` | Explicit timing origin, such as `simulation_start` |
 | `source_id` | DOI, URL, dataset identifier, or other traceable provenance |
 | `evidence_class` | Exactly `observation` or `synthetic` |
+| `observation_method` | Instrument, retrieval, or synthetic method |
+| `event_definition` | Explicit rule used to declare onset |
+| `sampling_context` | Temporal, spatial, or spatiotemporal sampling description |
+| `mapping_status` | `direct_temporal`, `spatiotemporal_proxy`, `unresolved`, or `synthetic_workflow` |
 
 An optional `notes` column is preserved. Aligned onset is calculated as:
 
@@ -26,9 +30,10 @@ An optional `notes` column is preserved. Aligned onset is calculated as:
 aligned_observed_onset_s = observed_transition_onset_s + model_time_offset_s
 ```
 
-Negative aligned times, missing provenance, duplicate event/case rows, and unknown
-evidence classes are rejected. The Results Dashboard provides a downloadable CSV
-template in its Spectrum-based transition onset section.
+Negative aligned times, missing provenance or mapping fields, duplicate event/case
+rows, and unknown evidence classes are rejected. Synthetic evidence must use
+`synthetic_workflow`; observational evidence cannot use it. The Results Dashboard
+provides a downloadable CSV template in its Spectrum-based transition onset section.
 
 ## Run the standalone comparison
 
@@ -61,3 +66,9 @@ Rows marked `synthetic` validate only the software workflow. A scientific review
 requires rows marked `observation` with defensible source provenance, time-origin
 mapping, uncertainty, representativeness, and a documented relationship between
 the measured event and the model-native rain-liquid fraction.
+
+Only `direct_temporal` rows receive the `observational_comparison_available` workflow
+status. Spatial or moving-platform datasets remain
+`observational_mapping_review_required` even though their measurements are real.
+The EUREC4A BASTALIAS importer and its mandatory proxy boundary are documented in
+[`BASTALIAS_OBSERVATION_IMPORT.md`](BASTALIAS_OBSERVATION_IMPORT.md).
