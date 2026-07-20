@@ -2,6 +2,17 @@
 
 ## Current milestone snapshot (2026-07-20)
 
+Resumable targeted common-seed execution completed on 2026-07-20:
+- Added in-place resume for common-seed qualification results with a normalized
+  SHA-256 execution-config identity and pre-execution mismatch rejection.
+- Valid case/seed members are discovered from their durable result artifacts even
+  if an interruption occurred before `member_summary.csv` was finalized.
+- Missing, corrupt, failed, or mismatched members rerun; completed members are
+  reused and included in rebuilt aggregation, convergence, evidence, and reports.
+- Resume attempts and reused/rerun counts are retained in
+  `qualification_plan.json`. The targeted profile still requires explicit execution
+  confirmation; this implementation generated no new physical evidence.
+
 Spectrum-transition literature gate completed on 2026-07-20:
 - The 1% activated-liquid fraction remains an operational floor with mandatory
   0.5/1/2% and 20/25/30 µm sensitivity audits, not an observational standard.
@@ -56,9 +67,9 @@ Collision-ON rain qualification completed on 2026-07-15:
 
 Revised next ordered gates:
 1. Review the 40-execution targeted response plan and local runtime estimate.
-2. Run the targeted profile serially only after explicit authorization.
-3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
-4. Validate or revise the operational 1% transition floor using observations.
+2. Run the targeted profile serially, with resume protection, only after explicit authorization.
+3. Validate or revise the operational 1% transition floor using observations.
+4. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
 
 Higher-resolution common-seed gate completed on 2026-07-15:
 - A paired-seed scalar audit now preserves every case × seed response and rejects
@@ -94,10 +105,9 @@ Research-evidence gate completed:
 - Step 18 now supports an on-demand PDF containing the publication figure selected
   in Results. Step 19 now has actual legacy-result and schema-migration fixtures.
 
-Next ordered gates:
-1. Bounded warm-worker serial/4/8-worker real-PySDM A/B benchmark.
-2. Targeted, resource-bounded 1600-super-droplet response qualification.
-3. Observational validation or revision of the operational 1% transition floor.
+The canonical ordered gates are maintained once above. Performance benchmarking
+remains behind the targeted scientific run and observational-validation work unless
+server capacity becomes the immediate blocker.
 
 See the numerical, performance, and threshold-basis records under `docs/` for the
 measured evidence and interpretation boundaries.
@@ -132,8 +142,8 @@ connected to real comparison results. Full PySDM convergence evidence and the
 large-ensemble RSS/I/O benchmark are now complete for their documented profiles.
 
 `DEVELOPMENT.md`가 "무엇을 했는가"의 기록(changelog)이라면, 이 문서는 "다음에 무엇을,
-어떤 순서로 할 것인가"를 관리한다. README.md의 Development Roadmap 섹션은 Step 10까지만
-반영된 예전 버전이므로, 최신 우선순위는 항상 이 문서를 기준으로 한다.
+어떤 순서로 할 것인가"를 관리한다. README.md는 안정된 요약과 실행 명령만 제공하며,
+최신 우선순위는 항상 이 문서를 기준으로 한다.
 
 ## 완료된 단계 (요약)
 
@@ -259,10 +269,10 @@ spectrum/threshold difference와 activated liquid 중 rain-size liquid fraction 
 - Step 17 large ensemble 최적화: member dataframe 전체를 동시에 보관하지 않고 member
   CSV를 변수별로 streaming aggregation하는 첫 구현 완료. 통계 결과는 기존 방식과 동일하며,
   peak aggregation memory는 members x timesteps x variables에서 members x timesteps로 줄었다.
-  이제 입력 bytes, elapsed time, tracemalloc peak를 자동 저장한다. 다음은 실제 대형 PySDM
-  ensemble의 whole-process RSS와 추가 CSV I/O 시간을 benchmark하는 것이다.
-- Step 18 자동 report export: Markdown과 self-contained print-friendly HTML 구현 완료.
-  다음은 PDF와 publication figure embedding.
+  입력 bytes, elapsed time, tracemalloc peak, whole-process RSS, subprocess 격리, bounded
+  warm-worker 실행까지 검증했다. 다음은 서버의 matched serial/4/8-worker benchmark다.
+- Step 18 자동 report export: Markdown, self-contained print-friendly HTML, paginated PDF,
+  publication figure embedding 구현 완료. 실제 투고 시 저널별 typography만 확장한다.
 - Step 19 old/new result 호환성 강화: versioned `result_manifest.json`, current/legacy/future
   compatibility inspection, legacy type inference, Results 상태 표시까지 첫 구현 완료.
   다음은 실제 schema 변경 시 migration fixture와 변환기를 추가하는 것이다.

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from analysis.case_diagnostic_comparison import (
     build_threshold_robustness_comparison,
@@ -64,6 +65,7 @@ from simulation.runner import (
     run_parameter_sweep,
 )
 from simulation.run_plan import estimate_run_plan
+from simulation.resume import ResumeConfigurationError, execution_config_fingerprint
 from simulation.schema import default_config
 from simulation.sweep import generate_sweep_cases
 from simulation.validation import validate_config_detailed
@@ -75,6 +77,9 @@ from simulation.wet_radius_spectrum import (
 )
 from scripts.run_numerical_qualification import (
     build_qualification_config,
+    finalize_resume_attempt,
+    persist_qualification_plan,
+    prepare_resume_attempt,
     qualification_plan,
 )
 from scripts.run_ensemble_benchmark import build_benchmark_config
@@ -265,7 +270,14 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             {"name": "seeding.kappa", "values": [0.8]},
         ]
 
-        def fail_case(config, output_dir, progress_callback=None, *, result_dir_name=None):
+        def fail_case(
+            config,
+            output_dir,
+            progress_callback=None,
+            *,
+            result_dir_name=None,
+            resume_existing=False,
+        ):
             result_dir = Path(output_dir) / str(result_dir_name)
             result_dir.mkdir(parents=True, exist_ok=True)
             raise ExperimentExecutionError("synthetic nested failure", result_dir=result_dir)
@@ -1258,6 +1270,116 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             8,
         )
         self.assertEqual(manifest["files"]["paired_seed_metrics"], "paired_seed_metrics.csv")
+
+    def test_common_seed_qualification_resumes_only_missing_members(self):
+        cfg = default_config()
+        cfg["experiment"].update(
+            {"mode": "parameter_sweep", "name": "resume_seed_regression"}
+        )
+        cfg["simulation"]["adapter"] = "placeholder_warm_cloud"
+        cfg["environment"].update({"duration": 20, "timestep": 5})
+        cfg["seeding"].update({"injection_start": 10, "injection_end": 20})
+        cfg["ensemble"].update(
+            {"enabled": True, "n_members": 2, "seed_start": 101, "seed_step": 101}
+        )
+        cfg["execution"]["max_workers"] = 1
+        cfg["sweep"] = {
+            "design": "one_factor_at_reference",
+            "run_mode": "control_vs_seeding",
+            "max_runs": 2,
+            "ranking_metric": "comparison.efficiency.seeding_efficiency_score",
+            "parameters": [
+                {
+                    "name": "environment.timestep",
+                    "values": [5],
+                    "reference": "min",
+                }
+            ],
+        }
+        cfg["qualification"] = {
+            "build_id": "resume-regression",
+            "profile": "software_test",
+            "common_random_seed_pairing": True,
+            "common_random_seeds": [101, 202],
+            "rain_signal_required": False,
+            "execution_config_fingerprint": execution_config_fingerprint(cfg),
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result_dir = run_experiment(cfg, Path(tmp_dir))
+            case_dir = result_dir / "cases" / "case_001"
+            (case_dir / "member_summary.csv").unlink()
+            (
+                case_dir
+                / "members"
+                / "member_002"
+                / "comparison"
+                / "comparison.csv"
+            ).unlink()
+
+            requested_plan = dict(cfg["qualification"])
+            prepared_plan = prepare_resume_attempt(
+                cfg,
+                requested_plan,
+                result_dir,
+                profile="software_test",
+            )
+            persist_qualification_plan(result_dir, prepared_plan)
+            resume_cfg = dict(cfg)
+            resume_cfg["qualification"] = prepared_plan
+            resumed_dir = run_experiment(
+                resume_cfg,
+                result_dir.parent,
+                result_dir_name=result_dir.name,
+                resume_existing=True,
+            )
+            completed_attempt = finalize_resume_attempt(
+                resumed_dir,
+                status="completed",
+            )
+            first_resume = pd.read_csv(case_dir / "member_summary.csv")
+            first_summary = json.loads(
+                (result_dir / "summary.json").read_text(encoding="utf-8")
+            )
+
+            resume_cfg = yaml.safe_load(
+                (result_dir / "config.yaml").read_text(encoding="utf-8")
+            )
+            rerun_again = run_experiment(
+                resume_cfg,
+                result_dir.parent,
+                result_dir_name=result_dir.name,
+                resume_existing=True,
+            )
+            second_resume = pd.read_csv(case_dir / "member_summary.csv")
+            second_summary = json.loads(
+                (rerun_again / "summary.json").read_text(encoding="utf-8")
+            )
+
+            mismatched = dict(resume_cfg)
+            mismatched["environment"] = dict(resume_cfg["environment"])
+            mismatched["environment"]["duration"] = 25
+            with self.assertRaises(ResumeConfigurationError):
+                run_experiment(
+                    mismatched,
+                    result_dir.parent,
+                    result_dir_name=result_dir.name,
+                    resume_existing=True,
+                )
+
+        self.assertEqual(resumed_dir, result_dir)
+        self.assertEqual(
+            dict(zip(first_resume["random_seed"], first_resume["resume_action"])),
+            {101: "reused", 202: "rerun"},
+        )
+        self.assertEqual(first_summary["execution"]["reused_members"], 1)
+        self.assertEqual(first_summary["execution"]["rerun_members"], 1)
+        self.assertEqual(completed_attempt["status"], "completed")
+        self.assertEqual(completed_attempt["reused_members"], 1)
+        self.assertEqual(completed_attempt["rerun_members"], 1)
+        self.assertEqual(set(second_resume["resume_action"]), {"reused"})
+        self.assertEqual(second_summary["execution"]["reused_members"], 2)
+        self.assertEqual(second_summary["execution"]["rerun_members"], 0)
 
     def test_legacy_result_without_manifest_is_inferred(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

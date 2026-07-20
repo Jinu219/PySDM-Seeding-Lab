@@ -39,6 +39,11 @@ from analysis.reporting import (
 from simulation.progress import StdoutProgressReporter
 from analysis.ensemble_statistics import member_seed_list
 from simulation.runner import run_experiment
+from simulation.resume import (
+    RESUME_BUILD_ID,
+    assert_resume_config_matches,
+    execution_config_fingerprint,
+)
 from simulation.run_plan import estimate_run_plan
 from simulation.schema import normalize_config
 from simulation.sweep import count_sweep_cases
@@ -46,7 +51,7 @@ from simulation.sweep import flatten_nested_dict
 from simulation.validation import validate_config_detailed
 
 
-QUALIFICATION_BUILD_ID = "numerical-qualification-v5-targeted-response-20260716"
+QUALIFICATION_BUILD_ID = "numerical-qualification-v6-resumable-targeted-20260720"
 QUALIFICATION_PROFILES: Dict[str, Dict[str, Any]] = {
     "pilot": {
         "description": "Fast workflow qualification; not sufficient for publication claims.",
@@ -162,6 +167,118 @@ def _read_json(path: Path) -> Dict[str, Any]:
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def prepare_resume_attempt(
+    config: Dict[str, Any],
+    plan: Dict[str, Any],
+    result_dir: Path,
+    *,
+    profile: str,
+) -> Dict[str, Any]:
+    """Validate an existing qualification and append a durable running attempt."""
+
+    result_dir = Path(result_dir)
+    if not bool(config.get("ensemble", {}).get("enabled", False)) or not bool(
+        plan.get("common_random_seed_pairing", False)
+    ):
+        raise ValueError(
+            "Qualification resume currently requires an ensemble common-seed profile. "
+            "Use it with rain_response_pilot, rain_response_targeted, or "
+            "rain_response_standard."
+        )
+    config_path = result_dir / "config.yaml"
+    plan_path = result_dir / "qualification_plan.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"Resume result is missing config.yaml: {result_dir}")
+    if not plan_path.exists():
+        raise FileNotFoundError(
+            f"Resume result is missing qualification_plan.json: {result_dir}"
+        )
+
+    stored_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    fingerprint = assert_resume_config_matches(stored_config, config)
+    stored_plan = _read_json(plan_path)
+    stored_profile = str(stored_plan.get("profile", ""))
+    if stored_profile != profile:
+        raise ValueError(
+            f"Resume profile mismatch: stored={stored_profile!r} requested={profile!r}."
+        )
+    stored_fingerprint = stored_plan.get("execution_config_fingerprint")
+    if stored_fingerprint not in (None, fingerprint):
+        raise ValueError(
+            "Stored qualification fingerprint does not match its config.yaml. "
+            "Do not resume a result whose execution contract has been edited."
+        )
+
+    resumed_plan = deepcopy(plan)
+    resumed_plan["created_at_utc"] = stored_plan.get(
+        "created_at_utc", resumed_plan.get("created_at_utc")
+    )
+    resumed_plan["execution_config_fingerprint"] = fingerprint
+    history = list(stored_plan.get("resume_history", []))
+    history.append(
+        {
+            "attempt": len(history) + 1,
+            "build_id": RESUME_BUILD_ID,
+            "started_at_utc": datetime.now(timezone.utc).isoformat(),
+            "completed_at_utc": None,
+            "status": "running",
+            "source_result": result_dir.name,
+            "execution_config_fingerprint": fingerprint,
+            "reused_members": None,
+            "rerun_members": None,
+            "newly_executed_members": None,
+            "error": "",
+        }
+    )
+    resumed_plan["resume_history"] = history
+    return resumed_plan
+
+
+def persist_qualification_plan(result_dir: Path, plan: Dict[str, Any]) -> None:
+    """Keep root config and the standalone plan synchronized for auditability."""
+
+    result_dir = Path(result_dir)
+    config_path = result_dir / "config.yaml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    config["qualification"] = deepcopy(plan)
+    config_path.write_text(
+        yaml.safe_dump(config, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    _write_json(result_dir / "qualification_plan.json", plan)
+
+
+def finalize_resume_attempt(
+    result_dir: Path,
+    *,
+    status: str,
+    error: str = "",
+) -> Dict[str, Any]:
+    """Finish the latest resume history entry with runner reuse counters."""
+
+    result_dir = Path(result_dir)
+    if status not in {"completed", "failed"}:
+        raise ValueError("Resume attempt status must be 'completed' or 'failed'.")
+    plan = _read_json(result_dir / "qualification_plan.json")
+    history = list(plan.get("resume_history", []))
+    if not history:
+        raise ValueError("Qualification plan has no running resume attempt to finish.")
+    latest = dict(history[-1])
+    if latest.get("status") != "running":
+        raise ValueError("Latest qualification resume attempt is not running.")
+    latest["completed_at_utc"] = datetime.now(timezone.utc).isoformat()
+    latest["status"] = status
+    latest["error"] = str(error)[:2000]
+    summary = _read_json(result_dir / "summary.json")
+    execution = summary.get("execution", {})
+    for key in ("reused_members", "rerun_members", "newly_executed_members"):
+        latest[key] = int(execution.get(key, 0) or 0)
+    history[-1] = latest
+    plan["resume_history"] = history
+    persist_qualification_plan(result_dir, plan)
+    return latest
 
 
 def refresh_qualification_result(result_dir: Path) -> Dict[str, Any]:
@@ -362,6 +479,7 @@ def qualification_plan(config: Dict[str, Any], *, profile: str) -> Dict[str, Any
     return {
         "build_id": QUALIFICATION_BUILD_ID,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "execution_config_fingerprint": execution_config_fingerprint(config),
         "profile": profile,
         "description": QUALIFICATION_PROFILES[profile]["description"],
         "adapter": adapter,
@@ -453,10 +571,20 @@ def main() -> None:
         default=None,
         help="Rebuild qualification evidence from an existing result without rerunning models.",
     )
+    parser.add_argument(
+        "--resume-result",
+        default=None,
+        help=(
+            "Resume an existing common-seed qualification in place. Valid completed "
+            "members are reused; only missing, corrupt, or failed members are executed again."
+        ),
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
     if args.refresh_result:
+        if args.resume_result:
+            raise SystemExit("--refresh-result and --resume-result cannot be combined.")
         result_dir = Path(args.refresh_result)
         if not result_dir.is_absolute():
             result_dir = PROJECT_ROOT / result_dir
@@ -479,6 +607,19 @@ def main() -> None:
         raise SystemExit(f"Qualification configuration is invalid: {messages}")
 
     plan = qualification_plan(cfg, profile=args.profile)
+    resume_result = None
+    if args.resume_result:
+        if args.dry_run:
+            raise SystemExit("--resume-result cannot be combined with --dry-run.")
+        resume_result = Path(args.resume_result)
+        if not resume_result.is_absolute():
+            resume_result = PROJECT_ROOT / resume_result
+        plan = prepare_resume_attempt(
+            cfg,
+            plan,
+            resume_result,
+            profile=args.profile,
+        )
     cfg["qualification"] = plan
     print(json.dumps(plan, ensure_ascii=False, indent=2))
     if args.dry_run:
@@ -488,6 +629,29 @@ def main() -> None:
             "This targeted high-resolution profile is dry-run-first. Review the plan, "
             "then rerun with --confirm-targeted-run to authorize physical model execution."
         )
+
+    if resume_result is not None:
+        persist_qualification_plan(resume_result, plan)
+        reporter = StdoutProgressReporter(enabled=not args.quiet)
+        try:
+            result_dir = run_experiment(
+                cfg,
+                output_dir=resume_result.parent,
+                progress_callback=reporter,
+                result_dir_name=resume_result.name,
+                resume_existing=True,
+            )
+        except Exception as exc:
+            finalize_resume_attempt(
+                resume_result,
+                status="failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        finalize_resume_attempt(result_dir, status="completed")
+        refresh_qualification_result(result_dir)
+        print(f"Qualification result resumed in place: {result_dir}")
+        return
 
     output_dir = Path(args.output_dir)
     if not output_dir.is_absolute():

@@ -4,7 +4,32 @@ Last updated: 2026-07-20
 
 Active branch: `develop`
 
-Current milestone: literature-bounded spectrum-transition cadence gate
+Current milestone: resumable targeted common-seed qualification
+
+## Resumable targeted-qualification update
+
+Completed on 2026-07-20:
+- Added `--resume-result` for common-seed qualification profiles. The resume path
+  operates in place and still requires `--confirm-targeted-run` for the targeted
+  high-resolution profile.
+- Added a normalized SHA-256 execution-config fingerprint. Qualification metadata,
+  timestamps, runtime estimates, and resume history are excluded, while model,
+  sweep, ensemble, seed, diagnostic, and worker settings remain protected.
+- Sweep and ensemble configs are written before expensive model work begins, so a
+  hard interruption leaves a durable execution identity.
+- Existing members are reused only when their config matches and their summary plus
+  primary CSV are readable. Missing, corrupt, failed, or mismatched members rerun in
+  their stable case/member directory.
+- `qualification_plan.json` preserves each resume attempt, timestamps, status,
+  fingerprint, reused-member count, rerun count, and error detail.
+- Regression coverage verifies interrupted-state discovery without `member_summary.csv`,
+  one missing-seed rerun, complete-result reuse, and pre-execution config mismatch blocking.
+- All 45 unit/integration tests passed in 265 seconds, including two real PySDM
+  integrations. Project integrity and diff whitespace checks passed.
+
+Decision: use resumable execution for the planned 40-run targeted qualification;
+do not weaken complete common-seed coverage or merge old results under a changed
+execution contract.
 
 ## Spectrum-transition cadence update
 
@@ -243,10 +268,10 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Test process-per-member isolation for backend/JIT retained memory.
-2. Target a bounded 1600-super-droplet common-seed response qualification.
-3. Compare a columnar internal cache with CSV using numerical-equality regressions.
-4. Validate the operational 1% transition floor against an observational dataset.
+1. Review the targeted plan's dry-run runtime and resource estimate.
+2. Explicitly authorize and execute the resumable 40-run common-seed qualification.
+3. Validate or revise the operational 1% transition floor with an observational dataset.
+4. When server work resumes, benchmark matched serial/4/8-worker execution.
 
 ## Latest execution-robustness update
 
@@ -303,9 +328,9 @@ physical cloud-seeding evidence.
 | Step 13 | 완료 | PySDM 2.131 native scalar diagnostics, native 11 / derived 2 / proxy 0 | PySDM 버전 변경 시 product API 재검증 |
 | Step 14 | 1차 완료 | source-aware water budget, threshold robustness, numerical convergence gate | 장기/고해상도 실험으로 tolerance 근거 축적 |
 | Step 15 | 1차 완료 | publication panels, PNG/SVG/PDF export, journal width presets | 저널별 세부 typography preset은 실제 투고 시 확장 |
-| Step 16 | 2차 완료 | spectrum transition onset, checkpoint interpolation, threshold-pair audit | 1% 기본 threshold의 관측·문헌 근거 확정 |
-| Step 17 | 2차 완료 | streaming aggregation과 input/time/tracemalloc benchmark JSON | 대형 PySDM 실행의 RSS·I/O benchmark |
-| Step 18 | 2차 완료 | 모든 result type의 Markdown + self-contained HTML report | 향후 PDF report 및 figure embedding |
+| Step 16 | 2차 완료 | spectrum transition onset, checkpoint interpolation, threshold-pair audit | 관측 event 자료로 1% 운영 floor 외부 검증 또는 수정 |
+| Step 17 | 2차 완료 | streaming aggregation, whole-process RSS, subprocess 격리, bounded warm workers | 서버에서 matched serial/4/8-worker benchmark |
+| Step 18 | 완료 | 모든 result type의 Markdown/HTML/PDF report와 figure embedding | 실제 투고 형식 필요 시 typography 확장 |
 | Step 19 | 1차 완료 | versioned `result_manifest.json`, legacy inference, Results compatibility status | 실제 schema 변경 시 migration fixture 추가 |
 
 ## 현재 동작하는 연구 흐름
@@ -368,14 +393,15 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. 관측 drizzle-onset event 자료를 연결해 현재 운영 1% floor를 외부 검증한다.
-2. 명시적 실행 승인 후 40-execution targeted common-seed qualification을 수행한다.
-3. 서버 개발 재개 시 warm-worker serial/4/8-worker RSS 및 wall-time을 비교한다.
+1. targeted dry-run의 runtime/resource estimate를 검토한다.
+2. 명시적 실행 승인 후 resume 기능을 사용해 40-execution common-seed qualification을 수행한다.
+3. 관측 drizzle-onset event 자료를 연결해 현재 운영 1% floor를 외부 검증하거나 수정한다.
+4. 서버 개발 재개 시 warm-worker serial/4/8-worker RSS 및 wall-time을 비교한다.
 
 ## 검증 명령
 
 ```powershell
-& .\.conda\python.exe -m unittest -v tests.test_native_diagnostics
+& .\.conda\python.exe -m unittest -v
 & .\.conda\python.exe scripts\check_project_integrity.py
 ```
 

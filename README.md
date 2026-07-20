@@ -75,6 +75,23 @@ The targeted profile cannot start physical models unless
 `--confirm-targeted-run` is also supplied. No targeted physical run has been
 performed yet; see [`docs/TARGETED_RESPONSE_PLAN.md`](docs/TARGETED_RESPONSE_PLAN.md).
 
+If an authorized common-seed qualification is interrupted, resume the same result
+directory with the original config and profile:
+
+```powershell
+& .\.conda\python.exe scripts\run_numerical_qualification.py `
+  --config configs\marine.yaml `
+  --profile rain_response_targeted `
+  --adapter pysdm_parcel `
+  --resume-result artifacts\numerical_qualification\RESULT_DIR `
+  --confirm-targeted-run
+```
+
+Resume validates a normalized SHA-256 execution-config fingerprint before any
+model starts. Completed case/seed members with readable primary data, summary, and
+matching config are reused; missing, corrupt, or failed members are rerun. Each
+attempt and its reuse/rerun counts remain in `qualification_plan.json`.
+
 Run an instrumented real-PySDM ensemble benchmark with:
 
 ```powershell
@@ -309,11 +326,12 @@ a particle-history activation event.
 
 ## Development Roadmap
 
-Steps 0-19 and the current research-evidence pass are complete; see
-`DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: process-isolated backend memory measurement, a bounded targeted
-1600-super-droplet response qualification, a columnar internal cache comparison,
-and observational calibration of the operational transition floor are the next gates.
+Steps 0-19, process-isolation evidence, and the columnar-cache comparison are
+complete; see `DEVELOPMENT.md` for the full changelog. The prioritized plan now
+lives in `ROADMAP.md`: review the targeted run's resource estimate, explicitly
+authorize and execute the resumable 40-execution common-seed qualification,
+validate the operational transition floor against observations, and later benchmark
+serial/4/8-worker execution on the lab server.
 
 ## Research Direction
 

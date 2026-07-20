@@ -54,6 +54,31 @@ Running without `--dry-run` is rejected before any model starts. A future physic
 execution requires the explicit `--confirm-targeted-run` flag after the plan and
 resource budget have been reviewed.
 
+## Resuming an interrupted run
+
+The targeted common-seed workflow can resume an existing result in place:
+
+```powershell
+& .\.conda\python.exe scripts\run_numerical_qualification.py `
+  --config configs\marine.yaml `
+  --profile rain_response_targeted `
+  --adapter pysdm_parcel `
+  --resume-result artifacts\numerical_qualification\RESULT_DIR `
+  --confirm-targeted-run
+```
+
+The original config and profile must be supplied. Before any model starts, the CLI
+compares a normalized SHA-256 execution-config fingerprint with the stored result.
+Qualification timestamps, runtime estimates, evidence summaries, and resume history
+do not affect that identity; all model, sweep, ensemble, seed, diagnostic, and worker
+settings do.
+
+A member is reused only when its stored config matches and its summary plus primary
+CSV are readable. Missing, corrupt, failed, or mismatched members rerun. Aggregation,
+paired-seed coverage, convergence evidence, and reports are then rebuilt from the
+complete member set. Every attempt and its reuse/rerun counts are appended to
+`qualification_plan.json`.
+
 ## Interpretation boundary
 
 This commit adds and verifies the plan only; it does not generate new physical

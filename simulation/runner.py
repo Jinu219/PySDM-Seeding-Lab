@@ -80,6 +80,10 @@ from simulation.path_policy import (
 )
 from simulation.progress import ProgressCallback, emit_progress
 from simulation.pysdm_adapter import run_adapter
+from simulation.resume import (
+    assert_resume_config_matches,
+    execution_config_fingerprint,
+)
 from simulation.run_timing import record_run_timing
 from simulation.schema import normalize_config
 from simulation.sweep import build_sweep_row, flatten_nested_dict, generate_sweep_cases
@@ -310,6 +314,7 @@ def run_experiment(
     progress_callback: ProgressCallback = None,
     *,
     result_dir_name: str | None = None,
+    resume_existing: bool = False,
 ) -> Path:
     """
     Run an experiment according to `experiment.mode`.
@@ -328,6 +333,7 @@ def run_experiment(
             output_dir,
             progress_callback=progress_callback,
             result_dir_name=result_dir_name,
+            resume_existing=resume_existing,
         )
 
     if cfg.get("ensemble", {}).get("enabled", False):
@@ -336,6 +342,12 @@ def run_experiment(
             output_dir,
             progress_callback=progress_callback,
             result_dir_name=result_dir_name,
+            resume_existing=resume_existing,
+        )
+
+    if resume_existing:
+        raise ValueError(
+            "In-place resume is supported for parameter sweeps and ensemble cases only."
         )
 
     if mode == "control_vs_seeding":
@@ -676,6 +688,102 @@ def _primary_member_data_path(member_dir: Path, mode: str) -> Path:
     return path
 
 
+def _previous_member_rows(run_dir: Path) -> Dict[int, Dict[str, Any]]:
+    """Load prior member audit rows when a resumable ensemble reached finalization."""
+
+    path = run_dir / "member_summary.csv"
+    if not path.exists():
+        return {}
+    try:
+        table = pd.read_csv(path)
+    except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+        return {}
+    if "member_index" not in table.columns:
+        return {}
+    rows: Dict[int, Dict[str, Any]] = {}
+    for _, row in table.iterrows():
+        try:
+            member_index = int(row["member_index"])
+        except (TypeError, ValueError):
+            continue
+        rows[member_index] = {
+            str(key): (None if pd.isna(value) else value)
+            for key, value in row.to_dict().items()
+        }
+    return rows
+
+
+def _reusable_member_record(
+    *,
+    run_dir: Path,
+    member_parent: Path,
+    member_config: Dict[str, Any],
+    member_index: int,
+    random_seed: int,
+    mode: str,
+    execution_backend: str,
+    previous_row: Dict[str, Any] | None,
+) -> tuple[Dict[str, Any], Path] | None:
+    """Return a validated member record when an existing result is safe to reuse."""
+
+    if previous_row:
+        previous_success = previous_row.get("success")
+        if isinstance(previous_success, str):
+            previous_success = previous_success.strip().lower() in {"true", "1", "yes"}
+        if not bool(previous_success):
+            return None
+        try:
+            if int(previous_row.get("random_seed")) != int(random_seed):
+                return None
+        except (TypeError, ValueError):
+            return None
+
+    result_name = "comparison" if mode == "control_vs_seeding" else "single"
+    result_dir = member_parent / result_name
+    config_path = result_dir / "config.yaml"
+    summary_path = result_dir / "summary.json"
+    if not config_path.exists() or not summary_path.exists():
+        return None
+    try:
+        stored_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        assert_resume_config_matches(stored_config, member_config)
+        json.loads(summary_path.read_text(encoding="utf-8"))
+        primary_path = _primary_member_data_path(result_dir, mode)
+        pd.read_csv(primary_path, nrows=1)
+    except (
+        AttributeError,
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        yaml.YAMLError,
+        pd.errors.ParserError,
+        pd.errors.EmptyDataError,
+    ):
+        return None
+
+    record: Dict[str, Any] = {
+        "member_index": int(member_index),
+        "random_seed": int(random_seed),
+        "success": True,
+        "execution_backend": execution_backend,
+        "result_dir": str(result_dir.relative_to(run_dir)),
+        "error": "",
+        "error_type": "",
+        "error_message": "",
+        "error_errno": None,
+        "error_winerror": None,
+        "resume_action": "reused",
+        "reused_from_previous_run": True,
+    }
+    if previous_row:
+        for key, value in previous_row.items():
+            if key.startswith("member_process_") or key == "gc_collected_objects":
+                record[key] = value
+    record.update(_member_result_metrics(result_dir))
+    return record, primary_path
+
+
 def _summarize_member_process_resources(
     member_summary_df: pd.DataFrame,
     execution_backend: str,
@@ -699,15 +807,14 @@ def _summarize_member_process_resources(
     if execution_backend != "subprocess" or member_summary_df.empty:
         return payload
 
-    return_codes = pd.to_numeric(
-        member_summary_df.get("member_process_return_code"), errors="coerce"
-    )
-    peak_rss = pd.to_numeric(
-        member_summary_df.get("member_process_peak_tree_rss_bytes"), errors="coerce"
-    ).dropna()
-    elapsed = pd.to_numeric(
-        member_summary_df.get("member_process_elapsed_seconds"), errors="coerce"
-    ).dropna()
+    def numeric_column(name: str) -> pd.Series:
+        if name not in member_summary_df.columns:
+            return pd.Series(dtype=float)
+        return pd.to_numeric(member_summary_df[name], errors="coerce")
+
+    return_codes = numeric_column("member_process_return_code")
+    peak_rss = numeric_column("member_process_peak_tree_rss_bytes").dropna()
+    elapsed = numeric_column("member_process_elapsed_seconds").dropna()
     payload.update(
         {
             "successful_child_processes": int((return_codes == 0).sum()),
@@ -734,6 +841,7 @@ def run_ensemble_experiment(
     progress_callback: ProgressCallback = None,
     *,
     result_dir_name: str | None = None,
+    resume_existing: bool = False,
 ) -> Path:
     """
     Run an ensemble for either single or control_vs_seeding mode.
@@ -771,9 +879,36 @@ def run_ensemble_experiment(
         result_dir_name,
         descendant_reserve=ENSEMBLE_RESULT_DESCENDANT_RESERVE,
     )
+    original_created_at = None
+    if resume_existing:
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Resume ensemble result does not exist: {run_dir}")
+        stored_config_path = run_dir / "config.yaml"
+        if not stored_config_path.exists():
+            raise FileNotFoundError(
+                f"Resume ensemble is missing config.yaml: {run_dir}"
+            )
+        stored_config = yaml.safe_load(
+            stored_config_path.read_text(encoding="utf-8")
+        ) or {}
+        assert_resume_config_matches(stored_config, cfg)
+        previous_metadata_path = run_dir / "metadata.json"
+        if previous_metadata_path.exists():
+            try:
+                previous_metadata = json.loads(
+                    previous_metadata_path.read_text(encoding="utf-8")
+                )
+                run_id = str(previous_metadata.get("run_id") or run_id)
+                original_created_at = previous_metadata.get("created_at")
+            except (OSError, json.JSONDecodeError):
+                pass
+
     members_dir = run_dir / "members"
     run_dir.mkdir(parents=True, exist_ok=True)
     members_dir.mkdir(parents=True, exist_ok=True)
+    # Persist the execution contract before the first expensive member starts so a
+    # hard interruption still leaves enough identity to resume completed members.
+    _write_yaml(run_dir / "config.yaml", cfg)
 
     emit_progress(progress_callback, "ensemble", 1, n_members + 2, f"Running ensemble with {n_members} members")
 
@@ -785,6 +920,7 @@ def run_ensemble_experiment(
     execution_backend = str(
         cfg.get("ensemble", {}).get("execution_backend", "in_process")
     )
+    previous_rows = _previous_member_rows(run_dir) if resume_existing else {}
 
     for idx, seed in enumerate(seeds, start=1):
         emit_progress(progress_callback, "ensemble", idx + 1, n_members + 2, f"Running ensemble member {idx}/{n_members}")
@@ -795,6 +931,30 @@ def run_ensemble_experiment(
 
         member_parent = members_dir / f"member_{idx:03d}"
         member_parent.mkdir(parents=True, exist_ok=True)
+
+        if resume_existing:
+            reusable = _reusable_member_record(
+                run_dir=run_dir,
+                member_parent=member_parent,
+                member_config=member_cfg,
+                member_index=idx,
+                random_seed=int(seed),
+                mode=mode,
+                execution_backend=execution_backend,
+                previous_row=previous_rows.get(idx),
+            )
+            if reusable is not None:
+                member_record, primary_path = reusable
+                member_records.append(member_record)
+                member_data_paths.append(primary_path)
+                emit_progress(
+                    progress_callback,
+                    "ensemble_member_complete",
+                    idx,
+                    n_members,
+                    f"Reused validated ensemble member {idx}/{n_members}",
+                )
+                continue
 
         process_telemetry: Dict[str, Any] = {}
         try:
@@ -832,6 +992,8 @@ def run_ensemble_experiment(
                 "error_message": "",
                 "error_errno": None,
                 "error_winerror": None,
+                "resume_action": "rerun" if resume_existing else "executed",
+                "reused_from_previous_run": False,
             }
             member_record.update(process_telemetry)
             member_record.update(_member_result_metrics(member_result_dir))
@@ -856,6 +1018,8 @@ def run_ensemble_experiment(
                     "success": False,
                     "execution_backend": execution_backend,
                     "result_dir": "",
+                    "resume_action": "rerun" if resume_existing else "executed",
+                    "reused_from_previous_run": False,
                     **process_telemetry,
                     **error_fields,
                 }
@@ -907,6 +1071,11 @@ def run_ensemble_experiment(
 
     n_success = int(member_summary_df["success"].sum()) if "success" in member_summary_df.columns else 0
     n_failed = int(len(member_summary_df) - n_success)
+    resume_actions = (
+        member_summary_df["resume_action"].value_counts().to_dict()
+        if "resume_action" in member_summary_df.columns
+        else {}
+    )
     member_metric_summary = _summarize_member_metrics(member_summary_df)
     member_process_resources = _summarize_member_process_resources(
         member_summary_df,
@@ -930,12 +1099,20 @@ def run_ensemble_experiment(
         "successful_members": n_success,
         "failed_members": n_failed,
         "execution_backend": execution_backend,
+        "resume_requested": bool(resume_existing),
+        "execution_config_fingerprint": execution_config_fingerprint(cfg),
+        "reused_members": int(resume_actions.get("reused", 0)),
+        "rerun_members": int(resume_actions.get("rerun", 0)),
+        "newly_executed_members": int(resume_actions.get("executed", 0)),
         "first_errors": first_member_errors,
     }
 
     metadata_payload = {
         "run_id": run_id,
-        "created_at": now.isoformat(timespec="seconds"),
+        "created_at": original_created_at or now.isoformat(timespec="seconds"),
+        "last_resumed_at": (
+            now.isoformat(timespec="seconds") if resume_existing else None
+        ),
         "experiment_name": experiment_name,
         "experiment_mode": mode,
         "adapter_name": cfg.get("simulation", {}).get("adapter"),
@@ -1067,16 +1244,33 @@ def _execute_sweep_case(
     cases_dir: Path,
     case_directory_name: str,
     progress_callback: ProgressCallback = None,
-) -> Dict[str, str]:
+    resume_existing: bool = False,
+) -> Dict[str, Any]:
     """Execute one sweep case and return a process-safe status payload."""
     case_status = "success"
     case_error = ""
+    existing_case_dir = Path(cases_dir) / case_directory_name
+    resume_case = False
+    if resume_existing and existing_case_dir.exists():
+        stored_case_config_path = existing_case_dir / "config.yaml"
+        if stored_case_config_path.exists():
+            try:
+                stored_case_config = yaml.safe_load(
+                    stored_case_config_path.read_text(encoding="utf-8")
+                ) or {}
+                assert_resume_config_matches(stored_case_config, case_config)
+                resume_case = True
+            except (AttributeError, OSError, ValueError, TypeError, yaml.YAMLError):
+                # A corrupt/incompatible case is not reusable. Execute the case
+                # afresh in its stable directory while other valid cases resume.
+                resume_case = False
     try:
         case_result_dir = run_experiment(
             case_config,
             cases_dir,
             progress_callback=progress_callback,
             result_dir_name=case_directory_name,
+            resume_existing=resume_case,
         )
     except ExperimentExecutionError as exc:
         case_result_dir = exc.result_dir
@@ -1092,6 +1286,7 @@ def _execute_sweep_case(
         "result_dir": str(case_result_dir),
         "case_status": case_status,
         "case_error": case_error,
+        "case_resume_requested": resume_case,
     }
 
 
@@ -1099,7 +1294,7 @@ def _failed_parallel_case_payload(
     cases_dir: Path,
     case_directory_name: str,
     exc: BaseException,
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """Preserve a directory and diagnostic when a worker future itself fails."""
     case_result_dir = cases_dir / case_directory_name
     case_result_dir.mkdir(parents=True, exist_ok=True)
@@ -1116,6 +1311,7 @@ def run_parameter_sweep(
     progress_callback: ProgressCallback = None,
     *,
     result_dir_name: str | None = None,
+    resume_existing: bool = False,
 ) -> Path:
     """
     Run a parameter sweep.
@@ -1160,9 +1356,33 @@ def run_parameter_sweep(
         result_dir_name,
         descendant_reserve=SWEEP_RESULT_DESCENDANT_RESERVE,
     )
+    original_created_at = None
+    if resume_existing:
+        if not sweep_dir.exists():
+            raise FileNotFoundError(f"Resume sweep result does not exist: {sweep_dir}")
+        stored_config_path = sweep_dir / "config.yaml"
+        if not stored_config_path.exists():
+            raise FileNotFoundError(f"Resume sweep is missing config.yaml: {sweep_dir}")
+        stored_config = yaml.safe_load(
+            stored_config_path.read_text(encoding="utf-8")
+        ) or {}
+        assert_resume_config_matches(stored_config, cfg)
+        previous_metadata_path = sweep_dir / "metadata.json"
+        if previous_metadata_path.exists():
+            try:
+                previous_metadata = json.loads(
+                    previous_metadata_path.read_text(encoding="utf-8")
+                )
+                run_id = str(previous_metadata.get("run_id") or run_id)
+                original_created_at = previous_metadata.get("created_at")
+            except (OSError, json.JSONDecodeError):
+                pass
     cases_dir = sweep_dir / "cases"
     sweep_dir.mkdir(parents=True, exist_ok=True)
     cases_dir.mkdir(parents=True, exist_ok=True)
+    # Like ensemble roots, sweep roots record their contract before model work so
+    # an interrupted qualification remains identifiable and resumable.
+    _write_yaml(sweep_dir / "config.yaml", cfg)
 
     emit_progress(
         progress_callback,
@@ -1174,7 +1394,7 @@ def run_parameter_sweep(
 
     configured_workers = max(int(cfg.get("execution", {}).get("max_workers", 1)), 1)
     effective_workers = min(configured_workers, total_cases)
-    outcomes: list[Dict[str, str] | None] = [None] * total_cases
+    outcomes: list[Dict[str, Any] | None] = [None] * total_cases
 
     if effective_workers == 1:
         for idx, case in enumerate(cases, start=1):
@@ -1190,6 +1410,7 @@ def run_parameter_sweep(
                 cases_dir,
                 f"case_{idx:03d}",
                 progress_callback=progress_callback,
+                resume_existing=resume_existing,
             )
     else:
         emit_progress(
@@ -1210,6 +1431,8 @@ def run_parameter_sweep(
                     case.config,
                     cases_dir,
                     f"case_{idx:03d}",
+                    None,
+                    resume_existing,
                 ): (idx, case)
                 for idx, case in enumerate(cases, start=1)
             }
@@ -1287,6 +1510,20 @@ def run_parameter_sweep(
                 "case_status": case_status,
                 "case_success": case_status == "success",
                 "case_error": case_error,
+                "case_resume_requested": bool(
+                    outcome.get("case_resume_requested", False)
+                ),
+                "reused_members": int(
+                    case_summary.get("execution", {}).get("reused_members", 0) or 0
+                ),
+                "rerun_members": int(
+                    case_summary.get("execution", {}).get("rerun_members", 0) or 0
+                ),
+                "newly_executed_members": int(
+                    case_summary.get("execution", {}).get(
+                        "newly_executed_members", 0
+                    ) or 0
+                ),
             }
         )
         rows.append(row)
@@ -1324,6 +1561,13 @@ def run_parameter_sweep(
         "failed_cases": n_failed_cases,
         "configured_case_workers": configured_workers,
         "effective_case_workers": effective_workers,
+        "resume_requested": bool(resume_existing),
+        "execution_config_fingerprint": execution_config_fingerprint(cfg),
+        "reused_members": int(sweep_df.get("reused_members", pd.Series(dtype=int)).sum()),
+        "rerun_members": int(sweep_df.get("rerun_members", pd.Series(dtype=int)).sum()),
+        "newly_executed_members": int(
+            sweep_df.get("newly_executed_members", pd.Series(dtype=int)).sum()
+        ),
     }
     convergence_input = (
         sweep_df[sweep_df["case_status"] != "failed"].copy()
@@ -1384,7 +1628,10 @@ def run_parameter_sweep(
 
     metadata_payload = {
         "run_id": run_id,
-        "created_at": now.isoformat(timespec="seconds"),
+        "created_at": original_created_at or now.isoformat(timespec="seconds"),
+        "last_resumed_at": (
+            now.isoformat(timespec="seconds") if resume_existing else None
+        ),
         "experiment_name": experiment_name,
         "experiment_mode": "parameter_sweep",
         "adapter_name": cfg.get("simulation", {}).get("adapter"),

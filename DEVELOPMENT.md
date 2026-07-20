@@ -1,5 +1,32 @@
 # Development Notes
 
+## Resumable targeted common-seed qualification
+
+Changes:
+- Added `--resume-result` for in-place common-seed qualification recovery while
+  retaining the targeted profile's explicit `--confirm-targeted-run` gate.
+- Added a normalized SHA-256 execution-config fingerprint that excludes changing
+  qualification metadata but protects the model, sweep, ensemble, seed, diagnostic,
+  and worker contract.
+- Persisted sweep and ensemble configs before expensive model work so hard
+  interruptions leave a durable resume identity.
+- Added member-level artifact validation. Matching members with readable summary and
+  primary CSV files are reused; missing, corrupt, failed, or mismatched members rerun.
+- Rebuilt ensemble statistics, paired-seed coverage, convergence evidence, reports,
+  and manifests after every resume.
+- Added append-only resume attempt status and reused/rerun counts to
+  `qualification_plan.json`.
+
+Validation:
+- A compact common-seed regression removed the finalized member table and one seed's
+  primary result. Resume reused the intact seed and reran only the missing seed.
+- A second resume reused every member, and a changed execution config was rejected
+  before model execution.
+- Targeted resume, paired-seed audit, qualification-plan contract, and parallel-sweep
+  regressions passed together. No 40-execution physical run was started.
+- All 45 unit/integration tests passed in 265 seconds, including both real PySDM
+  integrations. Project integrity and diff whitespace checks passed.
+
 ## Literature-bounded transition cadence and interpretation gate
 
 Changes:
