@@ -13,6 +13,7 @@ from pandas.testing import assert_frame_equal
 
 from analysis.columnar_cache import (
     CACHE_ENVIRONMENT_VARIABLE,
+    CACHE_MINIMUM_CELLS_ENVIRONMENT_VARIABLE,
     columnar_cache_available,
     columnar_cache_paths,
     read_csv_with_columnar_cache,
@@ -23,6 +24,19 @@ from scripts.benchmark_columnar_cache import benchmark_columnar_cache
 
 @unittest.skipUnless(columnar_cache_available(), "pyarrow is not installed")
 class ColumnarCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.cache_environment = patch.dict(
+            os.environ,
+            {
+                CACHE_ENVIRONMENT_VARIABLE: "1",
+                CACHE_MINIMUM_CELLS_ENVIRONMENT_VARIABLE: "0",
+            },
+        )
+        self.cache_environment.start()
+
+    def tearDown(self):
+        self.cache_environment.stop()
+
     def test_cache_hit_is_numerically_identical_to_csv(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             source = Path(tmp_dir) / "timeseries.csv"
@@ -70,13 +84,31 @@ class ColumnarCacheTests(unittest.TestCase):
             )
             expected = read_csv_with_columnar_cache(source)
             paths = columnar_cache_paths(source)
-            paths.parquet.write_bytes(b"not-a-parquet-file")
+            paths.arrow.write_bytes(b"not-an-arrow-ipc-file")
 
             recovered = read_csv_with_columnar_cache(source)
             second_hit = read_csv_with_columnar_cache(source)
 
         assert_frame_equal(recovered, expected, check_exact=True)
         assert_frame_equal(second_hit, expected, check_exact=True)
+
+    def test_invalid_cache_cell_count_falls_back_to_csv(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "comparison.csv"
+            pd.DataFrame({"time_s": [0.0], "value": [2.5]}).to_csv(
+                source, index=False
+            )
+            expected = read_csv_with_columnar_cache(source)
+            paths = columnar_cache_paths(source)
+            metadata = json.loads(paths.metadata.read_text(encoding="utf-8"))
+            metadata["cell_count"] = "invalid"
+            paths.metadata.write_text(json.dumps(metadata), encoding="utf-8")
+
+            recovered = read_csv_with_columnar_cache(source)
+            rebuilt = json.loads(paths.metadata.read_text(encoding="utf-8"))
+
+        assert_frame_equal(recovered, expected, check_exact=True)
+        self.assertEqual(rebuilt["cell_count"], 2)
 
     def test_environment_switch_disables_cache_writes(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -91,6 +123,23 @@ class ColumnarCacheTests(unittest.TestCase):
 
         self.assertEqual(loaded["value"].tolist(), [1.0])
         self.assertFalse(cache_directory_exists)
+
+    def test_small_dataframe_stays_on_csv_by_default_threshold(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source = Path(tmp_dir) / "small.csv"
+            pd.DataFrame({"time_s": [0.0], "value": [1.0]}).to_csv(
+                source, index=False
+            )
+            with patch.dict(
+                os.environ,
+                {CACHE_MINIMUM_CELLS_ENVIRONMENT_VARIABLE: "25000"},
+            ):
+                loaded = read_csv_with_columnar_cache(source)
+            paths = columnar_cache_paths(source)
+            cache_exists = paths.arrow.exists()
+
+        self.assertEqual(loaded["value"].tolist(), [1.0])
+        self.assertFalse(cache_exists)
 
     def test_benchmark_requires_exact_dataframe_equality(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -108,11 +157,14 @@ class ColumnarCacheTests(unittest.TestCase):
 
         self.assertEqual(result["rows"], 20_000)
         self.assertEqual(result["columns"], 3)
+        self.assertGreater(result["cache_size_bytes"], 0)
         self.assertEqual(
             result["numerical_equality"],
             "pandas.assert_frame_equal(check_exact=True)",
         )
         self.assertGreater(result["warm_speedup_vs_csv"], 0.0)
+        if result["warm_speedup_vs_csv"] > 1.0:
+            self.assertGreaterEqual(result["estimated_break_even_total_reads"], 1.0)
 
 
 if __name__ == "__main__":

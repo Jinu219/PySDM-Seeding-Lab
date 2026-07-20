@@ -1,6 +1,6 @@
 # Roadmap
 
-## Current milestone snapshot (2026-07-16)
+## Current milestone snapshot (2026-07-20)
 
 Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
@@ -10,13 +10,15 @@ Targeted high-resolution response plan completed on 2026-07-16:
 - The next scientific gate is review of the printed runtime/resource estimate,
   followed by an explicitly authorized serial execution when resources allow.
 
-Internal columnar cache prototype completed on 2026-07-16:
-- Results reads can use an atomically written Parquet cache while CSV remains the
+Internal columnar cache evidence gate completed on 2026-07-20:
+- Results reads can use an atomically written Arrow IPC cache while CSV remains the
   source of truth and compatibility contract.
 - Exact DataFrame equality, stale invalidation, corruption recovery, and an opt-out
   path are covered by regression tests.
-- A reproducible CLI can now measure cold-build and warm-read performance on an
-  actual result without rerunning PySDM.
+- A 101 x 505 actual result measured 2.015x warm-read speedup and a seven-read
+  break-even over 20 repetitions; the slower Parquet prototype was rejected.
+- Automatic caching now starts at 25,000 cells, while the CLI can force evaluation
+  of any selected result without rerunning PySDM.
 
 Lab-server execution gate completed on 2026-07-15:
 - Added persistent headless Streamlit management, SSH-tunnel guidance, detached
@@ -47,8 +49,7 @@ Revised next ordered gates:
 1. Review the 40-execution targeted response plan and local runtime estimate.
 2. Run the targeted profile serially only after explicit authorization.
 3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
-4. Benchmark the columnar cache on a selected large real result and retain evidence.
-5. Validate or revise the operational 1% transition floor using observations.
+4. Validate or revise the operational 1% transition floor using observations.
 
 Higher-resolution common-seed gate completed on 2026-07-15:
 - A paired-seed scalar audit now preserves every case × seed response and rejects
@@ -86,8 +87,7 @@ Research-evidence gate completed:
 Next ordered gates:
 1. Bounded warm-worker serial/4/8-worker real-PySDM A/B benchmark.
 2. Targeted, resource-bounded 1600-super-droplet response qualification.
-3. Columnar internal-cache prototype with CSV equality regression.
-4. Observational validation or revision of the operational 1% transition floor.
+3. Observational validation or revision of the operational 1% transition floor.
 
 See the numerical, performance, and threshold-basis records under `docs/` for the
 measured evidence and interpretation boundaries.

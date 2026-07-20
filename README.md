@@ -10,9 +10,11 @@ access, and bounded multi-core sweep execution, see
 bash scripts/server_web.sh start
 ```
 
-Results Dashboard CSV reads use an optional validated Parquet cache while keeping
-CSV as the scientific source of truth. Cache files are disposable, automatically
-invalidated when the CSV changes, and can be disabled with
+Results Dashboard CSV reads can use an optional validated Arrow IPC cache while
+keeping CSV as the scientific source of truth. Cache files are disposable,
+automatically invalidated when the CSV changes, and created by default only for
+tables with at least 25,000 cells. A retained real-result benchmark measured a
+2.01x warm-read speedup and exact DataFrame equality. Disable caching with
 `PYSDM_COLUMNAR_CACHE=0`. See
 [`docs/COLUMNAR_CACHE.md`](docs/COLUMNAR_CACHE.md).
 

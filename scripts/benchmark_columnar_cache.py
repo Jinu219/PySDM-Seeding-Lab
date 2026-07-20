@@ -30,8 +30,15 @@ def _elapsed(callable_):
     return value, time.perf_counter() - started
 
 
+def _display_path(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return str(path.resolve())
+
+
 def benchmark_columnar_cache(csv_path: Path, *, repeats: int = 3) -> dict:
-    """Compare raw CSV reads with cold-build and warm Parquet-cache reads."""
+    """Compare raw CSV reads with cold-build and warm Arrow IPC cache reads."""
     source = Path(csv_path).resolve()
     if not source.is_file():
         raise FileNotFoundError(source)
@@ -48,25 +55,37 @@ def benchmark_columnar_cache(csv_path: Path, *, repeats: int = 3) -> dict:
             raw_reference = dataframe
 
     paths = columnar_cache_paths(source)
-    paths.parquet.unlink(missing_ok=True)
+    paths.arrow.unlink(missing_ok=True)
     paths.metadata.unlink(missing_ok=True)
     cold_result, cold_seconds = _elapsed(
-        lambda: read_csv_with_columnar_cache(source)
+        lambda: read_csv_with_columnar_cache(source, force_cache=True)
     )
     assert_frame_equal(cold_result, raw_reference, check_exact=True)
 
     warm_times = []
     for _ in range(repeats):
-        cached, elapsed = _elapsed(lambda: read_csv_with_columnar_cache(source))
+        cached, elapsed = _elapsed(
+            lambda: read_csv_with_columnar_cache(source, force_cache=True)
+        )
         assert_frame_equal(cached, raw_reference, check_exact=True)
         warm_times.append(elapsed)
 
     raw_median = float(statistics.median(raw_times))
     warm_median = float(statistics.median(warm_times))
+    warm_savings = raw_median - warm_median
+    break_even_reads = (
+        1.0 + max(cold_seconds - raw_median, 0.0) / warm_savings
+        if warm_savings > 0
+        else None
+    )
     return {
         "build_id": COLUMNAR_CACHE_BUILD_ID,
-        "source_csv": str(source),
+        "source_csv": _display_path(source),
         "source_size_bytes": int(source.stat().st_size),
+        "cache_size_bytes": int(paths.arrow.stat().st_size),
+        "cache_to_csv_size_ratio": float(
+            paths.arrow.stat().st_size / max(source.stat().st_size, 1)
+        ),
         "rows": int(len(raw_reference)),
         "columns": int(len(raw_reference.columns)),
         "repeats": repeats,
@@ -78,15 +97,16 @@ def benchmark_columnar_cache(csv_path: Path, *, repeats: int = 3) -> dict:
         "warm_speedup_vs_csv": (
             raw_median / warm_median if warm_median > 0 else None
         ),
+        "estimated_break_even_total_reads": break_even_reads,
         "numerical_equality": "pandas.assert_frame_equal(check_exact=True)",
-        "cache_parquet": str(paths.parquet),
-        "cache_metadata": str(paths.metadata),
+        "cache_arrow": _display_path(paths.arrow),
+        "cache_metadata": _display_path(paths.metadata),
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Benchmark CSV reads against the internal Parquet columnar cache."
+        description="Benchmark CSV reads against the internal Arrow IPC columnar cache."
     )
     parser.add_argument("csv_path", type=Path)
     parser.add_argument("--repeats", type=int, default=3)

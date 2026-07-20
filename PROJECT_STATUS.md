@@ -1,31 +1,38 @@
 # Project Status
 
-Last updated: 2026-07-16
+Last updated: 2026-07-20
 
 Active branch: `develop`
 
-Current milestone: CSV-compatible internal columnar cache prototype completed
+Current milestone: evidence-based Arrow IPC result cache completed
 
 ## Internal columnar result-cache update
 
-Completed on 2026-07-16:
-- Added a PyArrow/Parquet cache behind the Results Dashboard's common CSV loader.
+Completed on 2026-07-20:
+- Added a PyArrow IPC cache behind the Results Dashboard's common CSV loader.
   Original CSV files remain the portable source of truth and download contract.
 - Added source size/mtime/build fingerprints, stable-read checks, atomic cache and
   metadata replacement, stale invalidation, and corrupt-cache CSV fallback.
-- Added `PYSDM_COLUMNAR_CACHE=0` as an operational escape hatch and graceful CSV
-  fallback when PyArrow is unavailable.
+- Added `PYSDM_COLUMNAR_CACHE=0` as an operational escape hatch, graceful CSV
+  fallback when PyArrow is unavailable, and a configurable 25,000-cell automatic
+  cache threshold.
 - Added a reproducible benchmark CLI reporting cold build, warm reads, speedup,
   dimensions, and exact DataFrame equality.
-- Added exact-equality, stale-cache, corrupt-cache, disabled-cache, and benchmark
-  regressions covering numeric, Boolean, string, and missing-value columns.
-- All 42 unit/integration tests and project integrity passed. Results AppTest read
-  actual result data through the new loader with zero errors and zero exceptions.
+- Tested an existing 101 x 505 real ensemble table over 20 repetitions. Warm Arrow
+  read latency was 8.076 ms versus 16.271 ms for CSV (2.015x), with a seven-read
+  estimated break-even and 1.247x storage ratio. The slower Parquet prototype was
+  rejected.
+- Added exact-equality, stale-cache, corrupt data/metadata, disabled-cache,
+  size-threshold, and benchmark regressions covering mixed column types.
+- All 44 unit/integration tests and project integrity passed. Results AppTest
+  loaded stored result data with zero exceptions and zero error elements.
 
-Decision: keep the cache internal and disposable. It must never replace CSV in
-manifests, reports, migrations, or scientific provenance.
+Decision: use Arrow IPC only as an internal, disposable repeated-read accelerator.
+It must never replace CSV in manifests, reports, migrations, or scientific
+provenance.
 
 Design: [`docs/COLUMNAR_CACHE.md`](docs/COLUMNAR_CACHE.md)
+Evidence: [`docs/evidence/COLUMNAR_CACHE_BENCHMARK_20260720.md`](docs/evidence/COLUMNAR_CACHE_BENCHMARK_20260720.md)
 
 ## Targeted high-resolution response-plan update
 

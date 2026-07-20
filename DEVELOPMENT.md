@@ -1,25 +1,34 @@
 # Development Notes
 
-## CSV-compatible internal columnar cache
+## Evidence-based Arrow IPC result cache
 
 Changes:
-- Added an optional PyArrow/Parquet cache behind `analysis.dashboard.safe_read_csv`.
+- Replaced the initial PyArrow/Parquet prototype with Arrow IPC behind
+  `analysis.dashboard.safe_read_csv` after measuring the real-result workload.
 - Kept CSV as the only scientific source of truth; hidden cache files are ignored,
   disposable, absent from manifests, and bypassed when unavailable or disabled.
 - Added size/mtime/build fingerprints, stable-source checks, unique temporary files,
-  atomic replacement, stale invalidation, and corrupt-cache recovery.
+  atomic replacement, stale invalidation, and corrupt data/metadata recovery.
+- Added a 25,000-cell default eligibility threshold and the
+  `PYSDM_COLUMNAR_CACHE_MIN_CELLS` override so small files remain CSV-only.
 - Added `scripts/benchmark_columnar_cache.py` for repeatable raw/cold/warm timing
-  with exact DataFrame equality enforcement.
+  with exact DataFrame equality, storage ratio, and break-even reporting.
 
 Validation:
 - Mixed numeric, integer, Boolean, string, and missing-value data matched CSV with
   `pandas.assert_frame_equal(check_exact=True)` on cache miss and hit.
-- Source mutation invalidated the old cache, a corrupt Parquet file rebuilt from
-  CSV, and `PYSDM_COLUMNAR_CACHE=0` prevented cache creation.
-- All 42 tests and project integrity passed; Results AppTest rendered actual result
-  data with zero errors and zero exceptions.
+- Source mutation invalidated the old cache, corrupt Arrow data/metadata rebuilt
+  from CSV, and `PYSDM_COLUMNAR_CACHE=0` prevented cache creation.
+- On an existing 101 x 505 ensemble statistics file, 20-repeat warm reads improved
+  from 16.271 ms CSV to 8.076 ms Arrow (2.015x). Cold build took 61.597 ms,
+  estimated break-even was seven total reads, and storage was 1.247x CSV.
+- The preceding Parquet screening was rejected: its warm median was 33.058 ms
+  versus a 24.981 ms CSV baseline (0.756x).
+- All 44 unit/integration tests and project integrity passed. Results AppTest
+  loaded stored result data with zero exceptions and zero error elements.
 
 Design: `docs/COLUMNAR_CACHE.md`
+Evidence: `docs/evidence/COLUMNAR_CACHE_BENCHMARK_20260720.md`
 
 ## Targeted high-resolution response plan
 
