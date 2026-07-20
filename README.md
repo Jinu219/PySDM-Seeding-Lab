@@ -219,6 +219,24 @@ pysdm-seeding-lab/
 pip install -r requirements.txt
 ```
 
+Install the optional real-PySDM adapter with:
+
+```bash
+pip install -r requirements.txt -r requirements-pysdm.txt
+```
+
+The validated CI baseline uses Python 3.13 and the exact direct dependency versions
+in `requirements-ci.txt`. Normal application installs remain flexible through the
+two files above; use the CI file when reproducing the tested environment exactly.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs the fast unit, workflow, and integrity checks on
+both Windows and Linux for pushes and pull requests. Real PySDM integration tests
+run once on Ubuntu after fast checks for `develop`/`main` pushes and manual workflow
+runs. Pull requests therefore get cross-platform feedback without repeating the
+long physical adapter tests on every matrix entry.
+
 ## Run the App
 
 ```bash

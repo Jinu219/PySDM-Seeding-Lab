@@ -1,5 +1,25 @@
 # Development Notes
 
+## Cross-platform CI and validated dependency baseline
+
+Changes:
+- Added GitHub Actions fast-regression jobs on Windows and Ubuntu using Python 3.13.
+- Fast jobs run columnar-cache tests, native diagnostic/workflow mapping tests,
+  server execution tests, and the project integrity contract.
+- Added a separate Ubuntu real-PySDM integration job for `develop`/`main` pushes and
+  manual workflow runs. Pull requests stop after the cross-platform fast gate.
+- Added `requirements-ci.txt` with the exact direct-dependency versions validated in
+  the local Python 3.13 environment while leaving application requirements flexible.
+- Added read-only workflow permissions, dependency caching, concurrency cancellation,
+  headless Matplotlib, UTF-8 mode, and explicit timeouts.
+
+Validation:
+- The workflow YAML parses successfully and contains both expected jobs.
+- The exact dependency baseline matches the local validated environment.
+- The exact 43-test fast CI command passed in 54 seconds with project integrity.
+- The preceding 45-test full suite, including both real PySDM integrations, remains
+  the physics baseline; this infrastructure-only change does not alter simulation behavior.
+
 ## Resumable targeted common-seed qualification
 
 Changes:

@@ -2,6 +2,13 @@
 
 ## Current milestone snapshot (2026-07-20)
 
+Cross-platform CI baseline completed on 2026-07-20:
+- Fast regression and integrity checks run on Windows and Ubuntu with Python 3.13.
+- Real PySDM integration is a separate Ubuntu job for protected-branch pushes and
+  manual runs rather than repeated across the pull-request matrix.
+- Exact direct dependencies are recorded in `requirements-ci.txt`; application
+  requirements remain flexible for normal installation.
+
 Resumable targeted common-seed execution completed on 2026-07-20:
 - Added in-place resume for common-seed qualification results with a normalized
   SHA-256 execution-config identity and pre-execution mismatch rejection.

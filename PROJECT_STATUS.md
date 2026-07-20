@@ -4,7 +4,29 @@ Last updated: 2026-07-20
 
 Active branch: `develop`
 
-Current milestone: resumable targeted common-seed qualification
+Current milestone: cross-platform CI and validated dependency baseline
+
+## Continuous-integration update
+
+Completed on 2026-07-20:
+- Added Python 3.13 fast-regression jobs on Windows and Ubuntu for pushes, pull
+  requests, and manual runs.
+- Fast CI covers cache, diagnostic/workflow, resume, server-execution, and project
+  integrity contracts.
+- Real PySDM integration runs as a separate Ubuntu job after fast checks on
+  `develop`/`main` pushes and manual runs, avoiding duplicate physical-adapter cost
+  across the PR matrix.
+- Added `requirements-ci.txt`, pinning every direct dependency to the locally
+  validated Python 3.13 baseline. Interactive installs remain flexible through the
+  existing application and optional-PySDM requirements files.
+- Workflow permissions are read-only and concurrent runs on the same ref cancel the
+  older run.
+- The exact 43-test fast CI command passed locally in 54 seconds; workflow parsing,
+  dependency-version matching, `pip check`, project integrity, and diff checks passed.
+
+Decision: treat fast cross-platform checks as the PR gate and real PySDM integration
+as the protected-branch/manual physics gate. Dependency updates should change the CI
+baseline intentionally and rerun both layers.
 
 ## Resumable targeted-qualification update
 

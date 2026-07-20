@@ -1,0 +1,13 @@
+# Exact direct-dependency baseline validated locally on Python 3.13.
+# Application installs remain flexible through requirements.txt; CI uses this file
+# so dependency drift cannot silently change regression or research results.
+streamlit==1.59.1
+numpy==2.4.6
+pandas==3.0.3
+matplotlib==3.11.0
+PyYAML==6.0.3
+psutil==7.2.2
+reportlab==5.0.0
+pyarrow==25.0.0
+PySDM==2.131
+PySDM-examples==2.131
