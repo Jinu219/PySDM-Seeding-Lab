@@ -4,6 +4,7 @@ import copy
 import gc
 import json
 import multiprocessing as mp
+import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
@@ -103,6 +104,29 @@ ENSEMBLE_MEMBER_SUMMARY_METRICS = {
     "rain_onset_time_shift_s": "comparison.efficiency.rain_onset_time_shift_s",
     "cloud_to_rain_conversion_delta": "comparison.efficiency.cloud_to_rain_conversion_delta",
 }
+
+
+def _relative_result_path(path: Path, root: Path) -> Path:
+    """Return a stored result path even when Windows uses an 8.3 root alias."""
+    path = Path(path)
+    root = Path(root)
+    try:
+        return path.relative_to(root)
+    except ValueError as relative_error:
+        suffix: list[str] = []
+        current = path
+        while True:
+            try:
+                if os.path.samefile(current, root):
+                    return Path(*reversed(suffix)) if suffix else Path(".")
+            except OSError:
+                pass
+            parent = current.parent
+            if parent == current:
+                break
+            suffix.append(current.name)
+            current = parent
+        raise relative_error
 
 
 class ExperimentExecutionError(RuntimeError):
@@ -767,7 +791,7 @@ def _reusable_member_record(
         "random_seed": int(random_seed),
         "success": True,
         "execution_backend": execution_backend,
-        "result_dir": str(result_dir.relative_to(run_dir)),
+        "result_dir": str(_relative_result_path(result_dir, run_dir)),
         "error": "",
         "error_type": "",
         "error_message": "",
@@ -986,7 +1010,7 @@ def run_ensemble_experiment(
                 "random_seed": int(seed),
                 "success": True,
                 "execution_backend": execution_backend,
-                "result_dir": str(member_result_dir.relative_to(run_dir)),
+                "result_dir": str(_relative_result_path(member_result_dir, run_dir)),
                 "error": "",
                 "error_type": "",
                 "error_message": "",
@@ -1501,7 +1525,7 @@ def run_parameter_sweep(
 
         row = build_sweep_row(
             case=case,
-            result_dir=str(case_result_dir.relative_to(sweep_dir)),
+            result_dir=str(_relative_result_path(case_result_dir, sweep_dir)),
             summary=case_summary,
             ranking_metric=ranking_metric,
         )

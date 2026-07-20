@@ -6,6 +6,8 @@ Cross-platform CI baseline completed on 2026-07-20:
 - Fast regression and integrity checks run on Windows and Ubuntu with Python 3.13.
 - Background-job status replacement tolerates transient Windows sharing locks and
   has deterministic retry coverage.
+- Ensemble and sweep result paths tolerate equivalent Windows long-name and 8.3
+  root aliases during subprocess execution.
 - Real PySDM integration is a separate Ubuntu job for protected-branch pushes and
   manual runs rather than repeated across the pull-request matrix.
 - Exact direct dependencies are recorded in `requirements-ci.txt`; application

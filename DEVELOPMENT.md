@@ -5,16 +5,21 @@
 Changes:
 - Added bounded exponential-backoff retries when an atomic background-job status
   replacement encounters a transient `PermissionError`.
+- Made persisted ensemble and sweep result paths tolerate a Windows 8.3 root alias
+  such as `RUNNER~1` when it identifies the same directory as the long-form root.
 - Kept the write atomic: readers still see either the old complete JSON document or
   the new one, and abandoned temporary files are removed after success or failure.
 - Added a deterministic regression that fails the first two replacements before
-  allowing the third attempt to complete.
+  allowing the third attempt to complete, plus a simulated long/short root-alias
+  regression.
 
 Validation:
 - The four server-execution tests passed three consecutive times on Windows,
   including a real detached placeholder worker in every run.
-- This hardening addresses the Windows-only CI failure observed after the initial
-  cross-platform workflow push; the Ubuntu fast-regression job was already green.
+- Authenticated Actions logs identified the CI-specific subprocess failure as a
+  `runneradmin` versus `RUNNER~1` root mismatch; Ubuntu was already green.
+- The corrected subprocess test passed twice, and the complete 45-test fast CI
+  command plus project integrity passed locally on Windows.
 
 ## Cross-platform CI and validated dependency baseline
 

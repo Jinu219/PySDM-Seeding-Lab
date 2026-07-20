@@ -12,6 +12,11 @@ Completed on 2026-07-20:
 - Hardened atomic background-job status updates against transient Windows file
   sharing locks with bounded retry and temporary-file cleanup. A deterministic
   two-failure regression and three repeated detached-worker test runs pass locally.
+- Normalized persisted member/case result paths by filesystem identity when Windows
+  exposes the same temporary root under long and 8.3 names. This fixes the
+  `runneradmin` / `RUNNER~1` subprocess-ensemble failure found by live CI.
+- The corrected subprocess regression passed twice; all 45 fast CI tests and project
+  integrity then passed locally on Windows.
 - Added Python 3.13 fast-regression jobs on Windows and Ubuntu for pushes, pull
   requests, and manual runs.
 - Fast CI covers cache, diagnostic/workflow, resume, server-execution, and project
@@ -24,7 +29,7 @@ Completed on 2026-07-20:
   existing application and optional-PySDM requirements files.
 - Workflow permissions are read-only and concurrent runs on the same ref cancel the
   older run.
-- The exact 43-test fast CI command passed locally in 54 seconds; workflow parsing,
+- The initial 43-test fast CI command passed locally in 54 seconds; workflow parsing,
   dependency-version matching, `pip check`, project integrity, and diff checks passed.
 
 Decision: treat fast cross-platform checks as the PR gate and real PySDM integration

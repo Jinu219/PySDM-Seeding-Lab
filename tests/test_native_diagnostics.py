@@ -60,6 +60,7 @@ from simulation.path_policy import (
 )
 from simulation.runner import (
     ExperimentExecutionError,
+    _relative_result_path,
     run_ensemble_experiment,
     run_experiment,
     run_parameter_sweep,
@@ -105,6 +106,29 @@ def _small_native_config() -> dict:
 
 
 class NativeDiagnosticMappingTests(unittest.TestCase):
+    def test_relative_result_path_accepts_windows_root_alias(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            canonical_root = base / "runneradmin" / "ensemble"
+            alias_root = base / "RUNNER~1" / "ensemble"
+            result_dir = alias_root / "members" / "member_001" / "single"
+            canonical_root.mkdir(parents=True)
+            result_dir.mkdir(parents=True)
+
+            def alias_samefile(left, right):
+                return Path(left) == alias_root and Path(right) == canonical_root
+
+            with patch(
+                "simulation.runner.os.path.samefile",
+                side_effect=alias_samefile,
+            ):
+                relative = _relative_result_path(result_dir, canonical_root)
+
+        self.assertEqual(
+            relative,
+            Path("members") / "member_001" / "single",
+        )
+
     def test_marine_showcase_scenario_is_runnable(self):
         scenario_path = (
             Path(__file__).resolve().parents[1]
