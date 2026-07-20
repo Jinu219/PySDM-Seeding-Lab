@@ -4,7 +4,28 @@ Last updated: 2026-07-16
 
 Active branch: `develop`
 
-Current milestone: Targeted high-resolution rain-response plan completed
+Current milestone: CSV-compatible internal columnar cache prototype completed
+
+## Internal columnar result-cache update
+
+Completed on 2026-07-16:
+- Added a PyArrow/Parquet cache behind the Results Dashboard's common CSV loader.
+  Original CSV files remain the portable source of truth and download contract.
+- Added source size/mtime/build fingerprints, stable-read checks, atomic cache and
+  metadata replacement, stale invalidation, and corrupt-cache CSV fallback.
+- Added `PYSDM_COLUMNAR_CACHE=0` as an operational escape hatch and graceful CSV
+  fallback when PyArrow is unavailable.
+- Added a reproducible benchmark CLI reporting cold build, warm reads, speedup,
+  dimensions, and exact DataFrame equality.
+- Added exact-equality, stale-cache, corrupt-cache, disabled-cache, and benchmark
+  regressions covering numeric, Boolean, string, and missing-value columns.
+- All 42 unit/integration tests and project integrity passed. Results AppTest read
+  actual result data through the new loader with zero errors and zero exceptions.
+
+Decision: keep the cache internal and disposable. It must never replace CSV in
+manifests, reports, migrations, or scientific provenance.
+
+Design: [`docs/COLUMNAR_CACHE.md`](docs/COLUMNAR_CACHE.md)
 
 ## Targeted high-resolution response-plan update
 

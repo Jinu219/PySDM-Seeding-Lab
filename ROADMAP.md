@@ -10,6 +10,14 @@ Targeted high-resolution response plan completed on 2026-07-16:
 - The next scientific gate is review of the printed runtime/resource estimate,
   followed by an explicitly authorized serial execution when resources allow.
 
+Internal columnar cache prototype completed on 2026-07-16:
+- Results reads can use an atomically written Parquet cache while CSV remains the
+  source of truth and compatibility contract.
+- Exact DataFrame equality, stale invalidation, corruption recovery, and an opt-out
+  path are covered by regression tests.
+- A reproducible CLI can now measure cold-build and warm-read performance on an
+  actual result without rerunning PySDM.
+
 Lab-server execution gate completed on 2026-07-15:
 - Added persistent headless Streamlit management, SSH-tunnel guidance, detached
   experiment jobs, and a durable server-job monitor.
@@ -39,7 +47,7 @@ Revised next ordered gates:
 1. Review the 40-execution targeted response plan and local runtime estimate.
 2. Run the targeted profile serially only after explicit authorization.
 3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
-4. Prototype a columnar internal cache with CSV numerical-equality regression.
+4. Benchmark the columnar cache on a selected large real result and retain evidence.
 5. Validate or revise the operational 1% transition floor using observations.
 
 Higher-resolution common-seed gate completed on 2026-07-15:

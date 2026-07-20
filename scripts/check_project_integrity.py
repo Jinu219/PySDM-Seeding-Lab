@@ -125,8 +125,17 @@ def check_safe_read_csv_no_recursion() -> None:
             "safe_read_csv is recursively calling itself. "
             "Run: python scripts/fix_dashboard_recursion.py"
         )
-    if "return pd.read_csv(path)" not in block:
-        raise RuntimeError("safe_read_csv does not call pd.read_csv(path).")
+    if "return read_csv_with_columnar_cache(path)" not in block:
+        raise RuntimeError(
+            "safe_read_csv does not delegate to the validated columnar-cache reader."
+        )
+
+    cache_path = PROJECT_ROOT / "analysis" / "columnar_cache.py"
+    cache_text = cache_path.read_text(encoding="utf-8")
+    if "return pd.read_csv(source)" not in cache_text:
+        raise RuntimeError("Columnar cache lost its direct CSV fallback.")
+    if "return read_csv_with_columnar_cache(source)" in cache_text:
+        raise RuntimeError("Columnar-cache reader is recursively calling itself.")
 
 
 def check_sweep_catalog() -> None:
@@ -380,6 +389,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "reporting.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "dashboard.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "columnar_cache.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "07_results.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "pages" / "08_server_jobs.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "server_jobs.py"), doraise=True)
@@ -388,6 +398,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_ensemble_benchmark.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_memory_benchmarks.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_execution_backends.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "benchmark_columnar_cache.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 

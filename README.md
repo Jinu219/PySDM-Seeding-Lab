@@ -10,6 +10,12 @@ access, and bounded multi-core sweep execution, see
 bash scripts/server_web.sh start
 ```
 
+Results Dashboard CSV reads use an optional validated Parquet cache while keeping
+CSV as the scientific source of truth. Cache files are disposable, automatically
+invalidated when the CSV changes, and can be disabled with
+`PYSDM_COLUMNAR_CACHE=0`. See
+[`docs/COLUMNAR_CACHE.md`](docs/COLUMNAR_CACHE.md).
+
 New results include Markdown, self-contained HTML, and paginated PDF research
 reports. The automatic PDF embeds the most relevant available water-budget,
 spectrum-transition, or numerical-convergence figure. Results Dashboard also

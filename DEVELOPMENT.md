@@ -1,5 +1,26 @@
 # Development Notes
 
+## CSV-compatible internal columnar cache
+
+Changes:
+- Added an optional PyArrow/Parquet cache behind `analysis.dashboard.safe_read_csv`.
+- Kept CSV as the only scientific source of truth; hidden cache files are ignored,
+  disposable, absent from manifests, and bypassed when unavailable or disabled.
+- Added size/mtime/build fingerprints, stable-source checks, unique temporary files,
+  atomic replacement, stale invalidation, and corrupt-cache recovery.
+- Added `scripts/benchmark_columnar_cache.py` for repeatable raw/cold/warm timing
+  with exact DataFrame equality enforcement.
+
+Validation:
+- Mixed numeric, integer, Boolean, string, and missing-value data matched CSV with
+  `pandas.assert_frame_equal(check_exact=True)` on cache miss and hit.
+- Source mutation invalidated the old cache, a corrupt Parquet file rebuilt from
+  CSV, and `PYSDM_COLUMNAR_CACHE=0` prevented cache creation.
+- All 42 tests and project integrity passed; Results AppTest rendered actual result
+  data with zero errors and zero exceptions.
+
+Design: `docs/COLUMNAR_CACHE.md`
+
 ## Targeted high-resolution response plan
 
 Changes:

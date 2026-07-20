@@ -15,6 +15,7 @@ results/*
 logs/
 *.log
 .runtime/
+.columnar_cache/
 
 # Reproducible local research runs can be large. Commit their compact evidence
 # summaries under docs/evidence instead of the raw member/case directories.
