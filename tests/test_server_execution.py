@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
 from simulation.runner import run_parameter_sweep
 from simulation.schema import default_config
 from simulation.server_jobs import (
+    _atomic_write_json,
     job_table_rows,
     read_background_job,
     submit_background_job,
@@ -33,6 +36,32 @@ def _fast_config() -> dict:
 
 
 class ServerExecutionTests(unittest.TestCase):
+    def test_atomic_status_write_retries_transient_permission_error(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            status_path = Path(tmp_dir) / "status.json"
+            real_replace = os.replace
+            attempts = 0
+
+            def transient_replace(source, destination):
+                nonlocal attempts
+                attempts += 1
+                if attempts < 3:
+                    raise PermissionError("transient status file lock")
+                real_replace(source, destination)
+
+            with patch(
+                "simulation.server_jobs.os.replace",
+                side_effect=transient_replace,
+            ), patch("simulation.server_jobs.time.sleep") as sleep:
+                _atomic_write_json(status_path, {"state": "running"})
+
+            self.assertEqual(attempts, 3)
+            self.assertEqual(
+                json.loads(status_path.read_text(encoding="utf-8")),
+                {"state": "running"},
+            )
+            self.assertEqual(sleep.call_count, 2)
+
     def test_worker_count_validation(self):
         cfg = _fast_config()
         cfg["execution"]["max_workers"] = 0

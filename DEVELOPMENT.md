@@ -1,5 +1,21 @@
 # Development Notes
 
+## Windows background-status write hardening
+
+Changes:
+- Added bounded exponential-backoff retries when an atomic background-job status
+  replacement encounters a transient `PermissionError`.
+- Kept the write atomic: readers still see either the old complete JSON document or
+  the new one, and abandoned temporary files are removed after success or failure.
+- Added a deterministic regression that fails the first two replacements before
+  allowing the third attempt to complete.
+
+Validation:
+- The four server-execution tests passed three consecutive times on Windows,
+  including a real detached placeholder worker in every run.
+- This hardening addresses the Windows-only CI failure observed after the initial
+  cross-platform workflow push; the Ubuntu fast-regression job was already green.
+
 ## Cross-platform CI and validated dependency baseline
 
 Changes:

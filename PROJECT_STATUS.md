@@ -9,6 +9,9 @@ Current milestone: cross-platform CI and validated dependency baseline
 ## Continuous-integration update
 
 Completed on 2026-07-20:
+- Hardened atomic background-job status updates against transient Windows file
+  sharing locks with bounded retry and temporary-file cleanup. A deterministic
+  two-failure regression and three repeated detached-worker test runs pass locally.
 - Added Python 3.13 fast-regression jobs on Windows and Ubuntu for pushes, pull
   requests, and manual runs.
 - Fast CI covers cache, diagnostic/workflow, resume, server-execution, and project
