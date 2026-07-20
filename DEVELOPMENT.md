@@ -22,6 +22,18 @@ Decision:
   response result. Diagnose response estimands and uncertainty before more costly
   resolution expansion.
 
+Follow-up implementation:
+- Added `response_estimand_audit` to qualification evidence. It deduplicates the
+  finest reference repeated across numerical axes and records per-metric seed
+  values, mean, sample standard deviation, standard error, range, near-zero count,
+  and direction consistency.
+- The Results Dashboard renders the audit separately from numerical-convergence
+  support and labels it as descriptive rather than inferential evidence.
+- Resumed the completed result in place: all 20 members were reused, 0 reran, and
+  the updated evidence and reports were rebuilt without a physical model execution.
+- All 46 fast regression tests and project integrity passed. Results AppTest
+  rendered with zero exceptions and zero error elements.
+
 Evidence: `docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md`
 
 ## Windows background-status write hardening

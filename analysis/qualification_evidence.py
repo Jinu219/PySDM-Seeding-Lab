@@ -8,7 +8,9 @@ import numpy as np
 import pandas as pd
 
 
-QUALIFICATION_EVIDENCE_BUILD_ID = "qualification-evidence-v3-common-seeds-20260715"
+QUALIFICATION_EVIDENCE_BUILD_ID = (
+    "qualification-evidence-v4-response-estimands-20260720"
+)
 RAIN_SIGNAL_REFERENCE_METRICS = (
     "comparison.control.max_rain_water_mixing_ratio",
     "comparison.seeding.max_rain_water_mixing_ratio",
@@ -67,6 +69,101 @@ def _common_seed_evidence(
             "metric_family_evidence": _family_evidence(seed_rows, tolerance),
         }
     return evidence
+
+
+def _response_estimand_audit(
+    reference_rows: pd.DataFrame,
+    absolute_floor: float,
+) -> Dict[str, Any]:
+    """Describe finest-reference seed variability without inferring significance."""
+    unavailable = {
+        "available": False,
+        "scope": "descriptive_finest_reference_common_seed_values",
+        "metrics": {},
+        "interpretation": (
+            "No common-seed seeding-response reference values were available."
+        ),
+    }
+    if reference_rows.empty or "random_seed" not in reference_rows:
+        return unavailable
+
+    rows = reference_rows.copy()
+    rows["metric_family"] = rows["metric"].map(_metric_family)
+    rows = rows.loc[rows["metric_family"] == "seeding_response"].copy()
+    rows["random_seed"] = pd.to_numeric(rows["random_seed"], errors="coerce")
+    rows["reference_value"] = pd.to_numeric(
+        rows["reference_value"], errors="coerce"
+    )
+    rows = rows.loc[
+        np.isfinite(rows["random_seed"])
+        & np.isfinite(rows["reference_value"])
+    ]
+    if rows.empty:
+        return unavailable
+
+    # The finest reference is repeated once per numerical axis in the convergence
+    # table. One metric/seed value is the estimand source; repeated axis copies must
+    # not inflate the descriptive sample size.
+    rows = rows.drop_duplicates(subset=["metric", "random_seed"], keep="first")
+    metric_audit: Dict[str, Any] = {}
+    observed_seeds = sorted(int(value) for value in rows["random_seed"].unique())
+    for metric, group in rows.groupby("metric", sort=True):
+        ordered = group.sort_values("random_seed")
+        values = ordered["reference_value"].to_numpy(dtype=float)
+        n_values = int(len(values))
+        mean = float(np.mean(values))
+        sample_std = float(np.std(values, ddof=1)) if n_values > 1 else 0.0
+        standard_error = sample_std / float(np.sqrt(n_values)) if n_values else None
+        n_positive = int((values > absolute_floor).sum())
+        n_negative = int((values < -absolute_floor).sum())
+        n_near_zero = int(n_values - n_positive - n_negative)
+        if n_near_zero == n_values:
+            direction = "all_near_zero"
+        elif n_positive == n_values:
+            direction = "all_positive"
+        elif n_negative == n_values:
+            direction = "all_negative"
+        elif n_negative == 0:
+            direction = "nonnegative"
+        elif n_positive == 0:
+            direction = "nonpositive"
+        else:
+            direction = "mixed"
+        metric_audit[str(metric)] = {
+            "n_common_random_seeds": n_values,
+            "mean": mean,
+            "sample_standard_deviation": sample_std,
+            "standard_error": float(standard_error),
+            "minimum": float(np.min(values)),
+            "maximum": float(np.max(values)),
+            "relative_standard_deviation_percent": (
+                100.0 * sample_std / abs(mean)
+                if abs(mean) > absolute_floor
+                else None
+            ),
+            "n_positive": n_positive,
+            "n_negative": n_negative,
+            "n_near_zero": n_near_zero,
+            "direction_consistency": direction,
+            "seed_values": {
+                str(int(seed)): float(value)
+                for seed, value in zip(ordered["random_seed"], values)
+            },
+        }
+
+    return {
+        "available": bool(metric_audit),
+        "scope": "descriptive_finest_reference_common_seed_values",
+        "n_common_random_seeds": int(len(observed_seeds)),
+        "observed_common_random_seeds": observed_seeds,
+        "metrics": metric_audit,
+        "interpretation": (
+            "These are descriptive statistics across the configured common seeds at "
+            "the finest numerical reference. They show finite-sample magnitude, "
+            "spread, and direction only; they are not confidence intervals, "
+            "significance tests, or evidence of numerical convergence."
+        ),
+    }
 
 
 def build_qualification_evidence(
@@ -226,6 +323,10 @@ def build_qualification_evidence(
         }
     family_evidence = _family_evidence(relative_evidence, tolerance)
     seed_evidence = _common_seed_evidence(relative_evidence, tolerance)
+    response_estimand_audit = _response_estimand_audit(
+        reference_rows,
+        absolute_floor,
+    )
 
     return {
         **base,
@@ -254,6 +355,7 @@ def build_qualification_evidence(
         "common_seed_case_coverage": case_seed_coverage,
         "common_seed_case_coverage_complete": case_seed_coverage_complete,
         "common_seed_evidence": seed_evidence,
+        "response_estimand_audit": response_estimand_audit,
         "rain_signal_detected": rain_signal_detected,
         "rain_signal_reference_values_kg_kg": rain_signal_values,
         "rain_signal_by_seed": rain_signal_by_seed,

@@ -94,6 +94,12 @@ model starts. Completed case/seed members with readable primary data, summary, a
 matching config are reused; missing, corrupt, or failed members are rerun. Each
 attempt and its reuse/rerun counts remain in `qualification_plan.json`.
 
+Common-seed qualification evidence also includes a descriptive finest-reference
+response-estimand audit: seed values, mean, sample standard deviation, standard
+error, range, near-zero count, and direction consistency. Results displays this
+separately from the 5% resolution-convergence decision; it is not a confidence
+interval or significance test.
+
 Run an instrumented real-PySDM ensemble benchmark with:
 
 ```powershell

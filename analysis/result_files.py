@@ -173,7 +173,8 @@ RESULT_FILE_ROLES: Dict[str, Dict[str, str]] = {
         "answers": "Does this physical profile empirically support the configured tolerance?",
         "description": (
             "Next-finest evidence summary with near-zero references excluded from percentage-based "
-            "support, plus median, p95, maximum, and per-axis relative differences."
+            "support, plus median, p95, maximum, per-axis differences, and a descriptive "
+            "finest-reference common-seed response-estimand audit."
         ),
     },
     "spectrum_transition.csv": {

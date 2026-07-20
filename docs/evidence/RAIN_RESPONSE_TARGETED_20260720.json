@@ -59,5 +59,28 @@
     "seeding_efficiency_score_mean": 0.521573356087423,
     "cloud_to_rain_conversion_delta_mean": 0.0582944214595167
   },
+  "response_estimand_audit": {
+    "build_id": "qualification-evidence-v4-response-estimands-20260720",
+    "scope": "descriptive_finest_reference_common_seed_values",
+    "n_common_random_seeds": 5,
+    "descriptive_only": true,
+    "direction_consistency": {
+      "final_activated_water_delta": "all_positive",
+      "final_supersaturation_delta": "all_negative",
+      "accumulated_rain_enhancement": "all_positive",
+      "cloud_to_rain_conversion_delta": "all_positive",
+      "droplet_number_final_delta": "all_near_zero",
+      "effective_radius_final_delta": "mixed",
+      "rain_enhancement_final": "all_positive",
+      "seeding_efficiency_score": "all_positive"
+    },
+    "relative_standard_deviation_percent": {
+      "rain_enhancement_final": 9.837981905965881,
+      "accumulated_rain_enhancement": 33.48680718435731,
+      "cloud_to_rain_conversion_delta": 70.37598841489266,
+      "effective_radius_final_delta": 79.54478024940906,
+      "seeding_efficiency_score": 9.62083634553679
+    }
+  },
   "decision": "Retain 5% support for absolute rain state only. Do not claim a quantitatively converged seeding response, and do not escalate to the 70-execution standard profile as a convergence remedy."
 }

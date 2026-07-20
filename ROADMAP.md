@@ -34,6 +34,9 @@ Targeted high-resolution response evidence completed on 2026-07-20:
   finite-sample observation, not as a converged quantitative effect.
 - The 70-execution standard profile is no longer the next gate. First audit the
   response estimands, near-zero handling, and uncertainty representation.
+- The first audit implementation is complete: qualification evidence now reports
+  descriptive finest-reference seed values, spread, near-zero counts, and direction
+  consistency without presenting them as confidence intervals or convergence.
 
 Spectrum-transition literature gate completed on 2026-07-20:
 - The 1% activated-liquid fraction remains an operational floor with mandatory
@@ -87,9 +90,9 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Audit response estimands, near-zero handling, and uncertainty representation
-   before adding more expensive resolution levels.
-2. Validate or revise the operational 1% transition floor using observations.
+1. Define an observational dataset and mapping for the operational 1% transition
+   floor; keep the new finite-seed estimand audit descriptive.
+2. Validate or revise the operational 1% transition floor using those observations.
 3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
 
 Higher-resolution common-seed gate completed on 2026-07-15:

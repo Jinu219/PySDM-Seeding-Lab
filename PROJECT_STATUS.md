@@ -19,11 +19,17 @@ Completed on 2026-07-20:
   and maximum was 2465.158%. Every seed independently failed response support.
 - All five finest-reference seeds had positive final rain enhancement, but the
   response remains too resolution-sensitive for a quantitative effect claim.
+- Added a descriptive finest-reference response-estimand audit with seed values,
+  mean, sample spread, standard error, range, near-zero counts, and direction
+  consistency. It is displayed separately from convergence support.
+- A real in-place resume reused all 20 members and reran 0, rebuilding the new
+  evidence and reports without another physical model execution.
 
 Decision: retain profile-scoped support for absolute rain state only. Do not run
-the 70-execution standard profile merely to seek convergence. The next development
-gate is a response-estimand and uncertainty audit; observational validation of the
-operational 1% transition floor remains a separate scientific gate.
+the 70-execution standard profile merely to seek convergence. Finite-seed direction
+and spread are now explicitly audited but do not override the failed resolution
+gate; observational validation of the operational 1% transition floor remains a
+separate scientific gate.
 
 Evidence: [`docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md`](docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md)
 

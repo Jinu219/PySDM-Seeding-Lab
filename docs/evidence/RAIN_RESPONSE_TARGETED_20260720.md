@@ -63,6 +63,17 @@ cloud-to-rain conversion delta was `0.05829`. These signs describe this finite
 sample only. Their large resolution sensitivity prevents a quantitative effect
 claim.
 
+The response-estimand audit deduplicates the finest reference repeated across the
+three numerical axes and reports descriptive spread over the five seeds. Final
+rain enhancement, accumulated enhancement, conversion delta, and efficiency score
+were positive for 5/5 seeds; supersaturation delta was negative for 5/5. Effective
+radius delta had mixed signs (1 positive, 4 negative), and final droplet-number
+delta was near zero for 5/5. Relative sample standard deviations ranged from
+9.62% for efficiency score to 79.54% for effective-radius delta.
+
+These are descriptive statistics, not confidence intervals or significance tests.
+The audit is intentionally separate from the next-finest convergence decision.
+
 ## Decision
 
 1. Retain 5% support for absolute control and seeding rain state in this profile.
@@ -70,9 +81,9 @@ claim.
    conversion response.
 3. Do not launch the 70-execution standard profile merely to seek a passing result;
    all five seeds and all three numerical axes already reject response support.
-4. Treat the next scientific task as diagnosing response estimands and uncertainty,
-   while observational validation of the operational transition floor remains an
-   independent gate.
+4. Use the implemented estimand audit to keep finite-seed direction and spread
+   separate from resolution convergence. Observational validation of the operational
+   transition floor remains an independent gate.
 
 Machine-readable evidence:
 [`RAIN_RESPONSE_TARGETED_20260720.json`](RAIN_RESPONSE_TARGETED_20260720.json).

@@ -2233,6 +2233,44 @@ if tab_convergence is not None:
                         use_container_width=True,
                         hide_index=True,
                     )
+                estimand_audit = convergence_evidence.get(
+                    "response_estimand_audit", {}
+                )
+                if estimand_audit.get("available"):
+                    st.markdown("#### Finest-reference response estimands")
+                    st.caption(str(estimand_audit.get("interpretation", "")))
+                    estimand_rows = []
+                    for metric, metric_summary in estimand_audit.get(
+                        "metrics", {}
+                    ).items():
+                        estimand_rows.append(
+                            {
+                                "metric": metric,
+                                "seeds": metric_summary.get(
+                                    "n_common_random_seeds"
+                                ),
+                                "mean": metric_summary.get("mean"),
+                                "sample_std": metric_summary.get(
+                                    "sample_standard_deviation"
+                                ),
+                                "standard_error": metric_summary.get(
+                                    "standard_error"
+                                ),
+                                "minimum": metric_summary.get("minimum"),
+                                "maximum": metric_summary.get("maximum"),
+                                "direction": metric_summary.get(
+                                    "direction_consistency"
+                                ),
+                                "positive_seeds": metric_summary.get("n_positive"),
+                                "negative_seeds": metric_summary.get("n_negative"),
+                                "near_zero_seeds": metric_summary.get("n_near_zero"),
+                            }
+                        )
+                    st.dataframe(
+                        pd.DataFrame(estimand_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
                 if convergence_evidence.get("rain_signal_required"):
                     rain_cols = st.columns(2)
                     rain_cols[0].metric(

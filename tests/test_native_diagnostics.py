@@ -1005,6 +1005,68 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertEqual(evidence["status"], "incomplete_common_seed_coverage")
         self.assertFalse(evidence["common_seed_coverage_complete"])
 
+    def test_response_estimand_audit_is_descriptive_and_deduplicates_axes(self):
+        rows = []
+        metric = "comparison.efficiency.rain_enhancement_final"
+        mixed_metric = "comparison.efficiency.cloud_to_rain_conversion_delta"
+        for seed, value, mixed_value in (
+            (101, 1.0, -1.0),
+            (202, 2.0, 0.0),
+            (303, 3.0, 1.0),
+        ):
+            for axis in (
+                "param.environment.timestep",
+                "param.seeding.number_superdroplets",
+                "param.background_aerosol.number_superdroplets",
+            ):
+                for metric_name, reference in (
+                    (metric, value),
+                    (mixed_metric, mixed_value),
+                ):
+                    rows.extend(
+                        [
+                            {
+                                "metric": metric_name,
+                                "varied_parameter": axis,
+                                "resolution_rank": 0,
+                                "reference_value": reference,
+                                "relative_difference_percent": 0.0,
+                                "random_seed": seed,
+                            },
+                            {
+                                "metric": metric_name,
+                                "varied_parameter": axis,
+                                "resolution_rank": 1,
+                                "reference_value": reference,
+                                "relative_difference_percent": 10.0,
+                                "random_seed": seed,
+                            },
+                        ]
+                    )
+
+        cfg = default_config()
+        cfg["qualification"] = {
+            "profile": "response_estimand_test",
+            "common_random_seed_pairing": True,
+            "common_random_seeds": [101, 202, 303],
+            "common_seed_case_coverage": {"complete": True},
+        }
+        evidence = build_qualification_evidence(pd.DataFrame(rows), cfg)
+        audit = evidence["response_estimand_audit"]
+        positive = audit["metrics"][metric]
+        mixed = audit["metrics"][mixed_metric]
+
+        self.assertTrue(audit["available"])
+        self.assertEqual(audit["n_common_random_seeds"], 3)
+        self.assertEqual(positive["n_common_random_seeds"], 3)
+        self.assertEqual(positive["mean"], 2.0)
+        self.assertEqual(positive["sample_standard_deviation"], 1.0)
+        self.assertAlmostEqual(positive["standard_error"], 1.0 / np.sqrt(3))
+        self.assertEqual(positive["direction_consistency"], "all_positive")
+        self.assertEqual(mixed["direction_consistency"], "mixed")
+        self.assertEqual(mixed["n_near_zero"], 1)
+        self.assertIn("not confidence intervals", audit["interpretation"])
+
     def test_spectrum_transition_onset_is_interpolated_and_audited(self):
         cfg = default_config()
         cfg["diagnostics"]["spectrum_transition"]["rain_volume_fraction_threshold"] = 0.01
