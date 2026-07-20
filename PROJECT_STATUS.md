@@ -6,6 +6,13 @@ Active branch: `develop`
 
 Current milestone: BASTALIAS observation import verified; direct temporal mapping pending
 
+Release status: v1.0 has 2/5 required gates complete. The machine-readable gate in
+`release/v1.0.0.json` blocks release claims and the `develop` to `main` merge until
+direct-temporal validation, final scientific-scope review, and release-candidate
+verification are complete. The project will pause for a Build the Lab blog
+checkpoint immediately before that merge. See
+[`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
+
 ## BASTALIAS real-data import update
 
 Completed on 2026-07-20:

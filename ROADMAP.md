@@ -113,7 +113,14 @@ Revised next ordered gates:
 2. Review its uncertainty and representativeness, then validate or revise the
    operational 1% transition floor without treating candidate ranking as universal
    calibration.
-3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
+3. Freeze release documentation and pass the end-to-end v1.0 release candidate.
+
+The finite release gate is now executable through
+`scripts/check_release_readiness.py` and documented in
+`docs/V1_RELEASE_CHECKLIST.md`. Routine work continues on `develop`; the project
+must stop for the GitHub blog checkpoint before merging `develop` into `main` and
+tagging `v1.0.0`. Serial versus 4/8-worker real-PySDM server benchmarking is
+explicitly deferred to v1.1.
 
 Higher-resolution common-seed gate completed on 2026-07-15:
 - A paired-seed scalar audit now preserves every case × seed response and rejects

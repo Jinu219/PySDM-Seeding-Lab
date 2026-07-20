@@ -1,5 +1,20 @@
 # Development Notes
 
+## 2026-07-20 - Finite v1.0 release gate
+
+- Added a machine-readable `release/v1.0.0.json` gate with five ordered required
+  milestones and one explicit scientific blocker.
+- Added `scripts/check_release_readiness.py` for human-readable and JSON reports;
+  its default non-zero status prevents an incomplete v1.0 from being mistaken for
+  a release-ready build.
+- Added regression and CI coverage for gate ordering, evidence paths, dependency
+  completion, and overall readiness consistency.
+- Deferred serial versus 4/8-worker server scaling to v1.1 so it cannot silently
+  expand the v1.0 finish line.
+- Established the publication boundary: routine commits may reach `develop`, but
+  work pauses for the Build the Lab blog before `develop` is merged into `main` and
+  tagged `v1.0.0`.
+
 ## EUREC4A BASTALIAS observation importer
 
 Changes:

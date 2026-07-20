@@ -56,9 +56,13 @@ jobs:
           tests.test_server_execution
           tests.test_transition_observation_validation
           tests.test_bastalias_observations
+          tests.test_release_readiness
 
       - name: Check project integrity
         run: python scripts/check_project_integrity.py
+
+      - name: Validate v1 release gate structure
+        run: python scripts/check_release_readiness.py --allow-incomplete
 
   real-pysdm-integration:
     name: Real PySDM integration (Ubuntu)

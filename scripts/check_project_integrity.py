@@ -387,6 +387,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "spectrum_transition.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "transition_observation_validation.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "bastalias_observations.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "release_readiness.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "qualification_evidence.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "reporting.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "result_manifest.py"), doraise=True)
@@ -403,6 +404,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "benchmark_columnar_cache.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "validate_transition_observations.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "extract_bastalias_drizzle_event.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "check_release_readiness.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")
 

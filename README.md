@@ -378,8 +378,21 @@ the moving aircraft samples different horizontal volumes, its output is always
 Steps 0-19, process-isolation evidence, and the columnar-cache comparison are
 complete; see `DEVELOPMENT.md` for the full changelog. The prioritized plan now
 lives in `ROADMAP.md`: populate the transition-validation contract with a real
-direct-temporal observational dataset, review its event-to-model mapping, and later
-benchmark serial/4/8-worker execution on the lab server.
+direct-temporal observational dataset, review its event-to-model mapping, and then
+freeze the v1.0 scientific scope and release documentation. Serial/4/8-worker
+server benchmarking is deferred to v1.1.
+
+The finite v1.0 finish line is defined in
+[`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md) and the
+machine-readable `release/v1.0.0.json` manifest. Check it with:
+
+```powershell
+& .\.conda\python.exe scripts\check_release_readiness.py
+```
+
+Normal development commits are pushed to `develop`. The project stops before the
+`develop` to `main` release merge so an evidence-backed Build the Lab post can be
+published first; the `v1.0.0` tag follows the verified merge.
 
 ## Research Direction
 
