@@ -47,6 +47,12 @@ supports the 5% threshold for absolute rain-water state (12/12 checks, maximum
 3.285%) but not for seeding-minus-control response (2/21 checks). See
 [`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md).
 
+Spectrum-transition timing keeps 1% rain-size activated liquid as an operational
+floor, audited at 0.5/1/2% and across 20/25/30 µm rain-radius boundaries. Automatic
+checkpoints target 2 s, use 10 s as the interpretation upper bound, and snap to the
+model timestep. Coarser results are labeled cadence-limited rather than robust; see
+[`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md).
+
 For stochastic response qualification, use paired common random seeds rather than
 comparing unrelated ensemble means:
 

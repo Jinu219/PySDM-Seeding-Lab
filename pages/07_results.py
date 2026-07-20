@@ -193,7 +193,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "ensemble-process-isolation-20260715"
+RESULTS_UI_BUILD_ID = "transition-cadence-quality-20260720"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -1994,14 +1994,25 @@ if tab_spectrum is not None:
                     + " s",
                 )
                 transition_cols[3].metric(
-                    "Threshold-direction stable",
-                    str(
-                        transition_summary.get(
-                            "threshold_shift_direction_consistent", "unresolved"
-                        )
-                    ),
+                    "Interpretation status",
+                    str(transition_summary.get("interpretation_status", "unresolved")),
                 )
                 st.caption(str(transition_summary.get("onset_method", "")))
+                cadence_status = transition_summary.get(
+                    "checkpoint_cadence_status", "unresolved"
+                )
+                maximum_interval = dash.format_metric_value(
+                    transition_summary.get("maximum_checkpoint_interval_s")
+                )
+                if cadence_status == "coarse_relative_to_literature":
+                    st.warning(
+                        f"Checkpoint cadence: {cadence_status} (maximum {maximum_interval} s). "
+                        "Treat interpolated onset timing as cadence-limited."
+                    )
+                else:
+                    st.caption(
+                        f"Checkpoint cadence: {cadence_status} (maximum {maximum_interval} s)."
+                    )
                 st.pyplot(
                     dash.plot_spectrum_transition(spectrum_transition_df),
                     use_container_width=True,

@@ -1,5 +1,29 @@
 # Development Notes
 
+## Literature-bounded transition cadence and interpretation gate
+
+Changes:
+- Kept the 1% rain-size liquid fraction as a project-owned operational floor and
+  retained mandatory 0.5/1/2% fraction plus 20/25/30 µm radius sensitivity.
+- Changed automatic spectrum checkpoints from a 10 s target to a 2 s target,
+  snapped to and never finer than the model timestep. Ten seconds is now the
+  operational maximum for robust onset-time interpretation.
+- Added explicit observation-preferred, operationally bounded, and coarse cadence
+  states to each comparison summary.
+- Added combined `resolved_robust`, `resolved_cadence_limited`,
+  `threshold_sensitive`, and `onset_not_resolved` interpretation states.
+- Results displays the combined state and warns when checkpoint cadence limits the
+  interpretation; reports include the new evidence fields.
+- All 44 unit/integration tests and project integrity passed. Aerosol and Results
+  AppTests rendered with zero exceptions and zero error elements.
+
+Evidence boundary:
+- Acquistapace et al. (2017) supports the 2 s preferred and 10 s upper cadence
+  choices for preserving radar drizzle-onset structure. It does not validate the
+  model-native 1% fraction, which remains explicitly operational.
+
+Basis: `docs/SPECTRUM_TRANSITION_BASIS.md`
+
 ## Evidence-based Arrow IPC result cache
 
 Changes:
@@ -219,7 +243,7 @@ Changes:
   outputs without rerunning PySDM.
 - Calibrated spectrum-transition diagnostics around literature-bounded 20--30
   micrometre radius thresholds, added mandatory 0.5/1/2% operational-fraction
-  sensitivity, and made automatic checkpoints use a configurable 10-second target.
+  sensitivity, and made automatic checkpoints use a configurable target.
 - Added a standalone real-PySDM ensemble benchmark that samples whole-process RSS
   while separately recording CSV schema-discovery and column-streaming I/O phases.
 - Ran the 24-member large profile successfully. Peak process RSS increased by

@@ -363,6 +363,12 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         edges = build_spectrum_bin_edges(cfg)
         checkpoints = resolve_spectrum_checkpoint_times(cfg)
 
+        self.assertEqual(
+            default_config()["diagnostics"]["wet_radius_spectrum"][
+                "checkpoint_interval_seconds"
+            ],
+            2.0,
+        )
         self.assertEqual(checkpoints, [0.0, 15.0, 30.0])
         for threshold in (0.5e-6, 25.0e-6):
             for factor in (0.8, 1.0, 1.2):
@@ -1001,8 +1007,31 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertTrue(summary["threshold_shift_direction_consistent"])
         self.assertEqual(summary["n_transition_fraction_thresholds"], 3)
         self.assertEqual(summary["maximum_checkpoint_interval_s"], 10.0)
+        self.assertEqual(summary["checkpoint_cadence_status"], "operationally_bounded")
+        self.assertEqual(summary["interpretation_status"], "resolved_robust")
+        self.assertEqual(
+            summary["threshold_evidence_status"],
+            "operational_floor_not_observational_standard",
+        )
         self.assertEqual(len(robustness), 3)
         self.assertEqual(summary["status"], "resolved")
+
+        coarse_comparison = comparison.copy()
+        coarse_comparison["time_s"] *= 1.5
+        coarse_transition = build_spectrum_transition_table(coarse_comparison, cfg)
+        coarse_robustness = build_transition_onset_robustness(coarse_comparison, cfg)
+        coarse_summary = summarize_spectrum_transition(
+            coarse_transition,
+            coarse_robustness,
+        )
+        self.assertEqual(
+            coarse_summary["checkpoint_cadence_status"],
+            "coarse_relative_to_literature",
+        )
+        self.assertEqual(
+            coarse_summary["interpretation_status"],
+            "resolved_cadence_limited",
+        )
 
     def test_diagnostic_comparison_tables_are_aligned(self):
         cfg = _small_native_config()

@@ -4,7 +4,30 @@ Last updated: 2026-07-20
 
 Active branch: `develop`
 
-Current milestone: evidence-based Arrow IPC result cache completed
+Current milestone: literature-bounded spectrum-transition cadence gate
+
+## Spectrum-transition cadence update
+
+Completed on 2026-07-20:
+- Retained 1% rain-size activated liquid as a project-owned operational floor;
+  no reviewed source was treated as evidence for a universal 1% threshold.
+- Retained mandatory 0.5/1/2% fraction and 20/25/30 µm radius sensitivity audits.
+- Changed the automatic checkpoint target from 10 s to the literature-preferred
+  2 s, while snapping to and never exceeding the temporal resolution of the model
+  timestep. Ten seconds is now an explicit operational interpretation upper bound.
+- Added `checkpoint_cadence_status`, threshold-evidence status, and a combined
+  interpretation state that distinguishes robust, cadence-limited,
+  threshold-sensitive, and unresolved results.
+- Results now warns when stored checkpoints are too coarse for a robust onset-time
+  interpretation. Existing results remain readable and are not rewritten.
+- All 44 unit/integration tests and project integrity passed. Aerosol and Results
+  AppTests rendered with zero exceptions and zero error elements.
+
+Decision: radius-boundary and cadence choices are literature-bounded; the 1%
+fraction remains an auditable detection floor until an observational dataset maps
+this model-native fraction to an observed drizzle-onset event.
+
+Basis: [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 ## Internal columnar result-cache update
 
@@ -203,8 +226,8 @@ Completed:
 - The spectrum-transition diagnostic now audits 20/25/30 micrometre radius
   boundaries and 0.5/1/2% activated-liquid fractions. The 25 micrometre boundary
   is literature-bounded; 1% remains an explicit project-owned operational floor.
-  Automatic checkpoints target 10 seconds, snap to model timesteps, and preserve
-  injection boundaries and endpoints.
+  Automatic checkpoints target 2 seconds, use 10 seconds as the interpretation
+  upper bound, snap to model timesteps, and preserve injection boundaries and endpoints.
 - A 24-member large real-PySDM ensemble benchmark measured the complete process
   and the streaming aggregation phase separately. Peak RSS rose by 999.64 MiB
   over baseline, while aggregation itself added only 0.27 MiB RSS and took 3.772 s.
@@ -345,10 +368,9 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. ensemble member를 child process로 격리해 PySDM/Numba backend RSS가 process 종료 시 회수되는지 측정한다.
-2. 격리 benchmark의 자원 한도 안에서 1600-super-droplet common-seed response run을 설계한다.
-3. CSV와 수치적으로 동일한 columnar internal cache prototype을 benchmark한다.
-4. spectrum transition 1% threshold와 checkpoint 간격을 관측 자료로 보정한다.
+1. 관측 drizzle-onset event 자료를 연결해 현재 운영 1% floor를 외부 검증한다.
+2. 명시적 실행 승인 후 40-execution targeted common-seed qualification을 수행한다.
+3. 서버 개발 재개 시 warm-worker serial/4/8-worker RSS 및 wall-time을 비교한다.
 
 ## 검증 명령
 

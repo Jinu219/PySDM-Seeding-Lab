@@ -32,7 +32,7 @@ def resolve_spectrum_checkpoint_times(config: Dict[str, Any] | None) -> list[flo
     requested = spectrum_cfg.get("checkpoint_times", [])
     if not requested:
         interval = max(
-            float(spectrum_cfg.get("checkpoint_interval_seconds", 10.0)),
+            float(spectrum_cfg.get("checkpoint_interval_seconds", 2.0)),
             timestep,
         )
         requested = [

@@ -51,7 +51,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "arrow-ipc-result-cache-v2-20260720"
+DASHBOARD_BUILD_ID = "transition-cadence-quality-v3-20260720"
 
 
 @dataclass(frozen=True)

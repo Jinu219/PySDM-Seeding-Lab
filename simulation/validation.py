@@ -768,7 +768,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
         n_bins = spectrum_cfg.get("n_bins", 32)
         factors = spectrum_cfg.get("threshold_factors", [0.8, 1.0, 1.2])
         checkpoints = spectrum_cfg.get("checkpoint_times", [])
-        checkpoint_interval = spectrum_cfg.get("checkpoint_interval_seconds", 10.0)
+        checkpoint_interval = spectrum_cfg.get("checkpoint_interval_seconds", 2.0)
 
         if not isinstance(n_bins, int) or isinstance(n_bins, bool) or not 8 <= n_bins <= 256:
             issues.append(
@@ -867,7 +867,7 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                     "error",
                     "diagnostics.wet_radius_spectrum.checkpoint_interval_seconds",
                     "checkpoint_interval_seconds must be positive.",
-                    "Use 10 seconds for the observation-informed onset-timing cadence.",
+                    "Use 2 seconds as the observation-informed target; the model timestep is the practical lower limit.",
                 )
             )
 

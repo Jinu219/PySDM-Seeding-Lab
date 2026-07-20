@@ -2,6 +2,15 @@
 
 ## Current milestone snapshot (2026-07-20)
 
+Spectrum-transition literature gate completed on 2026-07-20:
+- The 1% activated-liquid fraction remains an operational floor with mandatory
+  0.5/1/2% and 20/25/30 µm sensitivity audits, not an observational standard.
+- Automatic spectrum checkpoints now target the literature-preferred 2 s and snap
+  to the model timestep; 10 s is the explicit operational interpretation bound.
+- Stored results now classify cadence quality and distinguish robust,
+  cadence-limited, threshold-sensitive, and unresolved onset interpretations.
+- The remaining gate is external validation against an observational event dataset.
+
 Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
 - The plan uses 4 OFAT cases and 5 common seeds: 40 physical executions rather
@@ -76,8 +85,9 @@ Research-evidence gate completed:
   All 12 non-zero next-finest comparisons passed 5%; the maximum was 1.731%.
   The decision is deliberately scoped to the marine collision-OFF profile.
 - Spectrum transition now combines radius sensitivity (20/25/30 micrometres),
-  operational fraction sensitivity (0.5/1/2%), and a configurable 10-second
-  checkpoint target. The 1% baseline is not presented as an observational standard.
+  operational fraction sensitivity (0.5/1/2%), a preferred 2-second checkpoint
+  target, and a 10-second interpretation upper bound. The 1% baseline is not
+  presented as an observational standard.
 - The 24-member real-PySDM benchmark separated end-to-end RSS from aggregation I/O:
   peak RSS increased by 999.64 MiB, while streaming aggregation added 0.27 MiB RSS
   and took 3.772 seconds.

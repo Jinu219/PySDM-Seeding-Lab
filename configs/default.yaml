@@ -64,6 +64,7 @@ diagnostics:
     max_radius: 0.001
     n_bins: 32
     checkpoint_times: []
+    checkpoint_interval_seconds: 2.0
     threshold_factors:
     - 0.8
     - 1.0
