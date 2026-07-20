@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 import analysis.dashboard as dash
+import analysis.transition_observation_validation as transition_observation
 from analysis.reporting import build_pdf_report, figure_to_png_bytes as report_figure_to_png_bytes
 from simulation.ui_helpers import build_badge, inject_responsive_css
 
@@ -193,7 +195,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "transition-cadence-quality-20260720"
+RESULTS_UI_BUILD_ID = "transition-observation-validation-20260720"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -2022,6 +2024,130 @@ if tab_spectrum is not None:
                         spectrum_transition_robustness_df,
                         use_container_width=True,
                     )
+
+                st.markdown("##### Observational onset comparison")
+                st.caption(
+                    "Upload event/case onset times with provenance and timing uncertainty. "
+                    "The comparison scores every stored threshold candidate without changing "
+                    "the simulation result."
+                )
+                st.download_button(
+                    "Download observation CSV template",
+                    data=transition_observation.observation_contract_template().to_csv(
+                        index=False
+                    ),
+                    file_name="transition_observation_template.csv",
+                    mime="text/csv",
+                    key="transition_observation_template_download",
+                )
+                observation_upload = st.file_uploader(
+                    "Observation event CSV",
+                    type=["csv"],
+                    key="transition_observation_upload",
+                    help=(
+                        "Required columns include event_id, case, observed onset and "
+                        "uncertainty, model time offset, time origin, source ID, and an "
+                        "explicit observation or synthetic evidence class."
+                    ),
+                )
+                if observation_upload is not None:
+                    try:
+                        uploaded_observations = pd.read_csv(observation_upload)
+                        observation_validation = (
+                            transition_observation.build_transition_observation_validation(
+                                spectrum_transition_robustness_df,
+                                uploaded_observations,
+                            )
+                        )
+                        observation_scores = (
+                            transition_observation.score_transition_candidates(
+                                observation_validation
+                            )
+                        )
+                        observation_summary = transition_observation.summarize_transition_observation_validation(
+                            uploaded_observations,
+                            observation_validation,
+                            observation_scores,
+                        )
+                    except (
+                        ValueError,
+                        pd.errors.ParserError,
+                        UnicodeDecodeError,
+                    ) as exc:
+                        st.error(f"Observation comparison could not be built: {exc}")
+                    else:
+                        status = str(observation_summary["status"])
+                        if status == "synthetic_workflow_only":
+                            st.warning(
+                                "Synthetic input: this result validates the software workflow "
+                                "only and is not observational evidence."
+                            )
+                        elif status == "mixed_observation_and_synthetic_inputs":
+                            st.warning(
+                                "Mixed evidence classes: keep synthetic rows separate before "
+                                "drawing an observational interpretation."
+                            )
+                        else:
+                            st.info(
+                                "Observational comparison available. Candidate ranking remains "
+                                "descriptive and does not establish a universal threshold."
+                            )
+                        observation_metrics = st.columns(4)
+                        observation_metrics[0].metric(
+                            "Event/case rows",
+                            observation_summary["n_event_case_rows"],
+                        )
+                        observation_metrics[1].metric(
+                            "Threshold candidates",
+                            observation_summary["n_candidate_definitions"],
+                        )
+                        observation_metrics[2].metric(
+                            "Resolved comparisons",
+                            observation_summary["n_resolved_comparisons"],
+                        )
+                        observation_metrics[3].metric(
+                            "Within uncertainty",
+                            observation_summary["n_within_observed_uncertainty"],
+                        )
+                        st.markdown("**Candidate scores (descriptive)**")
+                        st.dataframe(observation_scores, use_container_width=True)
+                        with st.expander("Event-by-candidate comparison"):
+                            st.dataframe(
+                                observation_validation,
+                                use_container_width=True,
+                            )
+                        download_columns = st.columns(3)
+                        with download_columns[0]:
+                            st.download_button(
+                                "Download candidate scores",
+                                data=observation_scores.to_csv(index=False),
+                                file_name="transition_observation_candidate_scores.csv",
+                                mime="text/csv",
+                                key="transition_observation_scores_download",
+                                use_container_width=True,
+                            )
+                        with download_columns[1]:
+                            st.download_button(
+                                "Download comparisons",
+                                data=observation_validation.to_csv(index=False),
+                                file_name="transition_observation_validation.csv",
+                                mime="text/csv",
+                                key="transition_observation_rows_download",
+                                use_container_width=True,
+                            )
+                        with download_columns[2]:
+                            st.download_button(
+                                "Download summary",
+                                data=json.dumps(
+                                    observation_summary,
+                                    ensure_ascii=False,
+                                    indent=2,
+                                ),
+                                file_name="transition_observation_summary.json",
+                                mime="application/json",
+                                key="transition_observation_summary_download",
+                                use_container_width=True,
+                            )
 
             with st.expander("Checkpoint data tables"):
                 if is_comparison:

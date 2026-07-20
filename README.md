@@ -350,12 +350,27 @@ linearly interpolated checkpoint where rain-size liquid exceeds the configured
 fraction of activated liquid (default 0.01). It is a radius-bin diagnostic, not
 a particle-history activation event.
 
+The Results Dashboard can compare an uploaded observational onset-event CSV with
+every stored threshold candidate and download the descriptive scores. The same
+workflow is available as an immutable, hash-recorded artifact package:
+
+```powershell
+& .\.conda\python.exe scripts\validate_transition_observations.py `
+  --result-dir results\<comparison-result> `
+  --observations path\to\observation_events.csv
+```
+
+The required provenance, timing-alignment, uncertainty, and evidence-class fields
+are documented in [`docs/TRANSITION_OBSERVATION_VALIDATION.md`](docs/TRANSITION_OBSERVATION_VALIDATION.md).
+Synthetic rows test the workflow only and are never presented as observational
+support for the operational 1% floor.
+
 ## Development Roadmap
 
 Steps 0-19, process-isolation evidence, and the columnar-cache comparison are
 complete; see `DEVELOPMENT.md` for the full changelog. The prioritized plan now
-lives in `ROADMAP.md`: audit the non-converged response estimands and uncertainty,
-validate the operational transition floor against observations, and later benchmark
+lives in `ROADMAP.md`: populate the new transition-validation contract with a real
+observational dataset, review its event-to-model mapping, and later benchmark
 serial/4/8-worker execution on the lab server.
 
 ## Research Direction

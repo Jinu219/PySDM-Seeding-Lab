@@ -1,0 +1,3 @@
+event_id,case,observed_transition_onset_s,observed_uncertainty_s,model_time_offset_s,time_origin,source_id,evidence_class,notes
+synthetic_event_001,control,12.0,2.0,0.0,simulation_start,synthetic_regression_fixture,synthetic,Workflow test only
+synthetic_event_001,seeding,8.0,1.0,0.0,simulation_start,synthetic_regression_fixture,synthetic,Workflow test only

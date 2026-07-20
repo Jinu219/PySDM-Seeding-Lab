@@ -51,6 +51,7 @@ jobs:
           tests.test_columnar_cache
           tests.test_native_diagnostics.NativeDiagnosticMappingTests
           tests.test_server_execution
+          tests.test_transition_observation_validation
 
       - name: Check project integrity
         run: python scripts/check_project_integrity.py

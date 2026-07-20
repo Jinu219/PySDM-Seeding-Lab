@@ -4,7 +4,27 @@ Last updated: 2026-07-20
 
 Active branch: `develop`
 
-Current milestone: targeted high-resolution response evidence completed
+Current milestone: observational transition-comparison workflow completed
+
+## Observation transition-validation update
+
+Completed on 2026-07-20:
+- Added a strict event/case CSV contract for observed onset, timing uncertainty,
+  model-time offset, time origin, source provenance, and explicit evidence class.
+- Added event-by-threshold comparison and descriptive candidate scoring without
+  mutating the source simulation result.
+- Added Results Dashboard template upload, evidence-class warnings, comparison
+  tables, and downloadable CSV/JSON outputs.
+- Added a standalone immutable artifact package with normalized inputs, report,
+  manifest, and SHA-256 hashes of the observation and model-transition inputs.
+- Synthetic fixture rows are labeled `synthetic_workflow_only` and cannot be
+  interpreted as external scientific validation.
+
+Decision: the software mapping gate is complete. The next scientific input is a
+real observational drizzle-onset dataset with a defensible time-origin and event
+definition mapping. Only then can the operational 1% floor be validated or revised.
+
+Contract: [`docs/TRANSITION_OBSERVATION_VALIDATION.md`](docs/TRANSITION_OBSERVATION_VALIDATION.md)
 
 ## Targeted common-seed qualification result
 
@@ -325,9 +345,9 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Review the targeted plan's dry-run runtime and resource estimate.
-2. Explicitly authorize and execute the resumable 40-run common-seed qualification.
-3. Validate or revise the operational 1% transition floor with an observational dataset.
+1. Populate the implemented transition-event contract with a real observational dataset.
+2. Review event definition, time-origin mapping, uncertainty, and representativeness.
+3. Validate or revise the operational 1% transition floor from that reviewed comparison.
 4. When server work resumes, benchmark matched serial/4/8-worker execution.
 
 ## Latest execution-robustness update
@@ -365,8 +385,7 @@ Completed:
 - Generated run IDs use microsecond resolution, preventing rapid sweep collisions.
 
 Next scientific priority:
-1. Run `standard` qualification with `pysdm_parcel` and justify or revise the
-   default 5% tolerance.
+1. Populate and review the observational transition-event contract.
 2. Benchmark sampled RSS and streaming CSV I/O on a genuinely large PySDM ensemble.
 3. Add migration fixtures when the result schema first changes beyond version 2.
 
@@ -385,7 +404,7 @@ physical cloud-seeding evidence.
 | Step 13 | 완료 | PySDM 2.131 native scalar diagnostics, native 11 / derived 2 / proxy 0 | PySDM 버전 변경 시 product API 재검증 |
 | Step 14 | 1차 완료 | source-aware water budget, threshold robustness, numerical convergence gate | 장기/고해상도 실험으로 tolerance 근거 축적 |
 | Step 15 | 1차 완료 | publication panels, PNG/SVG/PDF export, journal width presets | 저널별 세부 typography preset은 실제 투고 시 확장 |
-| Step 16 | 2차 완료 | spectrum transition onset, checkpoint interpolation, threshold-pair audit | 관측 event 자료로 1% 운영 floor 외부 검증 또는 수정 |
+| Step 16 | 3차 완료 | spectrum transition onset, threshold audit, observation comparison workflow | 실제 관측 event 자료로 1% 운영 floor 외부 검증 또는 수정 |
 | Step 17 | 2차 완료 | streaming aggregation, whole-process RSS, subprocess 격리, bounded warm workers | 서버에서 matched serial/4/8-worker benchmark |
 | Step 18 | 완료 | 모든 result type의 Markdown/HTML/PDF report와 figure embedding | 실제 투고 형식 필요 시 typography 확장 |
 | Step 19 | 1차 완료 | versioned `result_manifest.json`, legacy inference, Results compatibility status | 실제 schema 변경 시 migration fixture 추가 |
@@ -450,9 +469,9 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. targeted dry-run의 runtime/resource estimate를 검토한다.
-2. 명시적 실행 승인 후 resume 기능을 사용해 40-execution common-seed qualification을 수행한다.
-3. 관측 drizzle-onset event 자료를 연결해 현재 운영 1% floor를 외부 검증하거나 수정한다.
+1. 실제 관측 drizzle-onset event 자료를 새 CSV 계약에 연결한다.
+2. event 정의, time origin, timing uncertainty, 대표성 mapping을 검토한다.
+3. 검토된 비교를 바탕으로 현재 운영 1% floor를 외부 검증하거나 수정한다.
 4. 서버 개발 재개 시 warm-worker serial/4/8-worker RSS 및 wall-time을 비교한다.
 
 ## 검증 명령

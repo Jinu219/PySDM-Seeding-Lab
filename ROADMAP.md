@@ -47,6 +47,14 @@ Spectrum-transition literature gate completed on 2026-07-20:
   cadence-limited, threshold-sensitive, and unresolved onset interpretations.
 - The remaining gate is external validation against an observational event dataset.
 
+Observation-comparison workflow completed on 2026-07-20:
+- Added a strict event/case CSV contract with onset uncertainty, model-time offset,
+  time origin, source provenance, and explicit `observation`/`synthetic` evidence.
+- Added event-by-threshold comparisons, descriptive candidate scoring, Results upload
+  and downloads, and a standalone immutable artifact package with input hashes.
+- Synthetic rows are workflow checks only. This completes the software mapping gate,
+  not the external scientific validation gate.
+
 Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
 - The plan uses 4 OFAT cases and 5 common seeds: 40 physical executions rather
@@ -90,9 +98,11 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Define an observational dataset and mapping for the operational 1% transition
-   floor; keep the new finite-seed estimand audit descriptive.
-2. Validate or revise the operational 1% transition floor using those observations.
+1. Populate the transition-event contract with a real, traceable observational
+   dataset and document the event/time-origin mapping.
+2. Review observational timing uncertainty and representativeness, then validate or
+   revise the operational 1% transition floor without treating candidate ranking as
+   universal calibration.
 3. Benchmark serial versus 4/8-worker real-PySDM sweep execution later on the server.
 
 Higher-resolution common-seed gate completed on 2026-07-15:

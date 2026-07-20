@@ -1,5 +1,34 @@
 # Development Notes
 
+## Observational transition-comparison workflow
+
+Changes:
+- Added a strict event/case observation CSV contract with onset uncertainty,
+  model-time offset, time origin, source provenance, and explicit
+  `observation`/`synthetic` evidence class.
+- Added event-by-threshold onset errors, within-uncertainty checks, and descriptive
+  candidate MAE/median/RMSE summaries across the existing robustness definitions.
+- Added a standalone artifact builder that preserves normalized inputs, detailed
+  comparisons, candidate scores, JSON summary, Markdown report, and a manifest with
+  SHA-256 input hashes without mutating the source simulation result.
+- Added Results Dashboard template upload, evidence-boundary warnings, tables, and
+  CSV/JSON downloads.
+- Added synthetic workflow regression coverage. Synthetic data is explicitly barred
+  from observational interpretation.
+
+Scientific boundary:
+- The lowest-error threshold candidate is descriptive, not a universal calibration,
+  confidence interval, significance result, or proof of event-definition equivalence.
+- External validation remains pending until a real dataset supplies traceable source,
+  event definition, time-origin mapping, uncertainty, and representativeness.
+
+Validation:
+- All 50 fast CI regressions and project integrity passed locally.
+- Results AppTest rendered with zero exceptions and zero error elements.
+- The standalone command compared the synthetic fixture with 27 candidates from a
+  completed real-PySDM result, wrote 54 detailed comparisons, and retained the
+  `synthetic_workflow_only` status.
+
 ## Targeted high-resolution common-seed qualification
 
 Execution and evidence:
