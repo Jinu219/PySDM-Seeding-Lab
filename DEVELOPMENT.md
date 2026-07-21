@@ -1,5 +1,16 @@
 # Development Notes
 
+## 2026-07-21 - v1.0.0 released; v1.1 development opened
+
+- Published the evidence-backed Build the Lab entry and merged PR #5 into `main`.
+- Verified Windows and Ubuntu fast regression plus real PySDM Ubuntu integration
+  on merge commit `d0fc97e`.
+- Published tag and GitHub Release `v1.0.0`; synchronized `develop` with the release
+  merge without changing the scientific claim boundary.
+- Opened v1.1 with matched serial/4/8-worker real-PySDM server scaling as the first
+  operational evidence gate. Direct Lagrangian observation mapping remains later
+  research rather than an implicit v1.0 follow-up claim.
+
 ## 2026-07-21 - v1.0 release candidate
 
 - Added `VERSION` and a scoped `CHANGELOG.md` for v1.0.0.

@@ -2,6 +2,16 @@
 
 ## Current milestone snapshot (2026-07-21)
 
+v1.0.0 released and v1.1 opened on 2026-07-21:
+- PR #5 merged `develop` into `main` at `d0fc97e` after the evidence-backed Build
+  the Lab checkpoint.
+- Windows and Ubuntu fast regression plus real PySDM Ubuntu integration passed on
+  the release merge.
+- The merge commit is tagged and published as
+  [`v1.0.0`](https://github.com/Jinu219/PySDM-Seeding-Lab/releases/tag/v1.0.0).
+- v1.1 starts with matched serial/4/8-worker real-PySDM server scaling. Direct
+  Lagrangian observation mapping remains a separate later research gate.
+
 Cross-platform CI baseline completed on 2026-07-20:
 - Fast regression and integrity checks run on Windows and Ubuntu with Python 3.13.
 - Background-job status replacement tolerates transient Windows sharing locks and
@@ -86,8 +96,8 @@ v1.0 scientific-scope disposition completed on 2026-07-21:
   one descriptive-only observation, one operational-only threshold, and three
   unsupported claims including quantitative response, external calibration, and
   field efficacy.
-- v1.0 is now 5/5 gates complete and paused for the Build the Lab checkpoint before
-  the release merge.
+- v1.0 completed all 5/5 gates and was released after the Build the Lab checkpoint,
+  verified merge, and release CI.
 
 Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
@@ -131,17 +141,17 @@ Collision-ON rain qualification completed on 2026-07-15:
 - Seeding-response metrics did not converge (2/21 passed), so quantitative seeding
   enhancement remains outside the supported interpretation scope.
 
-Revised next ordered gates:
-1. Publish or approve the evidence-backed Build the Lab v1.0 development entry.
-2. Merge `develop` into `main` only after that checkpoint is acknowledged.
-3. Confirm release CI on `main`, then create the `v1.0.0` tag.
+Revised next ordered gates for v1.1:
+1. Freeze a matched serial/4/8-worker real-PySDM server benchmark workload.
+2. Record wall time, throughput, parent/process-tree peak RSS, and failure evidence.
+3. Publish a bounded worker recommendation with explicit machine and workload scope.
+4. Keep direct Lagrangian observation mapping as an independent scientific gate.
 
 The finite release gate is now executable through
 `scripts/check_release_readiness.py` and documented in
-`docs/V1_RELEASE_CHECKLIST.md`. Routine work continues on `develop`; the project
-must stop for the GitHub blog checkpoint before merging `develop` into `main` and
-tagging `v1.0.0`. Serial versus 4/8-worker real-PySDM server benchmarking is
-explicitly deferred to v1.1.
+`docs/V1_RELEASE_CHECKLIST.md`. The v1.0.0 blog, merge, CI, tag, and GitHub Release
+are complete. Routine work continues on `develop`, with serial versus 4/8-worker
+real-PySDM server benchmarking now promoted to the active v1.1 gate.
 
 Higher-resolution common-seed gate completed on 2026-07-15:
 - A paired-seed scalar audit now preserves every case × seed response and rejects

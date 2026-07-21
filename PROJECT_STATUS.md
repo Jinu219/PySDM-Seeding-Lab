@@ -4,12 +4,13 @@ Last updated: 2026-07-21
 
 Active branch: `develop`
 
-Current milestone: v1.0 release candidate complete; Build the Lab checkpoint active
+Current milestone: v1.1 server worker-scaling qualification
 
-Release status: v1.0 has 5/5 required gates complete. External calibration is
-explicitly unsupported rather than treated as successful direct validation. The
-machine-readable gate in `release/v1.0.0.json` is ready. The project is paused for
-the Build the Lab blog checkpoint immediately before the `develop` to `main` merge. See
+Release status: [`v1.0.0`](https://github.com/Jinu219/PySDM-Seeding-Lab/releases/tag/v1.0.0)
+was released on 2026-07-21 from merge commit `d0fc97e` after the Build the Lab post
+and successful Windows/Ubuntu/real-PySDM release CI. All five required gates remain
+complete. External calibration is explicitly unsupported rather than treated as
+successful direct validation. See
 [`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
 
 ## v1.0 scientific-scope disposition
@@ -25,8 +26,8 @@ Completed on 2026-07-21:
   an attempted release-classification promotion fails CI.
 
 Decision: direct-observation work is closed for v1.0 as a conservative feasibility
-and scope disposition, not as successful validation. The release candidate is now
-complete and awaits the blog checkpoint before merge.
+and scope disposition, not as successful validation. The v1.0.0 release is complete;
+follow-up observation mapping remains future research under v1.1 and later work.
 
 Scope: [`docs/V1_SCIENTIFIC_SCOPE.md`](docs/V1_SCIENTIFIC_SCOPE.md)
 
@@ -413,10 +414,10 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Freeze release documentation and verify the end-to-end v1.0 workflow.
-2. Pass release-candidate CI and stop for the Build the Lab checkpoint before merge.
-3. Treat direct observational calibration as future research, never an implicit v1.0 claim.
-4. When v1.1 server work resumes, benchmark matched serial/4/8-worker execution.
+1. Benchmark matched serial/4/8-worker real-PySDM server execution.
+2. Compare wall time, throughput, parent/process-tree peak RSS, and failure evidence.
+3. Define an evidence-based worker recommendation rather than assuming linear scaling.
+4. Treat direct observational calibration as future research, never an implicit v1.0 claim.
 
 ## Latest execution-robustness update
 
@@ -537,10 +538,10 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. 근거 기반 Build the Lab v1.0 개발 일지를 게시하거나 승인한다.
-2. 승인 뒤 `develop`을 `main`에 병합한다.
-3. `main` 릴리스 CI를 확인한 뒤 `v1.0.0` 태그를 만든다.
-4. 직접 관측 보정과 서버 worker 성능 비교는 v1.1 이후 연구로 유지한다.
+1. v1.1의 첫 게이트로 실제 PySDM serial/4/8-worker 서버 실행을 같은 workload에서 비교한다.
+2. wall time, throughput, parent/process-tree peak RSS, 실패 증거를 함께 보존한다.
+3. worker 수가 선형 성능 향상을 준다고 가정하지 않고 근거 기반 권장값을 만든다.
+4. 직접 Lagrangian 관측 매핑은 별도 과학 연구 게이트로 유지한다.
 
 ## 검증 명령
 

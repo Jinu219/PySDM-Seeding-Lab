@@ -6,12 +6,13 @@ The machine-readable source of truth is `release/v1.0.0.json`.
 
 ## Current decision
 
-v1.0 is a **complete release candidate**. All five required gates are complete. The
-project is now paused at the mandatory Build the Lab checkpoint before merging
-`develop` into `main`. The direct-observation review is
-closed as a conservative scope decision: neither BASTALIAS nor ARM ENA is accepted
-as direct parcel-time validation, so external calibration and field-efficacy claims
-are explicitly unsupported in v1.0.
+v1.0.0 was **released on 2026-07-21**. All five required gates completed before the
+evidence-backed Build the Lab post, PR #5 merge, release CI, and `v1.0.0` tag. The
+published release is
+[`PySDM Seeding Lab v1.0.0`](https://github.com/Jinu219/PySDM-Seeding-Lab/releases/tag/v1.0.0).
+The direct-observation review remains a conservative scope decision: neither
+BASTALIAS nor ARM ENA is accepted as direct parcel-time validation, so external
+calibration and field-efficacy claims are explicitly unsupported in v1.0.
 
 Run the gate locally:
 
@@ -58,3 +59,6 @@ When all five required gates are complete:
 
 This policy makes the blog checkpoint visible before the history-changing release
 merge instead of trying to reconstruct the development story afterward.
+
+For v1.0.0, all five steps completed successfully. Active development now targets
+v1.1, beginning with matched serial/4/8-worker real-PySDM server benchmarks.

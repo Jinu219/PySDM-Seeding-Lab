@@ -395,10 +395,11 @@ Steps 0-19, process-isolation evidence, and the columnar-cache comparison are
 complete; see `DEVELOPMENT.md` for the full changelog. The prioritized plan now
 lives in `ROADMAP.md`: populate the transition-validation contract with a real
 observation, audit its event-to-model mapping, and freeze a conservative scientific
-scope. That review is complete: external calibration remains unsupported, and the
-v1.0 release candidate is complete. Development is paused at the Build the Lab
-checkpoint before merging `develop` into `main`. Serial/4/8-worker server
-benchmarking is deferred to v1.1.
+scope. That review is complete: external calibration remains unsupported, and
+[`v1.0.0`](https://github.com/Jinu219/PySDM-Seeding-Lab/releases/tag/v1.0.0) was
+released on 2026-07-21 after the Build the Lab checkpoint, the `develop` to `main`
+merge, and successful release CI. Active development now targets v1.1, beginning
+with matched serial/4/8-worker real-PySDM server benchmarks.
 
 The finite v1.0 finish line is defined in
 [`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md) and the
@@ -409,9 +410,10 @@ machine-readable `release/v1.0.0.json` manifest. Check it with:
 & .\.conda\python.exe scripts\check_scientific_scope.py
 ```
 
-Normal development commits are pushed to `develop`. The project stops before the
-`develop` to `main` release merge so an evidence-backed Build the Lab post can be
-published first; the `v1.0.0` tag follows the verified merge.
+Normal development commits are pushed to `develop`. For v1.0.0, the project stopped
+before the `develop` to `main` release merge so an evidence-backed Build the Lab post
+could be published first; the verified merge is tagged `v1.0.0`. Future release
+checkpoints retain the same evidence-first policy unless a later roadmap revises it.
 
 ## Research Direction
 
