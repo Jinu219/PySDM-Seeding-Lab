@@ -45,7 +45,8 @@ Spectrum-transition literature gate completed on 2026-07-20:
   to the model timestep; 10 s is the explicit operational interpretation bound.
 - Stored results now classify cadence quality and distinguish robust,
   cadence-limited, threshold-sensitive, and unresolved onset interpretations.
-- The remaining gate is external validation against an observational event dataset.
+- This identified external validation as the remaining scientific question; the
+  later v1.0 scope disposition closes it without claiming successful calibration.
 
 Observation-comparison workflow completed on 2026-07-20:
 - Added a strict event/case CSV contract with onset uncertainty, model-time offset,
@@ -73,8 +74,20 @@ ARM ENA fixed-column candidate pipeline completed on 2026-07-21:
 - The importer is forcibly `spatiotemporal_proxy`: fixed-site radar time is an
   Eulerian column sequence, not a demonstrated Lagrangian parcel history, and
   reflectivity is not the model-native rain-liquid fraction.
-- A credentialed real-file audit and independent trajectory/observable mapping are
-  still required; the direct-temporal release gate remains open.
+- A credentialed real-file audit and independent trajectory/observable mapping remain
+  future research; v1.0 does not claim direct validation from this proxy.
+
+v1.0 scientific-scope disposition completed on 2026-07-21:
+- Reviewed the 0-D Lagrangian parcel model against the BASTALIAS moving transect and
+  ARM ENA fixed Eulerian column. Neither proxy supplies a defensible direct mapping.
+- Closed the investigation as an explicit unsupported external-calibration claim,
+  not as successful observational validation.
+- Added a machine-readable six-claim scope: one profile-bounded supported claim,
+  one descriptive-only observation, one operational-only threshold, and three
+  unsupported claims including quantitative response, external calibration, and
+  field efficacy.
+- v1.0 is now 4/5 gates complete; release-candidate verification is the only
+  remaining gate.
 
 Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
@@ -119,12 +132,9 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Identify a direct-temporal drizzle-onset dataset with a sampled volume and time
-   origin that can be defensibly mapped to the parcel simulation.
-2. Review its uncertainty and representativeness, then validate or revise the
-   operational 1% transition floor without treating candidate ranking as universal
-   calibration.
-3. Freeze release documentation and pass the end-to-end v1.0 release candidate.
+1. Freeze release documentation and verify the end-to-end v1.0 user workflow.
+2. Pass Windows/Ubuntu fast CI and the real PySDM release-candidate integration.
+3. Stop for the Build the Lab publication checkpoint before merging to `main`.
 
 The finite release gate is now executable through
 `scripts/check_release_readiness.py` and documented in

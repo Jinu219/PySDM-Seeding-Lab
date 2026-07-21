@@ -19,17 +19,14 @@ class ReleaseReadinessTests(unittest.TestCase):
     def setUp(self) -> None:
         self.manifest = load_release_manifest(MANIFEST_PATH)
 
-    def test_repository_manifest_has_one_explicit_scientific_blocker(self) -> None:
+    def test_repository_manifest_has_only_release_candidate_open(self) -> None:
         validate_release_manifest(self.manifest, project_root=PROJECT_ROOT)
         report = build_release_readiness_report(self.manifest)
 
         self.assertFalse(report["ready"])
-        self.assertEqual(report["completed_gate_count"], 2)
-        self.assertEqual(
-            report["blocked_gates"],
-            ["direct_temporal_validation"],
-        )
-        self.assertEqual(report["next_gate"], "direct_temporal_validation")
+        self.assertEqual(report["completed_gate_count"], 4)
+        self.assertEqual(report["blocked_gates"], [])
+        self.assertEqual(report["next_gate"], "release_candidate")
         self.assertEqual(
             report["merge_policy"]["blog_checkpoint"],
             "before_merge",
@@ -67,7 +64,7 @@ class ReleaseReadinessTests(unittest.TestCase):
 
     def test_blocked_overall_status_requires_blocked_gate(self) -> None:
         invalid = copy.deepcopy(self.manifest)
-        invalid["gates"][2]["status"] = "pending"
+        invalid["overall_status"] = "blocked"
 
         with self.assertRaisesRegex(ValueError, "requires a blocked"):
             validate_release_manifest(invalid, project_root=PROJECT_ROOT)

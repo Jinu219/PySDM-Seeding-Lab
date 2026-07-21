@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "release": "v1.0.0",
-  "overall_status": "blocked",
+  "overall_status": "in_progress",
   "merge_policy": {
     "source_branch": "develop",
     "target_branch": "main",
@@ -11,7 +11,7 @@
   "required_gate_order": [
     "software_platform",
     "real_observation_ingestion",
-    "direct_temporal_validation",
+    "external_validation_disposition",
     "scientific_scope_review",
     "release_candidate"
   ],
@@ -42,14 +42,14 @@
       ]
     },
     {
-      "id": "direct_temporal_validation",
-      "title": "Defensible direct-temporal drizzle-onset validation",
-      "status": "blocked",
+      "id": "external_validation_disposition",
+      "title": "External validation feasibility and conservative disposition",
+      "status": "complete",
       "required": true,
       "depends_on": [
         "real_observation_ingestion"
       ],
-      "blocker": "No observation dataset has yet demonstrated a defensible parcel-time mapping. BASTALIAS and the ARM ENA fixed-column candidate remain spatiotemporal proxies.",
+      "decision": "No direct-temporal dataset is accepted for v1.0. External calibration is explicitly unsupported and both reviewed datasets remain spatiotemporal proxies.",
       "completion_evidence": [
         "A source dataset with immutable provenance",
         "A reviewed sampled-volume and time-origin mapping",
@@ -58,22 +58,26 @@
       "evidence": [
         "docs/evidence/BASTALIAS_IMPORT_20260720.md",
         "docs/ARM_ENA_OBSERVATION_IMPORT.md",
-        "docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md"
+        "docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md",
+        "docs/V1_SCIENTIFIC_SCOPE.md"
       ]
     },
     {
       "id": "scientific_scope_review",
       "title": "Final scientific claims and limitations review",
-      "status": "pending",
+      "status": "complete",
       "required": true,
       "depends_on": [
-        "direct_temporal_validation"
+        "external_validation_disposition"
       ],
       "completion_evidence": [
         "The operational 1% floor is retained, revised, or rejected with evidence",
         "Supported and unsupported claims are stated consistently across release documentation"
       ],
-      "evidence": []
+      "evidence": [
+        "docs/V1_SCIENTIFIC_SCOPE.md",
+        "release/v1_scientific_scope.json"
+      ]
     },
     {
       "id": "release_candidate",

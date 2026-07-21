@@ -4,14 +4,32 @@ Last updated: 2026-07-21
 
 Active branch: `develop`
 
-Current milestone: ARM ENA fixed-column pipeline ready; real-file and parcel mapping pending
+Current milestone: scientific scope frozen; v1.0 release candidate pending
 
-Release status: v1.0 has 2/5 required gates complete. The machine-readable gate in
-`release/v1.0.0.json` blocks release claims and the `develop` to `main` merge until
-direct-temporal validation, final scientific-scope review, and release-candidate
-verification are complete. The project will pause for a Build the Lab blog
-checkpoint immediately before that merge. See
+Release status: v1.0 has 4/5 required gates complete. External calibration is
+explicitly unsupported rather than treated as successful direct validation. The
+machine-readable gate in `release/v1.0.0.json` now leaves only release-candidate
+verification open. The project will pause for a Build the Lab blog checkpoint
+immediately before the `develop` to `main` merge. See
 [`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
+
+## v1.0 scientific-scope disposition
+
+Completed on 2026-07-21:
+- Classified v1.0 as a research-workflow release rather than field-validated science.
+- Retained one profile-scoped supported claim for absolute rain-water state.
+- Preserved positive response direction as descriptive only and the 1% transition
+  floor as operational only.
+- Marked quantitative response magnitude, external observation calibration, and
+  real-world field efficacy as explicitly unsupported.
+- Added machine validation so missing evidence, unsupported-claim limitations, or
+  an attempted release-classification promotion fails CI.
+
+Decision: direct-observation work is closed for v1.0 as a conservative feasibility
+and scope disposition, not as successful validation. The only remaining gate is the
+release candidate.
+
+Scope: [`docs/V1_SCIENTIFIC_SCOPE.md`](docs/V1_SCIENTIFIC_SCOPE.md)
 
 ## ARM ENA fixed-column candidate update
 
@@ -28,9 +46,9 @@ Completed on 2026-07-21:
   Eulerian column containing changing advected parcels; reflectivity is also not
   the model-native rain-liquid fraction.
 
-Decision: retain the direct-temporal gate as blocked. The next evidence is a
-credentialed real-file audit followed by independent parcel-trajectory and
-observable-to-model mapping review.
+Decision: retain the candidate as a proxy. A credentialed real-file audit and
+parcel-trajectory mapping remain future research, while v1.0 explicitly excludes
+external calibration claims.
 
 Evidence: [`docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md`](docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md)
 
@@ -52,8 +70,8 @@ Completed on 2026-07-20:
 
 Decision: BASTALIAS verifies real-data ingestion and classification sensitivity,
 but its moving-aircraft horizontal sampling is a spatiotemporal proxy. It does not
-validate or revise the operational 1% model floor. The next scientific gate is a
-defensible direct temporal dataset and parcel-time mapping.
+validate or revise the operational 1% model floor and feeds the conservative v1.0
+scope disposition above.
 
 Evidence: [`docs/evidence/BASTALIAS_IMPORT_20260720.md`](docs/evidence/BASTALIAS_IMPORT_20260720.md)
 
@@ -396,11 +414,10 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Identify a direct-temporal drizzle-onset dataset that samples a defensibly
-   comparable volume rather than a moving-aircraft spatial transect.
-2. Establish its event definition, time origin, uncertainty, and parcel-time mapping.
-3. Only then validate or revise the operational 1% transition floor.
-4. When server work resumes, benchmark matched serial/4/8-worker execution.
+1. Freeze release documentation and verify the end-to-end v1.0 workflow.
+2. Pass release-candidate CI and stop for the Build the Lab checkpoint before merge.
+3. Treat direct observational calibration as future research, never an implicit v1.0 claim.
+4. When v1.1 server work resumes, benchmark matched serial/4/8-worker execution.
 
 ## Latest execution-robustness update
 
@@ -521,10 +538,10 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. 이동 항공기 공간 transect가 아닌 직접 시간진화 drizzle-onset 자료를 찾는다.
-2. event 정의, time origin, timing uncertainty, parcel-time mapping을 확정한다.
-3. direct-temporal 비교가 확보된 뒤 현재 운영 1% floor를 검증하거나 수정한다.
-4. 서버 개발 재개 시 warm-worker serial/4/8-worker RSS 및 wall-time을 비교한다.
+1. v1.0 문서를 동결하고 대표 end-to-end 사용자 흐름을 검증한다.
+2. release-candidate Windows/Ubuntu CI와 실제 PySDM 통합 검사를 통과한다.
+3. `develop`을 `main`에 병합하기 전에 Build the Lab 게시 시점에서 멈춘다.
+4. 직접 관측 보정과 서버 worker 성능 비교는 v1.1 이후 연구로 유지한다.
 
 ## 검증 명령
 

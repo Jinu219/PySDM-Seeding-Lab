@@ -1,5 +1,18 @@
 # Development Notes
 
+## 2026-07-21 - Evidence-bounded v1.0 scientific scope
+
+- Reframed the impossible direct-observation finish condition as an explicit
+  feasibility disposition: neither reviewed proxy validates the parcel transition.
+- Added `release/v1_scientific_scope.json` with six machine-checked claims and
+  `scripts/check_scientific_scope.py` with CI enforcement.
+- Restricted the one supported claim to absolute rain state for the tested targeted
+  profile. Quantitative response, external calibration, and field efficacy are
+  explicitly unsupported; positive direction is descriptive and the 1% floor is
+  operational only.
+- Advanced the finite v1.0 gate from 2/5 to 4/5 without converting missing evidence
+  into a positive result. Only release-candidate verification remains.
+
 ## 2026-07-21 - ARM ENA fixed-column observation candidate
 
 - Added a credential-safe ARM Live query/download client. Credentials remain in
@@ -13,8 +26,8 @@
 - Kept the candidate forcibly classified as `spatiotemporal_proxy`; fixed-column
   radar sampling and reflectivity do not yet establish parcel age or the model's
   liquid-fraction transition.
-- The finite v1.0 gate remains 2/5 complete. The next evidence is a credentialed
-  real-file audit and independent parcel/observable mapping review.
+- This candidate audit feeds the conservative v1.0 scientific-scope disposition;
+  credentialed real-file and parcel-mapping work remains future research.
 
 ## 2026-07-20 - Finite v1.0 release gate
 

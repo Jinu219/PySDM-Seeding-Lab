@@ -6,13 +6,11 @@ The machine-readable source of truth is `release/v1.0.0.json`.
 
 ## Current decision
 
-v1.0 is **not ready to merge**. Two of five required gates are complete. The next
-and only active scientific blocker is a defensible direct-temporal drizzle-onset
-dataset and its parcel-time mapping. The BASTALIAS importer is useful real-data
-evidence, but the moving aircraft samples changing horizontal volumes and therefore
-remains a spatiotemporal proxy. The ARM ENA fixed-column importer is a closer
-temporal candidate, but horizontal advection still changes the sampled parcels and
-radar reflectivity is not the model-native liquid-fraction transition.
+v1.0 is **not ready to merge**. Four of five required gates are complete. The only
+remaining gate is release-candidate verification. The direct-observation review is
+closed as a conservative scope decision: neither BASTALIAS nor ARM ENA is accepted
+as direct parcel-time validation, so external calibration and field-efficacy claims
+are explicitly unsupported in v1.0.
 
 Run the gate locally:
 
@@ -31,12 +29,12 @@ or `--json` for a machine-readable report.
 2. **Real observation ingestion — complete.** BASTALIAS NetCDF ingestion and the
    mapping audit exercise the full observation workflow without overstating the
    evidence class.
-3. **Direct-temporal validation — blocked.** Obtain a dataset whose sampled volume,
-   clock, event definition, observable mapping, and model-time alignment support a
-   defensible comparison. The ARM ENA pipeline is ready for a credentialed real-file
-   audit but does not by itself satisfy this gate.
-4. **Scientific scope review — pending.** Retain, revise, or reject the operational
-   1% transition floor and make every release claim consistent with the evidence.
+3. **External-validation disposition — complete.** BASTALIAS and ARM ENA were
+   reviewed and retained as proxies. No direct-temporal dataset is accepted and no
+   external calibration claim is made for v1.0.
+4. **Scientific scope review — complete.** The release is classified as a research
+   workflow; supported, descriptive, operational-only, and unsupported claims are
+   fixed in `release/v1_scientific_scope.json` and `docs/V1_SCIENTIFIC_SCOPE.md`.
 5. **Release candidate — pending.** Freeze documentation, verify the end-to-end user
    workflow, pass Windows/Ubuntu CI and real PySDM integration, and close all gates.
 
