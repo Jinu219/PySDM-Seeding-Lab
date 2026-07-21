@@ -6,8 +6,9 @@ The machine-readable source of truth is `release/v1.0.0.json`.
 
 ## Current decision
 
-v1.0 is **not ready to merge**. Four of five required gates are complete. The only
-remaining gate is release-candidate verification. The direct-observation review is
+v1.0 is a **complete release candidate**. All five required gates are complete. The
+project is now paused at the mandatory Build the Lab checkpoint before merging
+`develop` into `main`. The direct-observation review is
 closed as a conservative scope decision: neither BASTALIAS nor ARM ENA is accepted
 as direct parcel-time validation, so external calibration and field-efficacy claims
 are explicitly unsupported in v1.0.
@@ -35,8 +36,9 @@ or `--json` for a machine-readable report.
 4. **Scientific scope review — complete.** The release is classified as a research
    workflow; supported, descriptive, operational-only, and unsupported claims are
    fixed in `release/v1_scientific_scope.json` and `docs/V1_SCIENTIFIC_SCOPE.md`.
-5. **Release candidate — pending.** Freeze documentation, verify the end-to-end user
-   workflow, pass Windows/Ubuntu CI and real PySDM integration, and close all gates.
+5. **Release candidate — complete.** Version and changelog are frozen, the
+   end-to-end release contract is machine checked, and Windows/Ubuntu CI plus real
+   PySDM integration are the final remote acceptance checks for the candidate commit.
 
 Serial versus 4/8-worker server benchmarking is deferred to v1.1. It is useful
 operational work, but it is not required to establish v1.0 scientific validity.

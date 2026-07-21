@@ -4,13 +4,12 @@ Last updated: 2026-07-21
 
 Active branch: `develop`
 
-Current milestone: scientific scope frozen; v1.0 release candidate pending
+Current milestone: v1.0 release candidate complete; Build the Lab checkpoint active
 
-Release status: v1.0 has 4/5 required gates complete. External calibration is
+Release status: v1.0 has 5/5 required gates complete. External calibration is
 explicitly unsupported rather than treated as successful direct validation. The
-machine-readable gate in `release/v1.0.0.json` now leaves only release-candidate
-verification open. The project will pause for a Build the Lab blog checkpoint
-immediately before the `develop` to `main` merge. See
+machine-readable gate in `release/v1.0.0.json` is ready. The project is paused for
+the Build the Lab blog checkpoint immediately before the `develop` to `main` merge. See
 [`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
 
 ## v1.0 scientific-scope disposition
@@ -26,8 +25,8 @@ Completed on 2026-07-21:
   an attempted release-classification promotion fails CI.
 
 Decision: direct-observation work is closed for v1.0 as a conservative feasibility
-and scope disposition, not as successful validation. The only remaining gate is the
-release candidate.
+and scope disposition, not as successful validation. The release candidate is now
+complete and awaits the blog checkpoint before merge.
 
 Scope: [`docs/V1_SCIENTIFIC_SCOPE.md`](docs/V1_SCIENTIFIC_SCOPE.md)
 
@@ -538,9 +537,9 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. v1.0 문서를 동결하고 대표 end-to-end 사용자 흐름을 검증한다.
-2. release-candidate Windows/Ubuntu CI와 실제 PySDM 통합 검사를 통과한다.
-3. `develop`을 `main`에 병합하기 전에 Build the Lab 게시 시점에서 멈춘다.
+1. 근거 기반 Build the Lab v1.0 개발 일지를 게시하거나 승인한다.
+2. 승인 뒤 `develop`을 `main`에 병합한다.
+3. `main` 릴리스 CI를 확인한 뒤 `v1.0.0` 태그를 만든다.
 4. 직접 관측 보정과 서버 worker 성능 비교는 v1.1 이후 연구로 유지한다.
 
 ## 검증 명령

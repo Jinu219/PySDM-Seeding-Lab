@@ -390,6 +390,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "arm_live.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "arm_ena_observations.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "scientific_scope.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "analysis" / "release_candidate.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "release_readiness.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "qualification_evidence.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "analysis" / "reporting.py"), doraise=True)
@@ -410,6 +411,7 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "fetch_arm_live_data.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "extract_arm_ena_drizzle_event.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "check_scientific_scope.py"), doraise=True)
+    py_compile.compile(str(PROJECT_ROOT / "scripts" / "check_v1_release_candidate.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "check_release_readiness.py"), doraise=True)
 
     dashboard = importlib.import_module("analysis.dashboard")

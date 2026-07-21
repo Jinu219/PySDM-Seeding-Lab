@@ -19,14 +19,14 @@ class ReleaseReadinessTests(unittest.TestCase):
     def setUp(self) -> None:
         self.manifest = load_release_manifest(MANIFEST_PATH)
 
-    def test_repository_manifest_has_only_release_candidate_open(self) -> None:
+    def test_repository_manifest_is_ready_for_blog_checkpoint(self) -> None:
         validate_release_manifest(self.manifest, project_root=PROJECT_ROOT)
         report = build_release_readiness_report(self.manifest)
 
-        self.assertFalse(report["ready"])
-        self.assertEqual(report["completed_gate_count"], 4)
+        self.assertTrue(report["ready"])
+        self.assertEqual(report["completed_gate_count"], 5)
         self.assertEqual(report["blocked_gates"], [])
-        self.assertEqual(report["next_gate"], "release_candidate")
+        self.assertIsNone(report["next_gate"])
         self.assertEqual(
             report["merge_policy"]["blog_checkpoint"],
             "before_merge",
@@ -34,7 +34,7 @@ class ReleaseReadinessTests(unittest.TestCase):
 
     def test_ready_status_requires_all_required_gates_complete(self) -> None:
         invalid = copy.deepcopy(self.manifest)
-        invalid["overall_status"] = "ready"
+        invalid["gates"][-1]["status"] = "pending"
 
         with self.assertRaisesRegex(ValueError, "required gate is open"):
             validate_release_manifest(invalid, project_root=PROJECT_ROOT)
@@ -65,6 +65,7 @@ class ReleaseReadinessTests(unittest.TestCase):
     def test_blocked_overall_status_requires_blocked_gate(self) -> None:
         invalid = copy.deepcopy(self.manifest)
         invalid["overall_status"] = "blocked"
+        invalid["gates"][-1]["status"] = "pending"
 
         with self.assertRaisesRegex(ValueError, "requires a blocked"):
             validate_release_manifest(invalid, project_root=PROJECT_ROOT)

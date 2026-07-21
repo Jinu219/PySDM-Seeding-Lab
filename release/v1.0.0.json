@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "release": "v1.0.0",
-  "overall_status": "in_progress",
+  "overall_status": "ready",
   "merge_policy": {
     "source_branch": "develop",
     "target_branch": "main",
@@ -82,7 +82,7 @@
     {
       "id": "release_candidate",
       "title": "Release candidate verification and documentation freeze",
-      "status": "pending",
+      "status": "complete",
       "required": true,
       "depends_on": [
         "scientific_scope_review"
@@ -92,7 +92,13 @@
         "CHANGELOG and user workflow are verified",
         "No unresolved required release gate remains"
       ],
-      "evidence": []
+      "evidence": [
+        "VERSION",
+        "CHANGELOG.md",
+        "docs/V1_RELEASE_CHECKLIST.md",
+        "docs/V1_SCIENTIFIC_SCOPE.md",
+        ".github/workflows/ci.yml"
+      ]
     }
   ],
   "deferred": [

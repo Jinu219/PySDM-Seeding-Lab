@@ -396,7 +396,8 @@ complete; see `DEVELOPMENT.md` for the full changelog. The prioritized plan now
 lives in `ROADMAP.md`: populate the transition-validation contract with a real
 observation, audit its event-to-model mapping, and freeze a conservative scientific
 scope. That review is complete: external calibration remains unsupported, and the
-only remaining v1.0 gate is release-candidate verification. Serial/4/8-worker server
+v1.0 release candidate is complete. Development is paused at the Build the Lab
+checkpoint before merging `develop` into `main`. Serial/4/8-worker server
 benchmarking is deferred to v1.1.
 
 The finite v1.0 finish line is defined in

@@ -1,5 +1,13 @@
 # Development Notes
 
+## 2026-07-21 - v1.0 release candidate
+
+- Added `VERSION` and a scoped `CHANGELOG.md` for v1.0.0.
+- Added a release-candidate validator covering required files, version/changelog,
+  release readiness, scientific scope, and Windows/Ubuntu/real-PySDM CI markers.
+- Advanced the finite release gate to 5/5 complete. The code remains on `develop`;
+  merge and tag are deliberately paused for the Build the Lab checkpoint.
+
 ## 2026-07-21 - Evidence-bounded v1.0 scientific scope
 
 - Reframed the impossible direct-observation finish condition as an explicit
@@ -11,7 +19,7 @@
   explicitly unsupported; positive direction is descriptive and the 1% floor is
   operational only.
 - Advanced the finite v1.0 gate from 2/5 to 4/5 without converting missing evidence
-  into a positive result. Only release-candidate verification remains.
+  into a positive result, leaving release-candidate verification as the final gate.
 
 ## 2026-07-21 - ARM ENA fixed-column observation candidate
 

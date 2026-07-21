@@ -59,6 +59,7 @@ jobs:
           tests.test_arm_ena_observations
           tests.test_scientific_scope
           tests.test_release_readiness
+          tests.test_release_candidate
 
       - name: Check project integrity
         run: python scripts/check_project_integrity.py
@@ -68,6 +69,9 @@ jobs:
 
       - name: Validate v1 scientific claim scope
         run: python scripts/check_scientific_scope.py
+
+      - name: Validate v1 release candidate
+        run: python scripts/check_v1_release_candidate.py
 
   real-pysdm-integration:
     name: Real PySDM integration (Ubuntu)

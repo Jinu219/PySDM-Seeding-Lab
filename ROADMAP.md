@@ -86,8 +86,8 @@ v1.0 scientific-scope disposition completed on 2026-07-21:
   one descriptive-only observation, one operational-only threshold, and three
   unsupported claims including quantitative response, external calibration, and
   field efficacy.
-- v1.0 is now 4/5 gates complete; release-candidate verification is the only
-  remaining gate.
+- v1.0 is now 5/5 gates complete and paused for the Build the Lab checkpoint before
+  the release merge.
 
 Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
@@ -132,9 +132,9 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Freeze release documentation and verify the end-to-end v1.0 user workflow.
-2. Pass Windows/Ubuntu fast CI and the real PySDM release-candidate integration.
-3. Stop for the Build the Lab publication checkpoint before merging to `main`.
+1. Publish or approve the evidence-backed Build the Lab v1.0 development entry.
+2. Merge `develop` into `main` only after that checkpoint is acknowledged.
+3. Confirm release CI on `main`, then create the `v1.0.0` tag.
 
 The finite release gate is now executable through
 `scripts/check_release_readiness.py` and documented in
