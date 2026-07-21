@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
+from analysis.columnar_cache import read_csv_with_columnar_cache
 from analysis.ensemble_statistics import ensemble_variable_bases
 from analysis.growth_pathway_diagnostics import (
     GROWTH_PATHWAY_VARIABLE_GROUPS,
@@ -50,7 +51,7 @@ from analysis.wet_radius_plots import (
     threshold_robustness_metrics,
 )
 
-DASHBOARD_BUILD_ID = "common-seed-rain-response-evidence-20260715"
+DASHBOARD_BUILD_ID = "transition-cadence-quality-v3-20260720"
 
 
 @dataclass(frozen=True)
@@ -472,7 +473,7 @@ def safe_read_csv(path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        return pd.read_csv(path)
+        return read_csv_with_columnar_cache(path)
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
     except FileNotFoundError:

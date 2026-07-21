@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 import analysis.dashboard as dash
+import analysis.transition_observation_validation as transition_observation
 from analysis.reporting import build_pdf_report, figure_to_png_bytes as report_figure_to_png_bytes
 from simulation.ui_helpers import build_badge, inject_responsive_css
 
@@ -193,7 +195,7 @@ if missing:
     st.stop()
 
 
-RESULTS_UI_BUILD_ID = "ensemble-process-isolation-20260715"
+RESULTS_UI_BUILD_ID = "observation-mapping-audit-20260720"
 
 inject_responsive_css()
 st.title("07. Results Dashboard")
@@ -1994,14 +1996,25 @@ if tab_spectrum is not None:
                     + " s",
                 )
                 transition_cols[3].metric(
-                    "Threshold-direction stable",
-                    str(
-                        transition_summary.get(
-                            "threshold_shift_direction_consistent", "unresolved"
-                        )
-                    ),
+                    "Interpretation status",
+                    str(transition_summary.get("interpretation_status", "unresolved")),
                 )
                 st.caption(str(transition_summary.get("onset_method", "")))
+                cadence_status = transition_summary.get(
+                    "checkpoint_cadence_status", "unresolved"
+                )
+                maximum_interval = dash.format_metric_value(
+                    transition_summary.get("maximum_checkpoint_interval_s")
+                )
+                if cadence_status == "coarse_relative_to_literature":
+                    st.warning(
+                        f"Checkpoint cadence: {cadence_status} (maximum {maximum_interval} s). "
+                        "Treat interpolated onset timing as cadence-limited."
+                    )
+                else:
+                    st.caption(
+                        f"Checkpoint cadence: {cadence_status} (maximum {maximum_interval} s)."
+                    )
                 st.pyplot(
                     dash.plot_spectrum_transition(spectrum_transition_df),
                     use_container_width=True,
@@ -2011,6 +2024,141 @@ if tab_spectrum is not None:
                         spectrum_transition_robustness_df,
                         use_container_width=True,
                     )
+
+                st.markdown("##### Observational onset comparison")
+                st.caption(
+                    "Upload event/case onset times with provenance and timing uncertainty. "
+                    "The comparison scores every stored threshold candidate without changing "
+                    "the simulation result."
+                )
+                st.download_button(
+                    "Download observation CSV template",
+                    data=transition_observation.observation_contract_template().to_csv(
+                        index=False
+                    ),
+                    file_name="transition_observation_template.csv",
+                    mime="text/csv",
+                    key="transition_observation_template_download",
+                )
+                observation_upload = st.file_uploader(
+                    "Observation event CSV",
+                    type=["csv"],
+                    key="transition_observation_upload",
+                    help=(
+                        "Required columns include event_id, case, observed onset and "
+                        "uncertainty, model time offset, time origin, source ID, and an "
+                        "explicit method, event definition, sampling context, evidence "
+                        "class, and mapping status."
+                    ),
+                )
+                if observation_upload is not None:
+                    try:
+                        uploaded_observations = pd.read_csv(observation_upload)
+                        observation_validation = (
+                            transition_observation.build_transition_observation_validation(
+                                spectrum_transition_robustness_df,
+                                uploaded_observations,
+                            )
+                        )
+                        observation_scores = (
+                            transition_observation.score_transition_candidates(
+                                observation_validation
+                            )
+                        )
+                        observation_summary = transition_observation.summarize_transition_observation_validation(
+                            uploaded_observations,
+                            observation_validation,
+                            observation_scores,
+                        )
+                    except (
+                        ValueError,
+                        pd.errors.ParserError,
+                        UnicodeDecodeError,
+                    ) as exc:
+                        st.error(f"Observation comparison could not be built: {exc}")
+                    else:
+                        status = str(observation_summary["status"])
+                        if status == "synthetic_workflow_only":
+                            st.warning(
+                                "Synthetic input: this result validates the software workflow "
+                                "only and is not observational evidence."
+                            )
+                        elif status == "mixed_observation_and_synthetic_inputs":
+                            st.warning(
+                                "Mixed evidence classes: keep synthetic rows separate before "
+                                "drawing an observational interpretation."
+                            )
+                        elif status == "observational_mapping_review_required":
+                            st.warning(
+                                "Real observations were loaded, but their sampling is not a "
+                                "direct parcel-time mapping. Candidate scores are a mapping "
+                                "diagnostic and cannot validate the operational threshold."
+                            )
+                        else:
+                            st.info(
+                                "Observational comparison available. Candidate ranking remains "
+                                "descriptive and does not establish a universal threshold."
+                            )
+                        st.caption(
+                            "Mapping status: "
+                            + ", ".join(observation_summary["mapping_statuses"])
+                        )
+                        observation_metrics = st.columns(4)
+                        observation_metrics[0].metric(
+                            "Event/case rows",
+                            observation_summary["n_event_case_rows"],
+                        )
+                        observation_metrics[1].metric(
+                            "Threshold candidates",
+                            observation_summary["n_candidate_definitions"],
+                        )
+                        observation_metrics[2].metric(
+                            "Resolved comparisons",
+                            observation_summary["n_resolved_comparisons"],
+                        )
+                        observation_metrics[3].metric(
+                            "Within uncertainty",
+                            observation_summary["n_within_observed_uncertainty"],
+                        )
+                        st.markdown("**Candidate scores (descriptive)**")
+                        st.dataframe(observation_scores, use_container_width=True)
+                        with st.expander("Event-by-candidate comparison"):
+                            st.dataframe(
+                                observation_validation,
+                                use_container_width=True,
+                            )
+                        download_columns = st.columns(3)
+                        with download_columns[0]:
+                            st.download_button(
+                                "Download candidate scores",
+                                data=observation_scores.to_csv(index=False),
+                                file_name="transition_observation_candidate_scores.csv",
+                                mime="text/csv",
+                                key="transition_observation_scores_download",
+                                use_container_width=True,
+                            )
+                        with download_columns[1]:
+                            st.download_button(
+                                "Download comparisons",
+                                data=observation_validation.to_csv(index=False),
+                                file_name="transition_observation_validation.csv",
+                                mime="text/csv",
+                                key="transition_observation_rows_download",
+                                use_container_width=True,
+                            )
+                        with download_columns[2]:
+                            st.download_button(
+                                "Download summary",
+                                data=json.dumps(
+                                    observation_summary,
+                                    ensure_ascii=False,
+                                    indent=2,
+                                ),
+                                file_name="transition_observation_summary.json",
+                                mime="application/json",
+                                key="transition_observation_summary_download",
+                                use_container_width=True,
+                            )
 
             with st.expander("Checkpoint data tables"):
                 if is_comparison:
@@ -2219,6 +2367,44 @@ if tab_convergence is not None:
                         )
                     st.dataframe(
                         pd.DataFrame(family_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                estimand_audit = convergence_evidence.get(
+                    "response_estimand_audit", {}
+                )
+                if estimand_audit.get("available"):
+                    st.markdown("#### Finest-reference response estimands")
+                    st.caption(str(estimand_audit.get("interpretation", "")))
+                    estimand_rows = []
+                    for metric, metric_summary in estimand_audit.get(
+                        "metrics", {}
+                    ).items():
+                        estimand_rows.append(
+                            {
+                                "metric": metric,
+                                "seeds": metric_summary.get(
+                                    "n_common_random_seeds"
+                                ),
+                                "mean": metric_summary.get("mean"),
+                                "sample_std": metric_summary.get(
+                                    "sample_standard_deviation"
+                                ),
+                                "standard_error": metric_summary.get(
+                                    "standard_error"
+                                ),
+                                "minimum": metric_summary.get("minimum"),
+                                "maximum": metric_summary.get("maximum"),
+                                "direction": metric_summary.get(
+                                    "direction_consistency"
+                                ),
+                                "positive_seeds": metric_summary.get("n_positive"),
+                                "negative_seeds": metric_summary.get("n_negative"),
+                                "near_zero_seeds": metric_summary.get("n_near_zero"),
+                            }
+                        )
+                    st.dataframe(
+                        pd.DataFrame(estimand_rows),
                         use_container_width=True,
                         hide_index=True,
                     )

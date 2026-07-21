@@ -112,7 +112,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "max_radius": 1000.0e-6,
             "n_bins": 32,
             "checkpoint_times": [],
-            "checkpoint_interval_seconds": 10.0,
+            "checkpoint_interval_seconds": 2.0,
             "threshold_factors": [0.8, 1.0, 1.2],
         },
         "water_budget": {

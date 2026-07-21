@@ -518,7 +518,7 @@ def run_pysdm_parcel_simulation(
             "radius_bin_edges_um": (spectrum_edges * 1.0e6).tolist(),
             "checkpoint_times_s": spectrum_checkpoints,
             "checkpoint_interval_seconds": float(
-                spectrum_cfg.get("checkpoint_interval_seconds", 10.0)
+                spectrum_cfg.get("checkpoint_interval_seconds", 2.0)
             ),
             "checkpoint_policy": (
                 "Explicit checkpoint_times when provided; otherwise regular cadence plus "

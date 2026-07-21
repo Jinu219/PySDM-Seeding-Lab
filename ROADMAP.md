@@ -1,6 +1,110 @@
 # Roadmap
 
-## Current milestone snapshot (2026-07-15)
+## Current milestone snapshot (2026-07-21)
+
+Cross-platform CI baseline completed on 2026-07-20:
+- Fast regression and integrity checks run on Windows and Ubuntu with Python 3.13.
+- Background-job status replacement tolerates transient Windows sharing locks and
+  has deterministic retry coverage.
+- Ensemble and sweep result paths tolerate equivalent Windows long-name and 8.3
+  root aliases during subprocess execution.
+- Real PySDM integration is a separate Ubuntu job for protected-branch pushes and
+  manual runs rather than repeated across the pull-request matrix.
+- Exact direct dependencies are recorded in `requirements-ci.txt`; application
+  requirements remain flexible for normal installation.
+
+Resumable targeted common-seed execution completed on 2026-07-20:
+- Added in-place resume for common-seed qualification results with a normalized
+  SHA-256 execution-config identity and pre-execution mismatch rejection.
+- Valid case/seed members are discovered from their durable result artifacts even
+  if an interruption occurred before `member_summary.csv` was finalized.
+- Missing, corrupt, failed, or mismatched members rerun; completed members are
+  reused and included in rebuilt aggregation, convergence, evidence, and reports.
+- Resume attempts and reused/rerun counts are retained in
+  `qualification_plan.json`. The targeted profile still requires explicit execution
+  confirmation.
+
+Targeted high-resolution response evidence completed on 2026-07-20:
+- The authorized serial run completed 4 cases, 5 common seeds, 20/20 case-seed
+  pairs, and 40/40 real `pysdm_parcel` control/seeding executions in 1688.8 s.
+- Absolute rain state passed 60/60 next-finest checks at 5% (maximum 4.180%).
+- Seeding response passed 11/105 checks (median 34.350%, maximum 2465.158%);
+  every seed independently rejected response support.
+- Positive finest-reference response direction in 5/5 seeds is retained as a
+  finite-sample observation, not as a converged quantitative effect.
+- The 70-execution standard profile is no longer the next gate. First audit the
+  response estimands, near-zero handling, and uncertainty representation.
+- The first audit implementation is complete: qualification evidence now reports
+  descriptive finest-reference seed values, spread, near-zero counts, and direction
+  consistency without presenting them as confidence intervals or convergence.
+
+Spectrum-transition literature gate completed on 2026-07-20:
+- The 1% activated-liquid fraction remains an operational floor with mandatory
+  0.5/1/2% and 20/25/30 µm sensitivity audits, not an observational standard.
+- Automatic spectrum checkpoints now target the literature-preferred 2 s and snap
+  to the model timestep; 10 s is the explicit operational interpretation bound.
+- Stored results now classify cadence quality and distinguish robust,
+  cadence-limited, threshold-sensitive, and unresolved onset interpretations.
+- This identified external validation as the remaining scientific question; the
+  later v1.0 scope disposition closes it without claiming successful calibration.
+
+Observation-comparison workflow completed on 2026-07-20:
+- Added a strict event/case CSV contract with onset uncertainty, model-time offset,
+  time origin, source provenance, and explicit `observation`/`synthetic` evidence.
+- Added event-by-threshold comparisons, descriptive candidate scoring, Results upload
+  and downloads, and a standalone immutable artifact package with input hashes.
+- Synthetic rows are workflow checks only. This completes the software mapping gate,
+  not the external scientific validation gate.
+
+BASTALIAS real-data ingestion gate completed on 2026-07-20:
+- Added a NetCDF importer for EUREC4A ATR42 BASTALIAS L2 with source hashing,
+  time-quality filtering, persistence detection, and −15/−17/−20 dBZ sensitivity.
+- The reviewed F11 09:50–10:00 UTC window resolved all three classification
+  definitions within a 3 s spread.
+- Contract v2 distinguishes `direct_temporal`, `spatiotemporal_proxy`, and unresolved
+  mappings. BASTALIAS is forcibly classified as a spatiotemporal proxy because a
+  moving aircraft samples different horizontal volumes.
+- This is real observation ingestion, not external validation of the model's 1% floor.
+
+ARM ENA fixed-column candidate pipeline completed on 2026-07-21:
+- Added credential-safe ARM Live query/download support with redacted errors,
+  atomic files, byte counts, and SHA-256 records.
+- Added strict KAZR/KAZRARSCL NetCDF ingestion, QC enforcement, height selection,
+  persistent echo detection, and -20/-17/-15 dBZ sensitivity packages.
+- The importer is forcibly `spatiotemporal_proxy`: fixed-site radar time is an
+  Eulerian column sequence, not a demonstrated Lagrangian parcel history, and
+  reflectivity is not the model-native rain-liquid fraction.
+- A credentialed real-file audit and independent trajectory/observable mapping remain
+  future research; v1.0 does not claim direct validation from this proxy.
+
+v1.0 scientific-scope disposition completed on 2026-07-21:
+- Reviewed the 0-D Lagrangian parcel model against the BASTALIAS moving transect and
+  ARM ENA fixed Eulerian column. Neither proxy supplies a defensible direct mapping.
+- Closed the investigation as an explicit unsupported external-calibration claim,
+  not as successful observational validation.
+- Added a machine-readable six-claim scope: one profile-bounded supported claim,
+  one descriptive-only observation, one operational-only threshold, and three
+  unsupported claims including quantitative response, external calibration, and
+  field efficacy.
+- v1.0 is now 5/5 gates complete and paused for the Build the Lab checkpoint before
+  the release merge.
+
+Targeted high-resolution response plan completed on 2026-07-16:
+- Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.
+- The plan uses 4 OFAT cases and 5 common seeds: 40 physical executions rather
+  than the 70-execution three-level standard profile.
+- Physical execution remains protected by an explicit confirmation flag; the
+  reviewed 40-execution run is now complete as recorded above.
+
+Internal columnar cache evidence gate completed on 2026-07-20:
+- Results reads can use an atomically written Arrow IPC cache while CSV remains the
+  source of truth and compatibility contract.
+- Exact DataFrame equality, stale invalidation, corruption recovery, and an opt-out
+  path are covered by regression tests.
+- A 101 x 505 actual result measured 2.015x warm-read speedup and a seven-read
+  break-even over 20 repetitions; the slower Parquet prototype was rejected.
+- Automatic caching now starts at 25,000 cells, while the CLI can force evaluation
+  of any selected result without rerunning PySDM.
 
 Lab-server execution gate completed on 2026-07-15:
 - Added persistent headless Streamlit management, SSH-tunnel guidance, detached
@@ -28,10 +132,16 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates:
-1. Benchmark serial versus 4/8-worker real-PySDM sweep wall time and process-tree RSS.
-2. Use those measured bounds to target a reduced 1600-super-droplet response plan.
-3. Prototype a columnar internal cache with CSV numerical-equality regression.
-4. Validate or revise the operational 1% transition floor using observations.
+1. Publish or approve the evidence-backed Build the Lab v1.0 development entry.
+2. Merge `develop` into `main` only after that checkpoint is acknowledged.
+3. Confirm release CI on `main`, then create the `v1.0.0` tag.
+
+The finite release gate is now executable through
+`scripts/check_release_readiness.py` and documented in
+`docs/V1_RELEASE_CHECKLIST.md`. Routine work continues on `develop`; the project
+must stop for the GitHub blog checkpoint before merging `develop` into `main` and
+tagging `v1.0.0`. Serial versus 4/8-worker real-PySDM server benchmarking is
+explicitly deferred to v1.1.
 
 Higher-resolution common-seed gate completed on 2026-07-15:
 - A paired-seed scalar audit now preserves every case × seed response and rejects
@@ -58,19 +168,18 @@ Research-evidence gate completed:
   All 12 non-zero next-finest comparisons passed 5%; the maximum was 1.731%.
   The decision is deliberately scoped to the marine collision-OFF profile.
 - Spectrum transition now combines radius sensitivity (20/25/30 micrometres),
-  operational fraction sensitivity (0.5/1/2%), and a configurable 10-second
-  checkpoint target. The 1% baseline is not presented as an observational standard.
+  operational fraction sensitivity (0.5/1/2%), a preferred 2-second checkpoint
+  target, and a 10-second interpretation upper bound. The 1% baseline is not
+  presented as an observational standard.
 - The 24-member real-PySDM benchmark separated end-to-end RSS from aggregation I/O:
   peak RSS increased by 999.64 MiB, while streaming aggregation added 0.27 MiB RSS
   and took 3.772 seconds.
 - Step 18 now supports an on-demand PDF containing the publication figure selected
   in Results. Step 19 now has actual legacy-result and schema-migration fixtures.
 
-Next ordered gates:
-1. Bounded warm-worker serial/4/8-worker real-PySDM A/B benchmark.
-2. Targeted, resource-bounded 1600-super-droplet response qualification.
-3. Columnar internal-cache prototype with CSV equality regression.
-4. Observational validation or revision of the operational 1% transition floor.
+The canonical ordered gates are maintained once above. Performance benchmarking
+remains behind the targeted scientific run and observational-validation work unless
+server capacity becomes the immediate blocker.
 
 See the numerical, performance, and threshold-basis records under `docs/` for the
 measured evidence and interpretation boundaries.
@@ -105,8 +214,8 @@ connected to real comparison results. Full PySDM convergence evidence and the
 large-ensemble RSS/I/O benchmark are now complete for their documented profiles.
 
 `DEVELOPMENT.md`가 "무엇을 했는가"의 기록(changelog)이라면, 이 문서는 "다음에 무엇을,
-어떤 순서로 할 것인가"를 관리한다. README.md의 Development Roadmap 섹션은 Step 10까지만
-반영된 예전 버전이므로, 최신 우선순위는 항상 이 문서를 기준으로 한다.
+어떤 순서로 할 것인가"를 관리한다. README.md는 안정된 요약과 실행 명령만 제공하며,
+최신 우선순위는 항상 이 문서를 기준으로 한다.
 
 ## 완료된 단계 (요약)
 
@@ -232,10 +341,10 @@ spectrum/threshold difference와 activated liquid 중 rain-size liquid fraction 
 - Step 17 large ensemble 최적화: member dataframe 전체를 동시에 보관하지 않고 member
   CSV를 변수별로 streaming aggregation하는 첫 구현 완료. 통계 결과는 기존 방식과 동일하며,
   peak aggregation memory는 members x timesteps x variables에서 members x timesteps로 줄었다.
-  이제 입력 bytes, elapsed time, tracemalloc peak를 자동 저장한다. 다음은 실제 대형 PySDM
-  ensemble의 whole-process RSS와 추가 CSV I/O 시간을 benchmark하는 것이다.
-- Step 18 자동 report export: Markdown과 self-contained print-friendly HTML 구현 완료.
-  다음은 PDF와 publication figure embedding.
+  입력 bytes, elapsed time, tracemalloc peak, whole-process RSS, subprocess 격리, bounded
+  warm-worker 실행까지 검증했다. 다음은 서버의 matched serial/4/8-worker benchmark다.
+- Step 18 자동 report export: Markdown, self-contained print-friendly HTML, paginated PDF,
+  publication figure embedding 구현 완료. 실제 투고 시 저널별 typography만 확장한다.
 - Step 19 old/new result 호환성 강화: versioned `result_manifest.json`, current/legacy/future
   compatibility inspection, legacy type inference, Results 상태 표시까지 첫 구현 완료.
   다음은 실제 schema 변경 시 migration fixture와 변환기를 추가하는 것이다.

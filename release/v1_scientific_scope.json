@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "release": "v1.0.0",
+  "release_classification": "research_workflow_release",
+  "required_claim_order": [
+    "absolute_rain_state",
+    "quantitative_seeding_response",
+    "positive_response_direction",
+    "transition_floor",
+    "external_observation_calibration",
+    "field_efficacy"
+  ],
+  "claims": [
+    {
+      "id": "absolute_rain_state",
+      "status": "supported",
+      "statement": "The tested collision-ON marine parcel profile has numerically supported absolute control and seeding rain-water state at the reviewed resolution gate.",
+      "scope": "rain_response_targeted profile; four OFAT cases; five common seeds; finest versus next-finest comparisons",
+      "evidence": [
+        "docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md"
+      ]
+    },
+    {
+      "id": "quantitative_seeding_response",
+      "status": "unsupported",
+      "statement": "A quantitative seeding-minus-control enhancement magnitude is not supported for v1.0.",
+      "limitation": "Only 11 of 105 response convergence checks passed and every seed independently rejected response support.",
+      "evidence": [
+        "docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md"
+      ]
+    },
+    {
+      "id": "positive_response_direction",
+      "status": "descriptive_only",
+      "statement": "All five finest-reference seeds had positive final rain response direction in the targeted run.",
+      "limitation": "This finite-sample descriptive observation does not override failed response convergence and is not an effect estimate.",
+      "evidence": [
+        "docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md"
+      ]
+    },
+    {
+      "id": "transition_floor",
+      "status": "operational_only",
+      "statement": "The 1% rain-liquid fraction is an internal event-detection floor, not an observational standard.",
+      "sensitivity": "Interpretation requires 0.5/1/2% fraction and 20/25/30 micrometre radius sensitivity plus cadence-quality review.",
+      "evidence": [
+        "docs/SPECTRUM_TRANSITION_BASIS.md"
+      ]
+    },
+    {
+      "id": "external_observation_calibration",
+      "status": "unsupported",
+      "statement": "No external observation calibrates or validates the model transition floor in v1.0.",
+      "limitation": "BASTALIAS samples a moving transect and ARM ENA samples a fixed Eulerian column; neither demonstrates the Lagrangian parcel-time and observable mapping required by the model.",
+      "evidence": [
+        "docs/evidence/BASTALIAS_IMPORT_20260720.md",
+        "docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md"
+      ]
+    },
+    {
+      "id": "field_efficacy",
+      "status": "unsupported",
+      "statement": "v1.0 makes no claim about real-world cloud-seeding efficacy, causality, or operational precipitation enhancement.",
+      "limitation": "The project is a parcel-model experiment workflow and has no matched field intervention validation.",
+      "evidence": [
+        "docs/V1_SCIENTIFIC_SCOPE.md"
+      ]
+    }
+  ]
+}

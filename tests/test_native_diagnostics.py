@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from analysis.case_diagnostic_comparison import (
     build_threshold_robustness_comparison,
@@ -59,11 +60,13 @@ from simulation.path_policy import (
 )
 from simulation.runner import (
     ExperimentExecutionError,
+    _relative_result_path,
     run_ensemble_experiment,
     run_experiment,
     run_parameter_sweep,
 )
 from simulation.run_plan import estimate_run_plan
+from simulation.resume import ResumeConfigurationError, execution_config_fingerprint
 from simulation.schema import default_config
 from simulation.sweep import generate_sweep_cases
 from simulation.validation import validate_config_detailed
@@ -75,6 +78,9 @@ from simulation.wet_radius_spectrum import (
 )
 from scripts.run_numerical_qualification import (
     build_qualification_config,
+    finalize_resume_attempt,
+    persist_qualification_plan,
+    prepare_resume_attempt,
     qualification_plan,
 )
 from scripts.run_ensemble_benchmark import build_benchmark_config
@@ -100,6 +106,29 @@ def _small_native_config() -> dict:
 
 
 class NativeDiagnosticMappingTests(unittest.TestCase):
+    def test_relative_result_path_accepts_windows_root_alias(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            base = Path(tmp_dir)
+            canonical_root = base / "runneradmin" / "ensemble"
+            alias_root = base / "RUNNER~1" / "ensemble"
+            result_dir = alias_root / "members" / "member_001" / "single"
+            canonical_root.mkdir(parents=True)
+            result_dir.mkdir(parents=True)
+
+            def alias_samefile(left, right):
+                return Path(left) == alias_root and Path(right) == canonical_root
+
+            with patch(
+                "simulation.runner.os.path.samefile",
+                side_effect=alias_samefile,
+            ):
+                relative = _relative_result_path(result_dir, canonical_root)
+
+        self.assertEqual(
+            relative,
+            Path("members") / "member_001" / "single",
+        )
+
     def test_marine_showcase_scenario_is_runnable(self):
         scenario_path = (
             Path(__file__).resolve().parents[1]
@@ -265,7 +294,14 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             {"name": "seeding.kappa", "values": [0.8]},
         ]
 
-        def fail_case(config, output_dir, progress_callback=None, *, result_dir_name=None):
+        def fail_case(
+            config,
+            output_dir,
+            progress_callback=None,
+            *,
+            result_dir_name=None,
+            resume_existing=False,
+        ):
             result_dir = Path(output_dir) / str(result_dir_name)
             result_dir.mkdir(parents=True, exist_ok=True)
             raise ExperimentExecutionError("synthetic nested failure", result_dir=result_dir)
@@ -363,6 +399,12 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         edges = build_spectrum_bin_edges(cfg)
         checkpoints = resolve_spectrum_checkpoint_times(cfg)
 
+        self.assertEqual(
+            default_config()["diagnostics"]["wet_radius_spectrum"][
+                "checkpoint_interval_seconds"
+            ],
+            2.0,
+        )
         self.assertEqual(checkpoints, [0.0, 15.0, 30.0])
         for threshold in (0.5e-6, 25.0e-6):
             for factor in (0.8, 1.0, 1.2):
@@ -652,6 +694,43 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             800,
         )
 
+        targeted = build_qualification_config(
+            cfg,
+            profile="rain_response_targeted",
+            adapter="pysdm_parcel",
+        )
+        targeted_plan = qualification_plan(
+            targeted,
+            profile="rain_response_targeted",
+        )
+        targeted_cases = generate_sweep_cases(targeted)
+        self.assertEqual(targeted_plan["case_count"], 4)
+        self.assertEqual(targeted_plan["case_seed_pair_count"], 20)
+        self.assertEqual(targeted_plan["model_execution_count"], 40)
+        self.assertEqual(targeted_plan["n_common_random_seeds"], 5)
+        self.assertEqual(len(set(targeted_plan["common_random_seeds"])), 5)
+        self.assertTrue(targeted_plan["execution_confirmation_required"])
+        self.assertIn("may underestimate", targeted_plan["runtime_estimate_warning"])
+        self.assertEqual(
+            targeted_plan["execution_confirmation_flag"],
+            "--confirm-targeted-run",
+        )
+        self.assertEqual(targeted["execution"]["max_workers"], 1)
+        self.assertEqual(
+            targeted_cases[0].parameter_values,
+            {
+                "environment.timestep": 2.5,
+                "seeding.number_superdroplets": 1600,
+                "background_aerosol.number_superdroplets": 1600,
+            },
+        )
+        self.assertTrue(
+            all(
+                len(case.parameter_values) == 3
+                for case in targeted_cases
+            )
+        )
+
         benchmark = build_benchmark_config(cfg, profile="large")
         self.assertEqual(benchmark["simulation"]["adapter"], "pysdm_parcel")
         self.assertEqual(benchmark["ensemble"]["n_members"], 24)
@@ -926,6 +1005,68 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertEqual(evidence["status"], "incomplete_common_seed_coverage")
         self.assertFalse(evidence["common_seed_coverage_complete"])
 
+    def test_response_estimand_audit_is_descriptive_and_deduplicates_axes(self):
+        rows = []
+        metric = "comparison.efficiency.rain_enhancement_final"
+        mixed_metric = "comparison.efficiency.cloud_to_rain_conversion_delta"
+        for seed, value, mixed_value in (
+            (101, 1.0, -1.0),
+            (202, 2.0, 0.0),
+            (303, 3.0, 1.0),
+        ):
+            for axis in (
+                "param.environment.timestep",
+                "param.seeding.number_superdroplets",
+                "param.background_aerosol.number_superdroplets",
+            ):
+                for metric_name, reference in (
+                    (metric, value),
+                    (mixed_metric, mixed_value),
+                ):
+                    rows.extend(
+                        [
+                            {
+                                "metric": metric_name,
+                                "varied_parameter": axis,
+                                "resolution_rank": 0,
+                                "reference_value": reference,
+                                "relative_difference_percent": 0.0,
+                                "random_seed": seed,
+                            },
+                            {
+                                "metric": metric_name,
+                                "varied_parameter": axis,
+                                "resolution_rank": 1,
+                                "reference_value": reference,
+                                "relative_difference_percent": 10.0,
+                                "random_seed": seed,
+                            },
+                        ]
+                    )
+
+        cfg = default_config()
+        cfg["qualification"] = {
+            "profile": "response_estimand_test",
+            "common_random_seed_pairing": True,
+            "common_random_seeds": [101, 202, 303],
+            "common_seed_case_coverage": {"complete": True},
+        }
+        evidence = build_qualification_evidence(pd.DataFrame(rows), cfg)
+        audit = evidence["response_estimand_audit"]
+        positive = audit["metrics"][metric]
+        mixed = audit["metrics"][mixed_metric]
+
+        self.assertTrue(audit["available"])
+        self.assertEqual(audit["n_common_random_seeds"], 3)
+        self.assertEqual(positive["n_common_random_seeds"], 3)
+        self.assertEqual(positive["mean"], 2.0)
+        self.assertEqual(positive["sample_standard_deviation"], 1.0)
+        self.assertAlmostEqual(positive["standard_error"], 1.0 / np.sqrt(3))
+        self.assertEqual(positive["direction_consistency"], "all_positive")
+        self.assertEqual(mixed["direction_consistency"], "mixed")
+        self.assertEqual(mixed["n_near_zero"], 1)
+        self.assertIn("not confidence intervals", audit["interpretation"])
+
     def test_spectrum_transition_onset_is_interpolated_and_audited(self):
         cfg = default_config()
         cfg["diagnostics"]["spectrum_transition"]["rain_volume_fraction_threshold"] = 0.01
@@ -964,8 +1105,31 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         self.assertTrue(summary["threshold_shift_direction_consistent"])
         self.assertEqual(summary["n_transition_fraction_thresholds"], 3)
         self.assertEqual(summary["maximum_checkpoint_interval_s"], 10.0)
+        self.assertEqual(summary["checkpoint_cadence_status"], "operationally_bounded")
+        self.assertEqual(summary["interpretation_status"], "resolved_robust")
+        self.assertEqual(
+            summary["threshold_evidence_status"],
+            "operational_floor_not_observational_standard",
+        )
         self.assertEqual(len(robustness), 3)
         self.assertEqual(summary["status"], "resolved")
+
+        coarse_comparison = comparison.copy()
+        coarse_comparison["time_s"] *= 1.5
+        coarse_transition = build_spectrum_transition_table(coarse_comparison, cfg)
+        coarse_robustness = build_transition_onset_robustness(coarse_comparison, cfg)
+        coarse_summary = summarize_spectrum_transition(
+            coarse_transition,
+            coarse_robustness,
+        )
+        self.assertEqual(
+            coarse_summary["checkpoint_cadence_status"],
+            "coarse_relative_to_literature",
+        )
+        self.assertEqual(
+            coarse_summary["interpretation_status"],
+            "resolved_cadence_limited",
+        )
 
     def test_diagnostic_comparison_tables_are_aligned(self):
         cfg = _small_native_config()
@@ -1192,6 +1356,116 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             8,
         )
         self.assertEqual(manifest["files"]["paired_seed_metrics"], "paired_seed_metrics.csv")
+
+    def test_common_seed_qualification_resumes_only_missing_members(self):
+        cfg = default_config()
+        cfg["experiment"].update(
+            {"mode": "parameter_sweep", "name": "resume_seed_regression"}
+        )
+        cfg["simulation"]["adapter"] = "placeholder_warm_cloud"
+        cfg["environment"].update({"duration": 20, "timestep": 5})
+        cfg["seeding"].update({"injection_start": 10, "injection_end": 20})
+        cfg["ensemble"].update(
+            {"enabled": True, "n_members": 2, "seed_start": 101, "seed_step": 101}
+        )
+        cfg["execution"]["max_workers"] = 1
+        cfg["sweep"] = {
+            "design": "one_factor_at_reference",
+            "run_mode": "control_vs_seeding",
+            "max_runs": 2,
+            "ranking_metric": "comparison.efficiency.seeding_efficiency_score",
+            "parameters": [
+                {
+                    "name": "environment.timestep",
+                    "values": [5],
+                    "reference": "min",
+                }
+            ],
+        }
+        cfg["qualification"] = {
+            "build_id": "resume-regression",
+            "profile": "software_test",
+            "common_random_seed_pairing": True,
+            "common_random_seeds": [101, 202],
+            "rain_signal_required": False,
+            "execution_config_fingerprint": execution_config_fingerprint(cfg),
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result_dir = run_experiment(cfg, Path(tmp_dir))
+            case_dir = result_dir / "cases" / "case_001"
+            (case_dir / "member_summary.csv").unlink()
+            (
+                case_dir
+                / "members"
+                / "member_002"
+                / "comparison"
+                / "comparison.csv"
+            ).unlink()
+
+            requested_plan = dict(cfg["qualification"])
+            prepared_plan = prepare_resume_attempt(
+                cfg,
+                requested_plan,
+                result_dir,
+                profile="software_test",
+            )
+            persist_qualification_plan(result_dir, prepared_plan)
+            resume_cfg = dict(cfg)
+            resume_cfg["qualification"] = prepared_plan
+            resumed_dir = run_experiment(
+                resume_cfg,
+                result_dir.parent,
+                result_dir_name=result_dir.name,
+                resume_existing=True,
+            )
+            completed_attempt = finalize_resume_attempt(
+                resumed_dir,
+                status="completed",
+            )
+            first_resume = pd.read_csv(case_dir / "member_summary.csv")
+            first_summary = json.loads(
+                (result_dir / "summary.json").read_text(encoding="utf-8")
+            )
+
+            resume_cfg = yaml.safe_load(
+                (result_dir / "config.yaml").read_text(encoding="utf-8")
+            )
+            rerun_again = run_experiment(
+                resume_cfg,
+                result_dir.parent,
+                result_dir_name=result_dir.name,
+                resume_existing=True,
+            )
+            second_resume = pd.read_csv(case_dir / "member_summary.csv")
+            second_summary = json.loads(
+                (rerun_again / "summary.json").read_text(encoding="utf-8")
+            )
+
+            mismatched = dict(resume_cfg)
+            mismatched["environment"] = dict(resume_cfg["environment"])
+            mismatched["environment"]["duration"] = 25
+            with self.assertRaises(ResumeConfigurationError):
+                run_experiment(
+                    mismatched,
+                    result_dir.parent,
+                    result_dir_name=result_dir.name,
+                    resume_existing=True,
+                )
+
+        self.assertEqual(resumed_dir, result_dir)
+        self.assertEqual(
+            dict(zip(first_resume["random_seed"], first_resume["resume_action"])),
+            {101: "reused", 202: "rerun"},
+        )
+        self.assertEqual(first_summary["execution"]["reused_members"], 1)
+        self.assertEqual(first_summary["execution"]["rerun_members"], 1)
+        self.assertEqual(completed_attempt["status"], "completed")
+        self.assertEqual(completed_attempt["reused_members"], 1)
+        self.assertEqual(completed_attempt["rerun_members"], 1)
+        self.assertEqual(set(second_resume["resume_action"]), {"reused"})
+        self.assertEqual(second_summary["execution"]["reused_members"], 2)
+        self.assertEqual(second_summary["execution"]["rerun_members"], 0)
 
     def test_legacy_result_without_manifest_is_inferred(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

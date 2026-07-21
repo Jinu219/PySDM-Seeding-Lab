@@ -1,10 +1,251 @@
 # Project Status
 
-Last updated: 2026-07-15
+Last updated: 2026-07-21
 
 Active branch: `develop`
 
-Current milestone: Linux server deployment and bounded multi-core sweep execution completed
+Current milestone: v1.0 release candidate complete; Build the Lab checkpoint active
+
+Release status: v1.0 has 5/5 required gates complete. External calibration is
+explicitly unsupported rather than treated as successful direct validation. The
+machine-readable gate in `release/v1.0.0.json` is ready. The project is paused for
+the Build the Lab blog checkpoint immediately before the `develop` to `main` merge. See
+[`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
+
+## v1.0 scientific-scope disposition
+
+Completed on 2026-07-21:
+- Classified v1.0 as a research-workflow release rather than field-validated science.
+- Retained one profile-scoped supported claim for absolute rain-water state.
+- Preserved positive response direction as descriptive only and the 1% transition
+  floor as operational only.
+- Marked quantitative response magnitude, external observation calibration, and
+  real-world field efficacy as explicitly unsupported.
+- Added machine validation so missing evidence, unsupported-claim limitations, or
+  an attempted release-classification promotion fails CI.
+
+Decision: direct-observation work is closed for v1.0 as a conservative feasibility
+and scope disposition, not as successful validation. The release candidate is now
+complete and awaits the blog checkpoint before merge.
+
+Scope: [`docs/V1_SCIENTIFIC_SCOPE.md`](docs/V1_SCIENTIFIC_SCOPE.md)
+
+## ARM ENA fixed-column candidate update
+
+Completed on 2026-07-21:
+- Added an ARM Live client that takes credentials only from environment variables,
+  redacts credential-bearing URLs from errors, and downloads through atomic partial
+  files with byte counts and SHA-256 hashes.
+- Added a local KAZR/KAZRARSCL importer with reflectivity aliases, matching QC-field
+  enforcement, time-height shape validation, selected-height gate counts,
+  persistence detection, and -20/-17/-15 dBZ threshold sensitivity.
+- Added immutable observation packages and nine synthetic ARM-format/API regression
+  tests. No real ARM file or credential was available at this checkpoint.
+- Forced every event to `spatiotemporal_proxy`. A fixed zenith beam samples an
+  Eulerian column containing changing advected parcels; reflectivity is also not
+  the model-native rain-liquid fraction.
+
+Decision: retain the candidate as a proxy. A credentialed real-file audit and
+parcel-trajectory mapping remain future research, while v1.0 explicitly excludes
+external calibration claims.
+
+Evidence: [`docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md`](docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md)
+
+## BASTALIAS real-data import update
+
+Completed on 2026-07-20:
+- Added an optional NetCDF importer for the public EUREC4A ATR42 BASTALIAS L2
+  radar–lidar dataset (DOI `10.25326/316`).
+- Added explicit event definition, sampling context, and mapping status to the
+  observation contract. Only `direct_temporal` rows can reach the direct
+  observational-comparison workflow status.
+- The importer checks `time_issue_flag`, drizzle pixel persistence, event window,
+  source hash, and −15/−17/−20 dBZ classification sensitivity.
+- Downloaded and verified the 196,977,022-byte F11 source. Its 09:50–10:00 UTC
+  window contained 400/400 quality-valid samples and resolved onset at 10.121 s
+  for −15 dBZ and 7.121 s for −17/−20 dBZ.
+- The real-data comparison remained `observational_mapping_review_required` with
+  zero direct-temporal rows, as required.
+
+Decision: BASTALIAS verifies real-data ingestion and classification sensitivity,
+but its moving-aircraft horizontal sampling is a spatiotemporal proxy. It does not
+validate or revise the operational 1% model floor and feeds the conservative v1.0
+scope disposition above.
+
+Evidence: [`docs/evidence/BASTALIAS_IMPORT_20260720.md`](docs/evidence/BASTALIAS_IMPORT_20260720.md)
+
+## Observation transition-validation update
+
+Completed on 2026-07-20:
+- Added a strict event/case CSV contract for observed onset, timing uncertainty,
+  model-time offset, time origin, source provenance, and explicit evidence class.
+- Added event-by-threshold comparison and descriptive candidate scoring without
+  mutating the source simulation result.
+- Added Results Dashboard template upload, evidence-class warnings, comparison
+  tables, and downloadable CSV/JSON outputs.
+- Added a standalone immutable artifact package with normalized inputs, report,
+  manifest, and SHA-256 hashes of the observation and model-transition inputs.
+- Synthetic fixture rows are labeled `synthetic_workflow_only` and cannot be
+  interpreted as external scientific validation.
+
+Decision: the software mapping gate is complete. The next scientific input is a
+real observational drizzle-onset dataset with a defensible time-origin and event
+definition mapping. Only then can the operational 1% floor be validated or revised.
+
+Contract: [`docs/TRANSITION_OBSERVATION_VALIDATION.md`](docs/TRANSITION_OBSERVATION_VALIDATION.md)
+
+## Targeted common-seed qualification result
+
+Completed on 2026-07-20:
+- Ran the explicitly authorized `rain_response_targeted` profile serially with real
+  `pysdm_parcel`: 4 cases, 5 common seeds, 20/20 case-seed pairs, and 40/40
+  successful control/seeding model executions.
+- Actual wall time was 1688.8 s (28 min 8.8 s), 1.847x the 914.3 s dry-run estimate.
+- All five reference seed pairs exceeded the rain-signal floor. Absolute control
+  and seeding rain state passed 60/60 checks at 5%, with a 4.180% maximum.
+- Seeding-minus-control response passed 11/105 checks; its median error was 34.350%
+  and maximum was 2465.158%. Every seed independently failed response support.
+- All five finest-reference seeds had positive final rain enhancement, but the
+  response remains too resolution-sensitive for a quantitative effect claim.
+- Added a descriptive finest-reference response-estimand audit with seed values,
+  mean, sample spread, standard error, range, near-zero counts, and direction
+  consistency. It is displayed separately from convergence support.
+- A real in-place resume reused all 20 members and reran 0, rebuilding the new
+  evidence and reports without another physical model execution.
+
+Decision: retain profile-scoped support for absolute rain state only. Do not run
+the 70-execution standard profile merely to seek convergence. Finite-seed direction
+and spread are now explicitly audited but do not override the failed resolution
+gate; observational validation of the operational 1% transition floor remains a
+separate scientific gate.
+
+Evidence: [`docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md`](docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md)
+
+## Continuous-integration update
+
+Completed on 2026-07-20:
+- Hardened atomic background-job status updates against transient Windows file
+  sharing locks with bounded retry and temporary-file cleanup. A deterministic
+  two-failure regression and three repeated detached-worker test runs pass locally.
+- Normalized persisted member/case result paths by filesystem identity when Windows
+  exposes the same temporary root under long and 8.3 names. This fixes the
+  `runneradmin` / `RUNNER~1` subprocess-ensemble failure found by live CI.
+- The corrected subprocess regression passed twice; all 45 fast CI tests and project
+  integrity then passed locally on Windows.
+- Added Python 3.13 fast-regression jobs on Windows and Ubuntu for pushes, pull
+  requests, and manual runs.
+- Fast CI covers cache, diagnostic/workflow, resume, server-execution, and project
+  integrity contracts.
+- Real PySDM integration runs as a separate Ubuntu job after fast checks on
+  `develop`/`main` pushes and manual runs, avoiding duplicate physical-adapter cost
+  across the PR matrix.
+- Added `requirements-ci.txt`, pinning every direct dependency to the locally
+  validated Python 3.13 baseline. Interactive installs remain flexible through the
+  existing application and optional-PySDM requirements files.
+- Workflow permissions are read-only and concurrent runs on the same ref cancel the
+  older run.
+- The initial 43-test fast CI command passed locally in 54 seconds; workflow parsing,
+  dependency-version matching, `pip check`, project integrity, and diff checks passed.
+
+Decision: treat fast cross-platform checks as the PR gate and real PySDM integration
+as the protected-branch/manual physics gate. Dependency updates should change the CI
+baseline intentionally and rerun both layers.
+
+## Resumable targeted-qualification update
+
+Completed on 2026-07-20:
+- Added `--resume-result` for common-seed qualification profiles. The resume path
+  operates in place and still requires `--confirm-targeted-run` for the targeted
+  high-resolution profile.
+- Added a normalized SHA-256 execution-config fingerprint. Qualification metadata,
+  timestamps, runtime estimates, and resume history are excluded, while model,
+  sweep, ensemble, seed, diagnostic, and worker settings remain protected.
+- Sweep and ensemble configs are written before expensive model work begins, so a
+  hard interruption leaves a durable execution identity.
+- Existing members are reused only when their config matches and their summary plus
+  primary CSV are readable. Missing, corrupt, failed, or mismatched members rerun in
+  their stable case/member directory.
+- `qualification_plan.json` preserves each resume attempt, timestamps, status,
+  fingerprint, reused-member count, rerun count, and error detail.
+- Regression coverage verifies interrupted-state discovery without `member_summary.csv`,
+  one missing-seed rerun, complete-result reuse, and pre-execution config mismatch blocking.
+- All 45 unit/integration tests passed in 265 seconds, including two real PySDM
+  integrations. Project integrity and diff whitespace checks passed.
+
+Decision: use resumable execution for the planned 40-run targeted qualification;
+do not weaken complete common-seed coverage or merge old results under a changed
+execution contract.
+
+## Spectrum-transition cadence update
+
+Completed on 2026-07-20:
+- Retained 1% rain-size activated liquid as a project-owned operational floor;
+  no reviewed source was treated as evidence for a universal 1% threshold.
+- Retained mandatory 0.5/1/2% fraction and 20/25/30 µm radius sensitivity audits.
+- Changed the automatic checkpoint target from 10 s to the literature-preferred
+  2 s, while snapping to and never exceeding the temporal resolution of the model
+  timestep. Ten seconds is now an explicit operational interpretation upper bound.
+- Added `checkpoint_cadence_status`, threshold-evidence status, and a combined
+  interpretation state that distinguishes robust, cadence-limited,
+  threshold-sensitive, and unresolved results.
+- Results now warns when stored checkpoints are too coarse for a robust onset-time
+  interpretation. Existing results remain readable and are not rewritten.
+- All 44 unit/integration tests and project integrity passed. Aerosol and Results
+  AppTests rendered with zero exceptions and zero error elements.
+
+Decision: radius-boundary and cadence choices are literature-bounded; the 1%
+fraction remains an auditable detection floor until an observational dataset maps
+this model-native fraction to an observed drizzle-onset event.
+
+Basis: [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
+
+## Internal columnar result-cache update
+
+Completed on 2026-07-20:
+- Added a PyArrow IPC cache behind the Results Dashboard's common CSV loader.
+  Original CSV files remain the portable source of truth and download contract.
+- Added source size/mtime/build fingerprints, stable-read checks, atomic cache and
+  metadata replacement, stale invalidation, and corrupt-cache CSV fallback.
+- Added `PYSDM_COLUMNAR_CACHE=0` as an operational escape hatch, graceful CSV
+  fallback when PyArrow is unavailable, and a configurable 25,000-cell automatic
+  cache threshold.
+- Added a reproducible benchmark CLI reporting cold build, warm reads, speedup,
+  dimensions, and exact DataFrame equality.
+- Tested an existing 101 x 505 real ensemble table over 20 repetitions. Warm Arrow
+  read latency was 8.076 ms versus 16.271 ms for CSV (2.015x), with a seven-read
+  estimated break-even and 1.247x storage ratio. The slower Parquet prototype was
+  rejected.
+- Added exact-equality, stale-cache, corrupt data/metadata, disabled-cache,
+  size-threshold, and benchmark regressions covering mixed column types.
+- All 44 unit/integration tests and project integrity passed. Results AppTest
+  loaded stored result data with zero exceptions and zero error elements.
+
+Decision: use Arrow IPC only as an internal, disposable repeated-read accelerator.
+It must never replace CSV in manifests, reports, migrations, or scientific
+provenance.
+
+Design: [`docs/COLUMNAR_CACHE.md`](docs/COLUMNAR_CACHE.md)
+Evidence: [`docs/evidence/COLUMNAR_CACHE_BENCHMARK_20260720.md`](docs/evidence/COLUMNAR_CACHE_BENCHMARK_20260720.md)
+
+## Targeted high-resolution response-plan update
+
+Completed on 2026-07-16:
+- Added `rain_response_targeted`, using only finest and next-finest timestep,
+  seeding-super-droplet, and background-super-droplet levels.
+- The resulting OFAT plan is exactly 4 cases, 5 common seeds, 20 case-seed pairs,
+  and 40 control/seeding model executions instead of the 70-execution standard.
+- Qualification plans now include local runtime-estimate provenance, estimated
+  serial duration, case-seed count, and execution-confirmation metadata.
+- The profile is dry-run-first, forces one case worker, and rejects physical
+  execution unless `--confirm-targeted-run` is explicitly supplied.
+- The dry-run and rejection paths were exercised without starting PySDM.
+- All 37 unit/integration tests and project integrity passed after the change.
+
+Decision at the planning milestone: preserve this as a reviewed execution plan
+until explicitly authorized. The run was subsequently authorized and completed;
+the current interpretation is recorded in the targeted result section above.
+
+Plan: [`docs/TARGETED_RESPONSE_PLAN.md`](docs/TARGETED_RESPONSE_PLAN.md)
 
 ## Lab-server and bounded parallel execution update
 
@@ -155,8 +396,8 @@ Completed:
 - The spectrum-transition diagnostic now audits 20/25/30 micrometre radius
   boundaries and 0.5/1/2% activated-liquid fractions. The 25 micrometre boundary
   is literature-bounded; 1% remains an explicit project-owned operational floor.
-  Automatic checkpoints target 10 seconds, snap to model timesteps, and preserve
-  injection boundaries and endpoints.
+  Automatic checkpoints target 2 seconds, use 10 seconds as the interpretation
+  upper bound, snap to model timesteps, and preserve injection boundaries and endpoints.
 - A 24-member large real-PySDM ensemble benchmark measured the complete process
   and the streaming aggregation phase separately. Peak RSS rose by 999.64 MiB
   over baseline, while aggregation itself added only 0.27 MiB RSS and took 3.772 s.
@@ -172,10 +413,10 @@ Evidence:
 - [`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md)
 
 Next scientific and performance priorities:
-1. Test process-per-member isolation for backend/JIT retained memory.
-2. Target a bounded 1600-super-droplet common-seed response qualification.
-3. Compare a columnar internal cache with CSV using numerical-equality regressions.
-4. Validate the operational 1% transition floor against an observational dataset.
+1. Freeze release documentation and verify the end-to-end v1.0 workflow.
+2. Pass release-candidate CI and stop for the Build the Lab checkpoint before merge.
+3. Treat direct observational calibration as future research, never an implicit v1.0 claim.
+4. When v1.1 server work resumes, benchmark matched serial/4/8-worker execution.
 
 ## Latest execution-robustness update
 
@@ -212,8 +453,7 @@ Completed:
 - Generated run IDs use microsecond resolution, preventing rapid sweep collisions.
 
 Next scientific priority:
-1. Run `standard` qualification with `pysdm_parcel` and justify or revise the
-   default 5% tolerance.
+1. Populate and review the observational transition-event contract.
 2. Benchmark sampled RSS and streaming CSV I/O on a genuinely large PySDM ensemble.
 3. Add migration fixtures when the result schema first changes beyond version 2.
 
@@ -232,9 +472,9 @@ physical cloud-seeding evidence.
 | Step 13 | 완료 | PySDM 2.131 native scalar diagnostics, native 11 / derived 2 / proxy 0 | PySDM 버전 변경 시 product API 재검증 |
 | Step 14 | 1차 완료 | source-aware water budget, threshold robustness, numerical convergence gate | 장기/고해상도 실험으로 tolerance 근거 축적 |
 | Step 15 | 1차 완료 | publication panels, PNG/SVG/PDF export, journal width presets | 저널별 세부 typography preset은 실제 투고 시 확장 |
-| Step 16 | 2차 완료 | spectrum transition onset, checkpoint interpolation, threshold-pair audit | 1% 기본 threshold의 관측·문헌 근거 확정 |
-| Step 17 | 2차 완료 | streaming aggregation과 input/time/tracemalloc benchmark JSON | 대형 PySDM 실행의 RSS·I/O benchmark |
-| Step 18 | 2차 완료 | 모든 result type의 Markdown + self-contained HTML report | 향후 PDF report 및 figure embedding |
+| Step 16 | 3차 완료 | spectrum transition onset, threshold audit, observation comparison workflow | 실제 관측 event 자료로 1% 운영 floor 외부 검증 또는 수정 |
+| Step 17 | 2차 완료 | streaming aggregation, whole-process RSS, subprocess 격리, bounded warm workers | 서버에서 matched serial/4/8-worker benchmark |
+| Step 18 | 완료 | 모든 result type의 Markdown/HTML/PDF report와 figure embedding | 실제 투고 형식 필요 시 typography 확장 |
 | Step 19 | 1차 완료 | versioned `result_manifest.json`, legacy inference, Results compatibility status | 실제 schema 변경 시 migration fixture 추가 |
 
 ## 현재 동작하는 연구 흐름
@@ -297,15 +537,15 @@ physical cloud-seeding evidence.
 
 ## 다음 개발 우선순위
 
-1. ensemble member를 child process로 격리해 PySDM/Numba backend RSS가 process 종료 시 회수되는지 측정한다.
-2. 격리 benchmark의 자원 한도 안에서 1600-super-droplet common-seed response run을 설계한다.
-3. CSV와 수치적으로 동일한 columnar internal cache prototype을 benchmark한다.
-4. spectrum transition 1% threshold와 checkpoint 간격을 관측 자료로 보정한다.
+1. 근거 기반 Build the Lab v1.0 개발 일지를 게시하거나 승인한다.
+2. 승인 뒤 `develop`을 `main`에 병합한다.
+3. `main` 릴리스 CI를 확인한 뒤 `v1.0.0` 태그를 만든다.
+4. 직접 관측 보정과 서버 worker 성능 비교는 v1.1 이후 연구로 유지한다.
 
 ## 검증 명령
 
 ```powershell
-& .\.conda\python.exe -m unittest -v tests.test_native_diagnostics
+& .\.conda\python.exe -m unittest -v
 & .\.conda\python.exe scripts\check_project_integrity.py
 ```
 

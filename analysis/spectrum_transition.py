@@ -12,7 +12,9 @@ import pandas as pd
 TRANSITION_TABLE_NAME = "spectrum_transition"
 TRANSITION_ROBUSTNESS_TABLE_NAME = "spectrum_transition_onset_robustness"
 TRANSITION_METRIC = "rain_volume_fraction_of_activated"
-TRANSITION_DEFINITION_BUILD_ID = "literature-bounded-transition-v2-20260714"
+TRANSITION_DEFINITION_BUILD_ID = "literature-bounded-transition-v3-20260720"
+OBSERVATION_PREFERRED_CHECKPOINT_INTERVAL_S = 2.0
+OPERATIONAL_MAX_CHECKPOINT_INTERVAL_S = 10.0
 
 
 def spectrum_transition_config(config: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -190,6 +192,17 @@ def summarize_spectrum_transition(
         sign_consistent = bool((finite_shifts <= 0).all() or (finite_shifts >= 0).all())
 
     checkpoint_intervals = np.diff(np.sort(np.unique(time_s)))
+    maximum_checkpoint_interval_s = (
+        float(checkpoint_intervals.max()) if checkpoint_intervals.size else 0.0
+    )
+    if not checkpoint_intervals.size:
+        checkpoint_cadence_status = "unresolved"
+    elif maximum_checkpoint_interval_s <= OBSERVATION_PREFERRED_CHECKPOINT_INTERVAL_S:
+        checkpoint_cadence_status = "observation_preferred"
+    elif maximum_checkpoint_interval_s <= OPERATIONAL_MAX_CHECKPOINT_INTERVAL_S:
+        checkpoint_cadence_status = "operationally_bounded"
+    else:
+        checkpoint_cadence_status = "coarse_relative_to_literature"
     baseline_robustness = robustness_table
     if not robustness_table.empty and "rain_volume_fraction_threshold" in robustness_table:
         baseline_robustness = robustness_table[
@@ -205,6 +218,15 @@ def summarize_spectrum_transition(
             (baseline_finite_shifts <= 0).all()
             or (baseline_finite_shifts >= 0).all()
         )
+
+    if baseline_shift is None:
+        interpretation_status = "onset_not_resolved"
+    elif sign_consistent is not True or baseline_radius_sign_consistent is not True:
+        interpretation_status = "threshold_sensitive"
+    elif checkpoint_cadence_status == "coarse_relative_to_literature":
+        interpretation_status = "resolved_cadence_limited"
+    else:
+        interpretation_status = "resolved_robust"
 
     return {
         "available": True,
@@ -232,9 +254,14 @@ def summarize_spectrum_transition(
         "threshold_shift_median_s": float(finite_shifts.median()) if len(finite_shifts) else None,
         "threshold_shift_direction_consistent": sign_consistent,
         "baseline_radius_shift_direction_consistent": baseline_radius_sign_consistent,
-        "maximum_checkpoint_interval_s": (
-            float(checkpoint_intervals.max()) if checkpoint_intervals.size else 0.0
+        "interpretation_status": interpretation_status,
+        "threshold_evidence_status": "operational_floor_not_observational_standard",
+        "checkpoint_cadence_status": checkpoint_cadence_status,
+        "observation_preferred_checkpoint_interval_s": (
+            OBSERVATION_PREFERRED_CHECKPOINT_INTERVAL_S
         ),
+        "operational_max_checkpoint_interval_s": OPERATIONAL_MAX_CHECKPOINT_INTERVAL_S,
+        "maximum_checkpoint_interval_s": maximum_checkpoint_interval_s,
         "median_checkpoint_interval_s": (
             float(np.median(checkpoint_intervals)) if checkpoint_intervals.size else 0.0
         ),
@@ -246,6 +273,11 @@ def summarize_spectrum_transition(
             "The 20-25 um rain-size boundary is literature-supported. The 1% activated-liquid "
             "fraction is an operational baseline, not an observational standard, and is audited "
             "against configured fraction and radius sensitivities."
+        ),
+        "checkpoint_cadence_basis": (
+            "A 2 s radar integration retained drizzle-onset structure better than 10 s in "
+            "Acquistapace et al. (2017). Model spectrum checkpoints therefore target 2 s, "
+            "use 10 s as an operational upper bound, and cannot be finer than the model timestep."
         ),
         "interpretation": (
             "Negative onset shift means the seeding spectrum reached the transition threshold "

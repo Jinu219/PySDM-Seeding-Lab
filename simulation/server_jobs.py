@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import traceback
 import uuid
 from datetime import datetime
@@ -20,6 +21,8 @@ JOB_SCHEMA_VERSION = 1
 DEFAULT_JOBS_DIRECTORY = Path(".runtime") / "jobs"
 TERMINAL_JOB_STATES = {"succeeded", "failed"}
 _LOCAL_PROCESSES: Dict[int, subprocess.Popen] = {}
+ATOMIC_WRITE_MAX_ATTEMPTS = 8
+ATOMIC_WRITE_RETRY_SECONDS = 0.025
 
 
 def _now() -> str:
@@ -33,7 +36,19 @@ def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    os.replace(temp_path, path)
+    try:
+        for attempt in range(ATOMIC_WRITE_MAX_ATTEMPTS):
+            try:
+                os.replace(temp_path, path)
+                return
+            except PermissionError:
+                if attempt + 1 == ATOMIC_WRITE_MAX_ATTEMPTS:
+                    raise
+                time.sleep(
+                    min(ATOMIC_WRITE_RETRY_SECONDS * (2**attempt), 0.25)
+                )
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def jobs_root(project_root: Path | str = ".") -> Path:

@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "release": "v1.0.0",
+  "overall_status": "ready",
+  "merge_policy": {
+    "source_branch": "develop",
+    "target_branch": "main",
+    "blog_checkpoint": "before_merge",
+    "tag_after_merge": "v1.0.0"
+  },
+  "required_gate_order": [
+    "software_platform",
+    "real_observation_ingestion",
+    "external_validation_disposition",
+    "scientific_scope_review",
+    "release_candidate"
+  ],
+  "gates": [
+    {
+      "id": "software_platform",
+      "title": "Reproducible simulation and analysis platform",
+      "status": "complete",
+      "required": true,
+      "depends_on": [],
+      "evidence": [
+        "README.md",
+        "PROJECT_STATUS.md",
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "id": "real_observation_ingestion",
+      "title": "Real observation ingestion and mapping audit",
+      "status": "complete",
+      "required": true,
+      "depends_on": [
+        "software_platform"
+      ],
+      "evidence": [
+        "docs/evidence/BASTALIAS_IMPORT_20260720.md",
+        "docs/BASTALIAS_OBSERVATION_IMPORT.md"
+      ]
+    },
+    {
+      "id": "external_validation_disposition",
+      "title": "External validation feasibility and conservative disposition",
+      "status": "complete",
+      "required": true,
+      "depends_on": [
+        "real_observation_ingestion"
+      ],
+      "decision": "No direct-temporal dataset is accepted for v1.0. External calibration is explicitly unsupported and both reviewed datasets remain spatiotemporal proxies.",
+      "completion_evidence": [
+        "A source dataset with immutable provenance",
+        "A reviewed sampled-volume and time-origin mapping",
+        "An uncertainty and threshold-sensitivity audit"
+      ],
+      "evidence": [
+        "docs/evidence/BASTALIAS_IMPORT_20260720.md",
+        "docs/ARM_ENA_OBSERVATION_IMPORT.md",
+        "docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md",
+        "docs/V1_SCIENTIFIC_SCOPE.md"
+      ]
+    },
+    {
+      "id": "scientific_scope_review",
+      "title": "Final scientific claims and limitations review",
+      "status": "complete",
+      "required": true,
+      "depends_on": [
+        "external_validation_disposition"
+      ],
+      "completion_evidence": [
+        "The operational 1% floor is retained, revised, or rejected with evidence",
+        "Supported and unsupported claims are stated consistently across release documentation"
+      ],
+      "evidence": [
+        "docs/V1_SCIENTIFIC_SCOPE.md",
+        "release/v1_scientific_scope.json"
+      ]
+    },
+    {
+      "id": "release_candidate",
+      "title": "Release candidate verification and documentation freeze",
+      "status": "complete",
+      "required": true,
+      "depends_on": [
+        "scientific_scope_review"
+      ],
+      "completion_evidence": [
+        "Cross-platform CI and real PySDM integration pass on the release candidate",
+        "CHANGELOG and user workflow are verified",
+        "No unresolved required release gate remains"
+      ],
+      "evidence": [
+        "VERSION",
+        "CHANGELOG.md",
+        "docs/V1_RELEASE_CHECKLIST.md",
+        "docs/V1_SCIENTIFIC_SCOPE.md",
+        ".github/workflows/ci.yml"
+      ]
+    }
+  ],
+  "deferred": [
+    {
+      "id": "server_worker_scaling",
+      "target": "v1.1",
+      "reason": "Serial versus 4/8-worker server benchmarking is operational optimization, not a v1.0 scientific validity requirement."
+    }
+  ]
+}

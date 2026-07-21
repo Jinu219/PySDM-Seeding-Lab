@@ -1,0 +1,2 @@
+# Optional observation-ingestion dependency validated on Python 3.13.
+netCDF4==1.7.4

@@ -189,11 +189,12 @@ with st.expander("Diagnostic radius definitions", expanded=False):
     spectrum_cfg["checkpoint_interval_seconds"] = st.number_input(
         "Automatic checkpoint interval [s]",
         min_value=0.1,
-        value=float(spectrum_cfg.get("checkpoint_interval_seconds", 10.0)),
-        step=5.0,
+        value=float(spectrum_cfg.get("checkpoint_interval_seconds", 2.0)),
+        step=1.0,
         help=(
-            "Used only when the explicit checkpoint list is blank. The default 10 s cadence "
-            "follows drizzle-onset radar integration studies and is snapped to the model timestep."
+            "Used only when the explicit checkpoint list is blank. A 2 s observational target "
+            "preserves drizzle-onset structure better than 10 s, but checkpoints are snapped "
+            "to and cannot be finer than the model timestep."
         ),
     )
     try:

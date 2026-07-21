@@ -10,6 +10,14 @@ access, and bounded multi-core sweep execution, see
 bash scripts/server_web.sh start
 ```
 
+Results Dashboard CSV reads can use an optional validated Arrow IPC cache while
+keeping CSV as the scientific source of truth. Cache files are disposable,
+automatically invalidated when the CSV changes, and created by default only for
+tables with at least 25,000 cells. A retained real-result benchmark measured a
+2.01x warm-read speedup and exact DataFrame equality. Disable caching with
+`PYSDM_COLUMNAR_CACHE=0`. See
+[`docs/COLUMNAR_CACHE.md`](docs/COLUMNAR_CACHE.md).
+
 New results include Markdown, self-contained HTML, and paginated PDF research
 reports. The automatic PDF embeds the most relevant available water-budget,
 spectrum-transition, or numerical-convergence figure. Results Dashboard also
@@ -39,6 +47,12 @@ supports the 5% threshold for absolute rain-water state (12/12 checks, maximum
 3.285%) but not for seeding-minus-control response (2/21 checks). See
 [`docs/evidence/RAIN_QUALIFICATION_20260715.md`](docs/evidence/RAIN_QUALIFICATION_20260715.md).
 
+Spectrum-transition timing keeps 1% rain-size activated liquid as an operational
+floor, audited at 0.5/1/2% and across 20/25/30 µm rain-radius boundaries. Automatic
+checkpoints target 2 s, use 10 s as the interpretation upper bound, and snap to the
+model timestep. Coarser results are labeled cadence-limited rather than robust; see
+[`docs/SPECTRUM_TRANSITION_BASIS.md`](docs/SPECTRUM_TRANSITION_BASIS.md).
+
 For stochastic response qualification, use paired common random seeds rather than
 comparing unrelated ensemble means:
 
@@ -49,6 +63,42 @@ comparing unrelated ensemble means:
 The completed 800-super-droplet, three-seed pilot passed all 36 absolute rain-state
 checks but only 4/63 seeding-response checks. See
 [`docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md`](docs/evidence/RAIN_RESPONSE_COMMON_SEED_20260715.md).
+
+The 40-execution targeted profile remains dry-run-first:
+
+```powershell
+& .\.conda\python.exe scripts\run_numerical_qualification.py --config configs\marine.yaml --profile rain_response_targeted --adapter pysdm_parcel --dry-run
+```
+
+The targeted profile cannot start physical models unless
+`--confirm-targeted-run` is also supplied. The authorized 2026-07-20 run completed
+40/40 models: absolute rain state passed 60/60 checks at 5%, while seeding response
+passed only 11/105. Do not interpret the positive finest-reference response as a
+converged effect. See
+[`docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md`](docs/evidence/RAIN_RESPONSE_TARGETED_20260720.md).
+
+If an authorized common-seed qualification is interrupted, resume the same result
+directory with the original config and profile:
+
+```powershell
+& .\.conda\python.exe scripts\run_numerical_qualification.py `
+  --config configs\marine.yaml `
+  --profile rain_response_targeted `
+  --adapter pysdm_parcel `
+  --resume-result artifacts\numerical_qualification\RESULT_DIR `
+  --confirm-targeted-run
+```
+
+Resume validates a normalized SHA-256 execution-config fingerprint before any
+model starts. Completed case/seed members with readable primary data, summary, and
+matching config are reused; missing, corrupt, or failed members are rerun. Each
+attempt and its reuse/rerun counts remain in `qualification_plan.json`.
+
+Common-seed qualification evidence also includes a descriptive finest-reference
+response-estimand audit: seed values, mean, sample standard deviation, standard
+error, range, near-zero count, and direction consistency. Results displays this
+separately from the 5% resolution-convergence decision; it is not a confidence
+interval or significance test.
 
 Run an instrumented real-PySDM ensemble benchmark with:
 
@@ -177,6 +227,24 @@ pysdm-seeding-lab/
 pip install -r requirements.txt
 ```
 
+Install the optional real-PySDM adapter with:
+
+```bash
+pip install -r requirements.txt -r requirements-pysdm.txt
+```
+
+The validated CI baseline uses Python 3.13 and the exact direct dependency versions
+in `requirements-ci.txt`. Normal application installs remain flexible through the
+two files above; use the CI file when reproducing the tested environment exactly.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs the fast unit, workflow, and integrity checks on
+both Windows and Linux for pushes and pull requests. Real PySDM integration tests
+run once on Ubuntu after fast checks for `develop`/`main` pushes and manual workflow
+runs. Pull requests therefore get cross-platform feedback without repeating the
+long physical adapter tests on every matrix entry.
+
 ## Run the App
 
 ```bash
@@ -282,13 +350,68 @@ linearly interpolated checkpoint where rain-size liquid exceeds the configured
 fraction of activated liquid (default 0.01). It is a radius-bin diagnostic, not
 a particle-history activation event.
 
+The Results Dashboard can compare an uploaded observational onset-event CSV with
+every stored threshold candidate and download the descriptive scores. The same
+workflow is available as an immutable, hash-recorded artifact package:
+
+```powershell
+& .\.conda\python.exe scripts\validate_transition_observations.py `
+  --result-dir results\<comparison-result> `
+  --observations path\to\observation_events.csv
+```
+
+The required provenance, timing-alignment, uncertainty, and evidence-class fields
+are documented in [`docs/TRANSITION_OBSERVATION_VALIDATION.md`](docs/TRANSITION_OBSERVATION_VALIDATION.md).
+Synthetic rows test the workflow only and are never presented as observational
+support for the operational 1% floor.
+
+Public EUREC4A ATR42 BASTALIAS L2 NetCDF files can be converted into this contract
+with `scripts/extract_bastalias_drizzle_event.py` after installing
+`requirements-observations.txt`. The importer audits the −15/−17/−20 dBZ drizzle
+definitions, time quality, pixel persistence, source hash, and event window. Because
+the moving aircraft samples different horizontal volumes, its output is always
+`spatiotemporal_proxy`, not direct parcel-time validation. See
+[`docs/BASTALIAS_OBSERVATION_IMPORT.md`](docs/BASTALIAS_OBSERVATION_IMPORT.md).
+
+ARM ENA KAZR/KAZRARSCL files can be queried through ARM Live without placing the
+user ID or access token in process arguments, then converted to the same contract:
+
+```powershell
+$env:ARM_USER_ID = "your-arm-user-id"
+$env:ARM_ACCESS_TOKEN = "your-arm-access-token"
+& .\.conda\python.exe scripts\fetch_arm_live_data.py `
+  --datastream <exact-arm-datastream> --start 2016-11-21 --end 2016-11-22
+```
+
+The extractor performs strict QC-field checks, persistent echo detection, height
+selection, source hashing, and -20/-17/-15 dBZ sensitivity. Its result remains a
+fixed-column `spatiotemporal_proxy`, because Eulerian beam time is not automatically
+parcel age and reflectivity is not the model-native rain-liquid fraction. See
+[`docs/ARM_ENA_OBSERVATION_IMPORT.md`](docs/ARM_ENA_OBSERVATION_IMPORT.md).
+
 ## Development Roadmap
 
-Steps 0-19 and the current research-evidence pass are complete; see
-`DEVELOPMENT.md` for the full changelog. The prioritized plan now lives in
-`ROADMAP.md`: process-isolated backend memory measurement, a bounded targeted
-1600-super-droplet response qualification, a columnar internal cache comparison,
-and observational calibration of the operational transition floor are the next gates.
+Steps 0-19, process-isolation evidence, and the columnar-cache comparison are
+complete; see `DEVELOPMENT.md` for the full changelog. The prioritized plan now
+lives in `ROADMAP.md`: populate the transition-validation contract with a real
+observation, audit its event-to-model mapping, and freeze a conservative scientific
+scope. That review is complete: external calibration remains unsupported, and the
+v1.0 release candidate is complete. Development is paused at the Build the Lab
+checkpoint before merging `develop` into `main`. Serial/4/8-worker server
+benchmarking is deferred to v1.1.
+
+The finite v1.0 finish line is defined in
+[`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md) and the
+machine-readable `release/v1.0.0.json` manifest. Check it with:
+
+```powershell
+& .\.conda\python.exe scripts\check_release_readiness.py
+& .\.conda\python.exe scripts\check_scientific_scope.py
+```
+
+Normal development commits are pushed to `develop`. The project stops before the
+`develop` to `main` release merge so an evidence-backed Build the Lab post can be
+published first; the `v1.0.0` tag follows the verified merge.
 
 ## Research Direction
 
