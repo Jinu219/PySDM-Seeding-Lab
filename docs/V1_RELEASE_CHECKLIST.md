@@ -10,7 +10,9 @@ v1.0 is **not ready to merge**. Two of five required gates are complete. The nex
 and only active scientific blocker is a defensible direct-temporal drizzle-onset
 dataset and its parcel-time mapping. The BASTALIAS importer is useful real-data
 evidence, but the moving aircraft samples changing horizontal volumes and therefore
-remains a spatiotemporal proxy.
+remains a spatiotemporal proxy. The ARM ENA fixed-column importer is a closer
+temporal candidate, but horizontal advection still changes the sampled parcels and
+radar reflectivity is not the model-native liquid-fraction transition.
 
 Run the gate locally:
 
@@ -30,7 +32,9 @@ or `--json` for a machine-readable report.
    mapping audit exercise the full observation workflow without overstating the
    evidence class.
 3. **Direct-temporal validation — blocked.** Obtain a dataset whose sampled volume,
-   clock, event definition, and model-time alignment support a defensible comparison.
+   clock, event definition, observable mapping, and model-time alignment support a
+   defensible comparison. The ARM ENA pipeline is ready for a credentialed real-file
+   audit but does not by itself satisfy this gate.
 4. **Scientific scope review — pending.** Retain, revise, or reject the operational
    1% transition floor and make every release claim consistent with the evidence.
 5. **Release candidate — pending.** Freeze documentation, verify the end-to-end user

@@ -1,10 +1,10 @@
 # Project Status
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 Active branch: `develop`
 
-Current milestone: BASTALIAS observation import verified; direct temporal mapping pending
+Current milestone: ARM ENA fixed-column pipeline ready; real-file and parcel mapping pending
 
 Release status: v1.0 has 2/5 required gates complete. The machine-readable gate in
 `release/v1.0.0.json` blocks release claims and the `develop` to `main` merge until
@@ -12,6 +12,27 @@ direct-temporal validation, final scientific-scope review, and release-candidate
 verification are complete. The project will pause for a Build the Lab blog
 checkpoint immediately before that merge. See
 [`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
+
+## ARM ENA fixed-column candidate update
+
+Completed on 2026-07-21:
+- Added an ARM Live client that takes credentials only from environment variables,
+  redacts credential-bearing URLs from errors, and downloads through atomic partial
+  files with byte counts and SHA-256 hashes.
+- Added a local KAZR/KAZRARSCL importer with reflectivity aliases, matching QC-field
+  enforcement, time-height shape validation, selected-height gate counts,
+  persistence detection, and -20/-17/-15 dBZ threshold sensitivity.
+- Added immutable observation packages and nine synthetic ARM-format/API regression
+  tests. No real ARM file or credential was available at this checkpoint.
+- Forced every event to `spatiotemporal_proxy`. A fixed zenith beam samples an
+  Eulerian column containing changing advected parcels; reflectivity is also not
+  the model-native rain-liquid fraction.
+
+Decision: retain the direct-temporal gate as blocked. The next evidence is a
+credentialed real-file audit followed by independent parcel-trajectory and
+observable-to-model mapping review.
+
+Evidence: [`docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md`](docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md)
 
 ## BASTALIAS real-data import update
 

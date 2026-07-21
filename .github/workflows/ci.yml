@@ -56,6 +56,7 @@ jobs:
           tests.test_server_execution
           tests.test_transition_observation_validation
           tests.test_bastalias_observations
+          tests.test_arm_ena_observations
           tests.test_release_readiness
 
       - name: Check project integrity

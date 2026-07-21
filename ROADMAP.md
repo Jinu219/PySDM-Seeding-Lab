@@ -1,6 +1,6 @@
 # Roadmap
 
-## Current milestone snapshot (2026-07-20)
+## Current milestone snapshot (2026-07-21)
 
 Cross-platform CI baseline completed on 2026-07-20:
 - Fast regression and integrity checks run on Windows and Ubuntu with Python 3.13.
@@ -64,6 +64,17 @@ BASTALIAS real-data ingestion gate completed on 2026-07-20:
   mappings. BASTALIAS is forcibly classified as a spatiotemporal proxy because a
   moving aircraft samples different horizontal volumes.
 - This is real observation ingestion, not external validation of the model's 1% floor.
+
+ARM ENA fixed-column candidate pipeline completed on 2026-07-21:
+- Added credential-safe ARM Live query/download support with redacted errors,
+  atomic files, byte counts, and SHA-256 records.
+- Added strict KAZR/KAZRARSCL NetCDF ingestion, QC enforcement, height selection,
+  persistent echo detection, and -20/-17/-15 dBZ sensitivity packages.
+- The importer is forcibly `spatiotemporal_proxy`: fixed-site radar time is an
+  Eulerian column sequence, not a demonstrated Lagrangian parcel history, and
+  reflectivity is not the model-native rain-liquid fraction.
+- A credentialed real-file audit and independent trajectory/observable mapping are
+  still required; the direct-temporal release gate remains open.
 
 Targeted high-resolution response plan completed on 2026-07-16:
 - Added a dry-run-first 2.5/5-second, 800/1600-super-droplet response profile.

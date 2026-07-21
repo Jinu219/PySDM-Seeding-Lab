@@ -49,14 +49,16 @@
       "depends_on": [
         "real_observation_ingestion"
       ],
-      "blocker": "No observation dataset has yet demonstrated a defensible parcel-time mapping. BASTALIAS is a spatiotemporal proxy.",
+      "blocker": "No observation dataset has yet demonstrated a defensible parcel-time mapping. BASTALIAS and the ARM ENA fixed-column candidate remain spatiotemporal proxies.",
       "completion_evidence": [
         "A source dataset with immutable provenance",
         "A reviewed sampled-volume and time-origin mapping",
         "An uncertainty and threshold-sensitivity audit"
       ],
       "evidence": [
-        "docs/evidence/BASTALIAS_IMPORT_20260720.md"
+        "docs/evidence/BASTALIAS_IMPORT_20260720.md",
+        "docs/ARM_ENA_OBSERVATION_IMPORT.md",
+        "docs/evidence/ARM_ENA_CANDIDATE_AUDIT_20260721.md"
       ]
     },
     {

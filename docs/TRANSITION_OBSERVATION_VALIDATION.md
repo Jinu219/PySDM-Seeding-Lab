@@ -72,3 +72,7 @@ status. Spatial or moving-platform datasets remain
 `observational_mapping_review_required` even though their measurements are real.
 The EUREC4A BASTALIAS importer and its mandatory proxy boundary are documented in
 [`BASTALIAS_OBSERVATION_IMPORT.md`](BASTALIAS_OBSERVATION_IMPORT.md).
+The ARM ENA fixed-column importer is documented in
+[`ARM_ENA_OBSERVATION_IMPORT.md`](ARM_ENA_OBSERVATION_IMPORT.md). It also remains a
+`spatiotemporal_proxy`: fixed-site elapsed time is Eulerian column sampling, not
+automatically the Lagrangian parcel age used by the simulation.

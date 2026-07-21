@@ -1,5 +1,21 @@
 # Development Notes
 
+## 2026-07-21 - ARM ENA fixed-column observation candidate
+
+- Added a credential-safe ARM Live query/download client. Credentials remain in
+  environment variables, error URLs are redacted, and downloads are atomic with
+  byte-count and SHA-256 records.
+- Added ARM KAZR/KAZRARSCL NetCDF ingestion with strict QC matching, reflectivity
+  alias handling, height-window selection, persistent range-gate detection, and
+  -20/-17/-15 dBZ sensitivity.
+- Added immutable observation-contract packages plus synthetic NetCDF and mocked API
+  regression coverage. No credential or real ARM file is embedded in the project.
+- Kept the candidate forcibly classified as `spatiotemporal_proxy`; fixed-column
+  radar sampling and reflectivity do not yet establish parcel age or the model's
+  liquid-fraction transition.
+- The finite v1.0 gate remains 2/5 complete. The next evidence is a credentialed
+  real-file audit and independent parcel/observable mapping review.
+
 ## 2026-07-20 - Finite v1.0 release gate
 
 - Added a machine-readable `release/v1.0.0.json` gate with five ordered required

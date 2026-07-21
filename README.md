@@ -373,6 +373,22 @@ the moving aircraft samples different horizontal volumes, its output is always
 `spatiotemporal_proxy`, not direct parcel-time validation. See
 [`docs/BASTALIAS_OBSERVATION_IMPORT.md`](docs/BASTALIAS_OBSERVATION_IMPORT.md).
 
+ARM ENA KAZR/KAZRARSCL files can be queried through ARM Live without placing the
+user ID or access token in process arguments, then converted to the same contract:
+
+```powershell
+$env:ARM_USER_ID = "your-arm-user-id"
+$env:ARM_ACCESS_TOKEN = "your-arm-access-token"
+& .\.conda\python.exe scripts\fetch_arm_live_data.py `
+  --datastream <exact-arm-datastream> --start 2016-11-21 --end 2016-11-22
+```
+
+The extractor performs strict QC-field checks, persistent echo detection, height
+selection, source hashing, and -20/-17/-15 dBZ sensitivity. Its result remains a
+fixed-column `spatiotemporal_proxy`, because Eulerian beam time is not automatically
+parcel age and reflectivity is not the model-native rain-liquid fraction. See
+[`docs/ARM_ENA_OBSERVATION_IMPORT.md`](docs/ARM_ENA_OBSERVATION_IMPORT.md).
+
 ## Development Roadmap
 
 Steps 0-19, process-isolation evidence, and the columnar-cache comparison are
