@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-21
+Last updated: 2026-07-24
 
 Active branch: `develop`
 
@@ -12,6 +12,27 @@ and successful Windows/Ubuntu/real-PySDM release CI. All five required gates rem
 complete. External calibration is explicitly unsupported rather than treated as
 successful direct validation. See
 [`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
+
+## v1.1 worker-scaling benchmark harness
+
+Completed locally on 2026-07-24; physical server evidence is pending:
+- Froze `marine_showcase_ofat_v1` as the matched 10-case, 3-member,
+  control/seeding workload for serial/4/8-worker comparison.
+- Added a dry-run-first CLI that changes only `execution.max_workers` and requires
+  explicit `--execute` authorization for physical trials.
+- Added conservative RAM preflight, sequential trial ordering, process-tree RSS
+  sampling, environment/Git capture, durable stdout/stderr/status evidence, and
+  interruption-safe `--resume`.
+- Added machine-readable JSON and Markdown comparison output with wall time,
+  throughput, speedup, efficiency, failures, and a machine/workload-bounded
+  fastest measured candidate.
+- Verified the runner with unit coverage and an isolated two-case placeholder
+  integration trial.
+
+Decision: software preparation and workload freeze are complete. The next action
+is to execute the documented 1/4/8-worker sequence on the lab server and return
+`worker_scaling.json` for recommendation review. See
+[`docs/WORKER_SCALING_BENCHMARK.md`](docs/WORKER_SCALING_BENCHMARK.md).
 
 ## v1.0 scientific-scope disposition
 

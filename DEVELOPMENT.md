@@ -1,5 +1,20 @@
 # Development Notes
 
+## 2026-07-24 - v1.1 worker-scaling benchmark harness
+
+- Froze `marine_showcase_ofat_v1` as the matched serial/4/8-worker server workload.
+- Added `scripts/run_worker_scaling_benchmark.py` with plan-only default behavior,
+  explicit physical execution, conservative RAM preflight, sequential isolated
+  trials, process-tree RSS sampling, and interruption-safe resume.
+- Added durable plan, environment, trial, JSON comparison, Markdown report, child
+  status, and stdout/stderr artifacts.
+- Added speedup, efficiency, throughput, failure, and bounded fastest-candidate
+  summaries without promoting a machine-specific result to a universal default.
+- Added a complete lab-server execution and evidence-return procedure.
+- Added unit coverage plus an isolated two-case placeholder integration trial.
+
+Physical serial/4/8-worker real-PySDM evidence remains a lab-server action.
+
 ## 2026-07-21 - v1.0.0 released; v1.1 development opened
 
 - Published the evidence-backed Build the Lab entry and merged PR #5 into `main`.

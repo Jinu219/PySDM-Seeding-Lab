@@ -124,3 +124,9 @@ Submit it as a background job. After all 10 cases succeed, compare wall time and
 peak memory, then increase to 8 or 10 workers if the server has enough headroom.
 Using 20 workers for this particular scenario gives no additional concurrency
 because it contains only 10 cases.
+
+For the controlled v1.1 qualification, do not edit and submit three scenarios
+manually. Use the matched dry-run-first benchmark runner documented in
+[`WORKER_SCALING_BENCHMARK.md`](WORKER_SCALING_BENCHMARK.md). It changes only
+`execution.max_workers`, captures the machine and Git scope, samples the complete
+live process tree, and preserves failed-trial evidence.

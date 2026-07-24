@@ -10,6 +10,21 @@ access, and bounded multi-core sweep execution, see
 bash scripts/server_web.sh start
 ```
 
+The v1.1 server qualification uses a dry-run-first matched 1/4/8-worker
+benchmark. It records wall time, throughput, process-tree peak RSS, failures, and
+machine scope without changing the scientific workload. See
+[`docs/WORKER_SCALING_BENCHMARK.md`](docs/WORKER_SCALING_BENCHMARK.md). Start with:
+
+```bash
+python scripts/run_worker_scaling_benchmark.py \
+  --config experiments/scenarios/marine_showcase_ofat_v1.yaml \
+  --workers 1 4 8 \
+  --output-dir artifacts/worker_scaling/$(hostname)-$(date -u +%Y%m%d)
+```
+
+This command only writes the preflight plan. Physical execution requires the
+explicit `--execute` flag after the RAM check has been reviewed.
+
 Results Dashboard CSV reads can use an optional validated Arrow IPC cache while
 keeping CSV as the scientific source of truth. Cache files are disposable,
 automatically invalidated when the CSV changes, and created by default only for

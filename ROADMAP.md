@@ -1,6 +1,6 @@
 # Roadmap
 
-## Current milestone snapshot (2026-07-21)
+## Current milestone snapshot (2026-07-24)
 
 v1.0.0 released and v1.1 opened on 2026-07-21:
 - PR #5 merged `develop` into `main` at `d0fc97e` after the evidence-backed Build
@@ -11,6 +11,9 @@ v1.0.0 released and v1.1 opened on 2026-07-21:
   [`v1.0.0`](https://github.com/Jinu219/PySDM-Seeding-Lab/releases/tag/v1.0.0).
 - v1.1 starts with matched serial/4/8-worker real-PySDM server scaling. Direct
   Lagrangian observation mapping remains a separate later research gate.
+- The matched workload and dry-run-first benchmark harness were frozen on
+  2026-07-24. Local workflow verification is complete; physical lab-server
+  execution and the bounded worker recommendation remain pending.
 
 Cross-platform CI baseline completed on 2026-07-20:
 - Fast regression and integrity checks run on Windows and Ubuntu with Python 3.13.
@@ -142,8 +145,10 @@ Collision-ON rain qualification completed on 2026-07-15:
   enhancement remains outside the supported interpretation scope.
 
 Revised next ordered gates for v1.1:
-1. Freeze a matched serial/4/8-worker real-PySDM server benchmark workload.
-2. Record wall time, throughput, parent/process-tree peak RSS, and failure evidence.
+1. Completed: freeze the matched serial/4/8-worker real-PySDM workload and
+   dry-run-first evidence harness.
+2. Execute the sequence on the lab server and record wall time, throughput,
+   parent/process-tree peak RSS, and failure evidence.
 3. Publish a bounded worker recommendation with explicit machine and workload scope.
 4. Keep direct Lagrangian observation mapping as an independent scientific gate.
 

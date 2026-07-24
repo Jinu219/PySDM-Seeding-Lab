@@ -403,9 +403,21 @@ def main() -> None:
     py_compile.compile(str(PROJECT_ROOT / "simulation" / "server_job_worker.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_numerical_qualification.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "run_ensemble_benchmark.py"), doraise=True)
+    py_compile.compile(
+        str(PROJECT_ROOT / "scripts" / "run_worker_scaling_benchmark.py"),
+        doraise=True,
+    )
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_memory_benchmarks.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "compare_ensemble_execution_backends.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "benchmark_columnar_cache.py"), doraise=True)
+    py_compile.compile(
+        str(PROJECT_ROOT / "simulation" / "worker_scaling.py"),
+        doraise=True,
+    )
+    py_compile.compile(
+        str(PROJECT_ROOT / "simulation" / "worker_scaling_trial.py"),
+        doraise=True,
+    )
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "validate_transition_observations.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "extract_bastalias_drizzle_event.py"), doraise=True)
     py_compile.compile(str(PROJECT_ROOT / "scripts" / "fetch_arm_live_data.py"), doraise=True)

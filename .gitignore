@@ -25,3 +25,4 @@ artifacts/ensemble_backend_ab/
 artifacts/transition_observation_validation/
 artifacts/bastalias_observations/
 artifacts/arm_ena_observations/
+artifacts/worker_scaling/
