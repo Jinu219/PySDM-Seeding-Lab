@@ -65,6 +65,14 @@ class ServerExecutionTests(unittest.TestCase):
             script.index("falling back to nohup"),
         )
 
+    def test_deployment_persistence_health_check_bypasses_proxy(self):
+        script = (PROJECT_ROOT / "scripts" / "deploy_server.ps1").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("curl --noproxy \\* --fail", script)
+        self.assertIn("ssh '$Target'", script)
+
     def test_atomic_status_write_retries_transient_permission_error(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             status_path = Path(tmp_dir) / "status.json"
