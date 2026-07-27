@@ -8,6 +8,7 @@ import streamlit as st
 from simulation.server_jobs import (
     BackgroundJobControlError,
     control_background_job,
+    estimate_job_remaining,
     job_table_rows,
     list_background_jobs,
 )
@@ -53,17 +54,24 @@ completed = max(int(record.get("completed_model_runs", 0)), 0)
 fraction = 1.0 if record.get("state") == "succeeded" else (
     min(completed, total) / total if total else 0.0
 )
+remaining = estimate_job_remaining(record)
 
-metric_cols = st.columns(5)
+metric_cols = st.columns(6)
 metric_cols[0].metric("State", str(record.get("state", "unknown")))
 metric_cols[1].metric("PID", str(record.get("pid") or "-"))
 metric_cols[2].metric("Workers", int(record.get("configured_workers", 1)))
 metric_cols[3].metric("Model runs", f"{completed}/{total}")
 metric_cols[4].metric("Progress", f"{fraction * 100:.1f}%")
+metric_cols[5].metric("Remaining", remaining["label"])
 st.progress(fraction)
 st.info(
     f"Stage: `{record.get('stage', 'unknown')}` · {record.get('message', '')}"
 )
+if remaining.get("finish_at"):
+    st.caption(
+        f"Estimated finish (server local time): `{remaining['finish_at']}` · "
+        f"{remaining['basis']}. ETA is approximate and adapts as runs complete."
+    )
 
 state = str(record.get("state", "unknown"))
 job_dir = Path(str(record.get("job_dir", "")))

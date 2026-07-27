@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,6 +18,7 @@ from simulation.server_jobs import (
     BackgroundJobControlError,
     _atomic_write_json,
     control_background_job,
+    estimate_job_remaining,
     job_table_rows,
     read_background_job,
     submit_background_job,
@@ -161,6 +163,53 @@ class ServerExecutionTests(unittest.TestCase):
 
         self.assertEqual(signal_group.call_count, 2)
         self.assertEqual(record["state"], "cancelled")
+
+    def test_job_eta_uses_recent_aggregate_throughput(self):
+        estimate = estimate_job_remaining(
+            {
+                "state": "running",
+                "total_model_runs": 100,
+                "completed_model_runs": 50,
+                "started_at": "2026-07-27T12:00:00",
+                "progress_samples": [
+                    {"at": "2026-07-27T12:10:00", "completed": 20},
+                    {"at": "2026-07-27T12:15:00", "completed": 50},
+                ],
+            },
+            now=datetime.fromisoformat("2026-07-27T12:15:00"),
+        )
+
+        self.assertEqual(estimate["seconds"], 500.0)
+        self.assertEqual(estimate["label"], "\u2248 8m 20s")
+        self.assertIn("recent throughput", estimate["basis"])
+
+    def test_job_eta_excludes_recorded_pause_interval(self):
+        estimate = estimate_job_remaining(
+            {
+                "state": "running",
+                "total_model_runs": 100,
+                "completed_model_runs": 50,
+                "started_at": "2026-07-27T12:00:00",
+                "paused_at": "2026-07-27T12:04:00",
+                "resumed_at": "2026-07-27T12:14:00",
+            },
+            now=datetime.fromisoformat("2026-07-27T12:20:00"),
+        )
+
+        self.assertEqual(estimate["seconds"], 600.0)
+        self.assertEqual(estimate["label"], "≈ 10m 0s")
+
+    def test_job_eta_reports_paused_state_without_countdown(self):
+        estimate = estimate_job_remaining(
+            {
+                "state": "paused",
+                "total_model_runs": 100,
+                "completed_model_runs": 50,
+            }
+        )
+
+        self.assertEqual(estimate["label"], "Paused")
+        self.assertIsNone(estimate["seconds"])
 
     def test_worker_count_validation(self):
         cfg = _fast_config()

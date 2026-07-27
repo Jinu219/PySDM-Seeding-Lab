@@ -8,7 +8,7 @@ import sys
 import time
 import traceback
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
@@ -27,10 +27,143 @@ ATOMIC_WRITE_MAX_ATTEMPTS = 8
 ATOMIC_WRITE_RETRY_SECONDS = 0.025
 LINUX_SIGSTOP = getattr(signal, "SIGSTOP", 19)
 LINUX_SIGCONT = getattr(signal, "SIGCONT", 18)
+PROGRESS_SAMPLE_LIMIT = 30
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now().isoformat(timespec="microseconds")
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _format_remaining_seconds(seconds: float) -> str:
+    total_seconds = max(int(round(seconds)), 0)
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+    minutes, remaining_seconds = divmod(total_seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {remaining_seconds}s"
+    hours, remaining_minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {remaining_minutes}m"
+    days, remaining_hours = divmod(hours, 24)
+    return f"{days}d {remaining_hours}h"
+
+
+def estimate_job_remaining(
+    record: Dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> Dict[str, Any]:
+    """Estimate wall-clock time remaining from recent aggregate job throughput."""
+    state = str(record.get("state", "unknown"))
+    terminal_labels = {
+        "succeeded": "Done",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+    }
+    if state in terminal_labels:
+        return {
+            "label": terminal_labels[state],
+            "seconds": 0.0 if state == "succeeded" else None,
+            "finish_at": None,
+            "basis": "terminal job state",
+        }
+    if state == "paused":
+        return {
+            "label": "Paused",
+            "seconds": None,
+            "finish_at": None,
+            "basis": "ETA resumes after the job continues",
+        }
+
+    total = max(int(record.get("total_model_runs", 0)), 0)
+    completed = max(int(record.get("completed_model_runs", 0)), 0)
+    remaining_runs = max(total - completed, 0)
+    if not total:
+        return {
+            "label": "Calculating…",
+            "seconds": None,
+            "finish_at": None,
+            "basis": "total model-run count is unavailable",
+        }
+    if remaining_runs == 0:
+        return {
+            "label": "Finishing…",
+            "seconds": 0.0,
+            "finish_at": None,
+            "basis": "all model runs are complete; final artifacts are being written",
+        }
+
+    current_time = now or datetime.now()
+    current_epoch = current_time.timestamp()
+    sample_points: list[tuple[float, int]] = []
+    for sample in record.get("progress_samples", []):
+        if not isinstance(sample, dict):
+            continue
+        sample_time = _parse_timestamp(sample.get("at"))
+        sample_completed = sample.get("completed")
+        if sample_time is None or not isinstance(sample_completed, int):
+            continue
+        sample_points.append((sample_time.timestamp(), sample_completed))
+
+    seconds_per_run: float | None = None
+    basis = ""
+    if len(sample_points) >= 2:
+        first_epoch, first_completed = sample_points[0]
+        last_epoch, last_completed = sample_points[-1]
+        elapsed = last_epoch - first_epoch
+        completed_delta = last_completed - first_completed
+        if elapsed > 0 and completed_delta > 0:
+            seconds_per_run = elapsed / completed_delta
+            basis = f"recent throughput over {completed_delta} completed model runs"
+
+    if seconds_per_run is None:
+        baseline_time = _parse_timestamp(record.get("eta_baseline_at"))
+        baseline_completed = int(record.get("eta_baseline_completed", 0) or 0)
+        if baseline_time is None:
+            baseline_time = _parse_timestamp(record.get("started_at"))
+            baseline_completed = 0
+        if baseline_time is not None:
+            elapsed = current_epoch - baseline_time.timestamp()
+            if record.get("eta_baseline_at") is None:
+                paused_at = _parse_timestamp(record.get("paused_at"))
+                resumed_at = _parse_timestamp(record.get("resumed_at"))
+                if paused_at is not None and resumed_at is not None:
+                    elapsed -= max(
+                        resumed_at.timestamp() - paused_at.timestamp(),
+                        0.0,
+                    )
+            completed_delta = completed - baseline_completed
+            if elapsed > 0 and completed_delta > 0:
+                seconds_per_run = elapsed / completed_delta
+                basis = (
+                    f"average throughput over {completed_delta} completed model runs"
+                )
+
+    if seconds_per_run is None:
+        return {
+            "label": "Calculating…",
+            "seconds": None,
+            "finish_at": None,
+            "basis": "waiting for completed model runs",
+        }
+
+    remaining_seconds = seconds_per_run * remaining_runs
+    finish_at = current_time + timedelta(seconds=remaining_seconds)
+    return {
+        "label": f"≈ {_format_remaining_seconds(remaining_seconds)}",
+        "seconds": remaining_seconds,
+        "finish_at": finish_at.isoformat(timespec="minutes"),
+        "basis": basis,
+    }
 
 
 def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
@@ -192,10 +325,14 @@ def control_background_job(
                 f"Only a paused job can be resumed; current state is {state!r}."
             )
         _signal_process_group(process_group, LINUX_SIGCONT)
+        resumed_at = _now()
         return _update_background_job(
             directory,
             state="running",
-            resumed_at=_now(),
+            resumed_at=resumed_at,
+            eta_baseline_at=resumed_at,
+            eta_baseline_completed=int(record.get("completed_model_runs", 0)),
+            progress_samples=[],
             stage="resuming",
             message="Experiment resumed by user",
         )
@@ -232,6 +369,7 @@ def control_background_job(
 def _update_background_job(job_dir: Path, **updates: Any) -> Dict[str, Any]:
     payload = read_background_job(job_dir)
     payload.update(updates)
+    payload["updated_at"] = _now()
     _atomic_write_json(job_status_path(job_dir), payload)
     return payload
 
@@ -293,6 +431,7 @@ def submit_background_job(
         "created_at": _now(),
         "started_at": None,
         "finished_at": None,
+        "updated_at": _now(),
         "pid": None,
         "project_root": str(root),
         "config_path": str(config_path),
@@ -303,6 +442,7 @@ def submit_background_job(
         "configured_workers": int(cfg.get("execution", {}).get("max_workers", 1)),
         "total_model_runs": int(plan.total_model_runs),
         "completed_model_runs": 0,
+        "progress_samples": [],
         "stage": "queued",
         "stage_current": 0,
         "stage_total": 1,
@@ -373,8 +513,27 @@ def run_background_job(job_dir: Path | str) -> int:
 
     def report_progress(stage: str, current: int, total: int, message: str) -> None:
         nonlocal completed_model_runs
+        progress_samples = None
         if stage == "model_run_complete":
             completed_model_runs += 1
+            current_record = read_background_job(directory)
+            progress_samples = [
+                sample
+                for sample in current_record.get("progress_samples", [])
+                if isinstance(sample, dict)
+            ]
+            progress_samples.append(
+                {
+                    "at": _now(),
+                    "completed": completed_model_runs,
+                }
+            )
+            progress_samples = progress_samples[-PROGRESS_SAMPLE_LIMIT:]
+        progress_updates = (
+            {"progress_samples": progress_samples}
+            if progress_samples is not None
+            else {}
+        )
         _update_background_job(
             directory,
             state="running",
@@ -383,12 +542,17 @@ def run_background_job(job_dir: Path | str) -> int:
             stage_total=int(total),
             message=str(message),
             completed_model_runs=completed_model_runs,
+            **progress_updates,
         )
 
+    started_at = _now()
     _update_background_job(
         directory,
         state="running",
-        started_at=_now(),
+        started_at=started_at,
+        eta_baseline_at=started_at,
+        eta_baseline_completed=completed_model_runs,
+        progress_samples=[],
         pid=os.getpid(),
         stage="starting",
         message="Loading experiment configuration",
@@ -448,6 +612,7 @@ def job_table_rows(records: Iterable[Dict[str, Any]]) -> list[Dict[str, Any]]:
         progress = 100.0 if record.get("state") == "succeeded" else (
             100.0 * min(completed, total) / total if total else 0.0
         )
+        remaining = estimate_job_remaining(record)
         rows.append(
             {
                 "job_id": record.get("job_id"),
@@ -457,6 +622,7 @@ def job_table_rows(records: Iterable[Dict[str, Any]]) -> list[Dict[str, Any]]:
                 "workers": record.get("configured_workers", 1),
                 "progress_percent": round(progress, 1),
                 "model_runs": f"{completed}/{total}",
+                "remaining": remaining["label"],
                 "stage": record.get("stage"),
                 "created_at": record.get("created_at"),
                 "result_dir": record.get("result_dir"),

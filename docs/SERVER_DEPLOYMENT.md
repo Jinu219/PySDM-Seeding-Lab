@@ -109,6 +109,9 @@ The worker writes scientific outputs to the configured `output.base_dir`, usuall
 
 The selected active job can also be controlled from **08. Server Jobs**:
 
+- **Remaining** estimates wall-clock time to completion from recent aggregate
+  model-run throughput and shows an approximate server-local finish time. It
+  recalibrates after a paused job resumes.
 - **Pause job** suspends the isolated process group. CPU use stops while the
   in-memory calculation state remains allocated.
 - **Resume job** continues a paused job from that in-memory state.
