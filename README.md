@@ -29,6 +29,12 @@ For the first end-to-end web run, select the saved
 `Lab Server Real PySDM Pilot v1` scenario directly on **06. Run Simulation**.
 It is a bounded 16-model-run workflow pilot, not efficacy evidence.
 
+For a mechanism-focused lab meeting after that pilot, run
+`Lab Meeting Growth Pathway v1`. It compares three seed dry radii with
+collision-coalescence OFF/ON over five common seeds (60 physical model runs).
+Use the Korean runbook and presentation narrative in
+[`docs/LAB_MEETING_GROWTH_PATHWAY_KO.md`](docs/LAB_MEETING_GROWTH_PATHWAY_KO.md).
+
 Results Dashboard CSV reads can use an optional validated Arrow IPC cache while
 keeping CSV as the scientific source of truth. Cache files are disposable,
 automatically invalidated when the CSV changes, and created by default only for

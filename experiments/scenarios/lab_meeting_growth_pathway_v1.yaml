@@ -1,0 +1,138 @@
+metadata:
+  name: Lab Meeting Growth Pathway v1
+  slug: lab_meeting_growth_pathway_v1
+  memo: >-
+    Lab-meeting mechanism scenario for comparing three hygroscopic seed dry
+    radii with collision-coalescence OFF and ON. Five common random seeds
+    support descriptive ensemble spread. The response is seeding minus its
+    paired control; it is a parcel-model sensitivity experiment, not field
+    efficacy or observational calibration evidence.
+  created_at: '2026-07-27T00:00:00'
+config:
+  schema_version: 1
+  experiment:
+    name: lab_meeting_growth_pathway_v1
+    mode: parameter_sweep
+    description: >-
+      Mechanism-focused real-PySDM experiment tracing activation, condensational
+      growth, and the collision-coalescence pathway after hygroscopic particle
+      injection.
+    random_seed: 52001
+  simulation:
+    adapter: pysdm_parcel
+    case_name: base
+    notes: >-
+      Dry radius is varied at fixed seed number concentration, so seed dry-mass
+      loading also changes. Interpret radius response as a coupled size-dose
+      sensitivity. Do not infer real-cloud seeding efficacy.
+  environment:
+    temperature: 300.0
+    pressure: 100000.0
+    water_vapour_mixing_ratio: 0.024
+    relative_humidity: 96.0
+    initial_altitude: 0.0
+    updraft_velocity: 0.8
+    duration: 1500
+    timestep: 10
+  background_aerosol:
+    distribution_type: single_lognormal
+    number_concentration: 80.0
+    number_superdroplets: 400
+    dry_radius: 9.0e-08
+    geometric_sigma: 1.5
+    kappa: 0.7
+    particle_density: 2160.0
+    chemical_composition: sea_salt_mixed
+  seeding:
+    enabled: true
+    material_type: hygroscopic
+    dry_radius: 1.0e-06
+    geometric_sigma: 1.2
+    kappa: 0.8
+    particle_density: 1770.0
+    number_concentration: 10.0
+    number_superdroplets: 400
+    injection_start: 900
+    injection_end: 1200
+    injection_altitude: 500.0
+    delivery_method: idealized_uniform
+  dynamics:
+    updraft_strength: 0.8
+    downdraft_strength: 0.0
+    turbulence_intensity: 0.1
+    entrainment_rate: 0.0
+    detrainment_rate: 0.0
+    wind_shear: 0.0
+    convergence: 0.0
+    cape: 0.0
+    cin: 0.0
+  microphysics:
+    condensation: true
+    collision: true
+    sedimentation: false
+  diagnostics:
+    growth_pathway_mode: true
+    activation_radius_threshold: 5.0e-07
+    rain_radius_threshold: 2.5e-05
+    wet_radius_spectrum:
+      enabled: true
+      min_radius: 5.0e-08
+      max_radius: 0.001
+      n_bins: 32
+      checkpoint_times:
+      - 0.0
+      - 600.0
+      - 900.0
+      - 1050.0
+      - 1200.0
+      - 1500.0
+      checkpoint_interval_seconds: 10.0
+      threshold_factors:
+      - 0.8
+      - 1.0
+      - 1.2
+    water_budget:
+      enabled: true
+      warning_relative_drift_percent: 0.01
+      failure_relative_drift_percent: 0.1
+    numerical_convergence:
+      enabled: false
+      relative_tolerance_percent: 5.0
+      relative_reference_floor: 1.0e-12
+      metrics: []
+    spectrum_transition:
+      enabled: true
+      rain_volume_fraction_threshold: 0.01
+      rain_volume_fraction_thresholds:
+      - 0.005
+      - 0.01
+      - 0.02
+  sweep:
+    design: cartesian
+    run_mode: control_vs_seeding
+    max_runs: 6
+    ranking_metric: ensemble.metrics.rain_water_mixing_ratio_diff_final_mean
+    parameters:
+    - name: seeding.dry_radius
+      values:
+      - 5.0e-07
+      - 1.0e-06
+      - 2.0e-06
+    - name: microphysics.collision
+      values:
+      - false
+      - true
+  ensemble:
+    enabled: true
+    n_members: 5
+    seed_start: 52001
+    seed_step: 1009
+    execution_backend: in_process
+    collect_garbage_between_members: false
+  execution:
+    max_workers: 6
+  output:
+    base_dir: results
+    save_config: true
+    save_summary: true
+    save_timeseries: true

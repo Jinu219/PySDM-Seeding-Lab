@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import tempfile
@@ -208,6 +209,57 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             "without supporting a cloud-seeding efficacy claim",
             payload["metadata"]["memo"],
         )
+
+    def test_lab_meeting_growth_pathway_scenario_is_bounded_and_runnable(self):
+        scenario_path = (
+            Path(__file__).resolve().parents[1]
+            / "experiments"
+            / "scenarios"
+            / "lab_meeting_growth_pathway_v1.yaml"
+        )
+        payload = read_scenario(scenario_path)
+        cfg = apply_scenario_identity(payload["config"], scenario_path)
+        cases = generate_sweep_cases(cfg)
+        plan = estimate_run_plan(cfg)
+        errors = [
+            issue
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        ]
+        case_errors = [
+            issue
+            for case in cases
+            for issue in validate_config_detailed(case.config)
+            if issue.severity == "error"
+        ]
+
+        self.assertFalse(errors)
+        self.assertFalse(case_errors)
+        self.assertEqual(len(cases), 6)
+        self.assertEqual(plan.ensemble_members, 5)
+        self.assertEqual(plan.control_factor, 2)
+        self.assertEqual(plan.total_model_runs, 60)
+        self.assertEqual(plan.configured_workers, 6)
+        self.assertEqual(plan.effective_workers, 6)
+        self.assertEqual(cfg["sweep"]["design"], "cartesian")
+        self.assertEqual(
+            {
+                (
+                    case.config["seeding"]["dry_radius"],
+                    case.config["microphysics"]["collision"],
+                )
+                for case in cases
+            },
+            {
+                (5.0e-7, False),
+                (5.0e-7, True),
+                (1.0e-6, False),
+                (1.0e-6, True),
+                (2.0e-6, False),
+                (2.0e-6, True),
+            },
+        )
+        self.assertIn("not field efficacy", payload["metadata"]["memo"])
 
     def test_run_plan_uses_ofat_case_count(self):
         cfg = default_config()
@@ -1583,6 +1635,44 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSDM_AVAILABLE, "PySDM optional dependencies are not installed")
 class NativePySDMIntegrationTests(unittest.TestCase):
+    def test_paired_control_matches_seeding_before_injection(self):
+        cfg = _small_native_config()
+        cfg["environment"].update({"duration": 30, "timestep": 15})
+        cfg["seeding"].update(
+            {
+                "number_superdroplets": 5,
+                "injection_start": 30,
+                "injection_end": 45,
+            }
+        )
+        cfg["microphysics"]["collision"] = True
+
+        control_cfg = copy.deepcopy(cfg)
+        control_cfg["seeding"]["enabled"] = False
+        seeding_cfg = copy.deepcopy(cfg)
+        seeding_cfg["seeding"]["enabled"] = True
+
+        control = run_pysdm_parcel_simulation(
+            build_run_spec(control_cfg)
+        ).require_timeseries()
+        seeding = run_pysdm_parcel_simulation(
+            build_run_spec(seeding_cfg)
+        ).require_timeseries()
+
+        pre_injection = control["time_s"] <= cfg["seeding"]["injection_start"]
+        shared_numeric_columns = [
+            column
+            for column in control.select_dtypes(include=[np.number]).columns
+            if column in seeding.columns and column != "seeding_active"
+        ]
+        np.testing.assert_allclose(
+            control.loc[pre_injection, shared_numeric_columns],
+            seeding.loc[pre_injection, shared_numeric_columns],
+            rtol=0.0,
+            atol=0.0,
+            equal_nan=True,
+        )
+
     def test_real_pysdm_native_products_and_liquid_partition(self):
         cfg = _small_native_config()
         result = run_pysdm_parcel_simulation(build_run_spec(cfg))

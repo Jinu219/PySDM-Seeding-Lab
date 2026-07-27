@@ -143,3 +143,14 @@ Monitor it from **08. Server Jobs** and inspect the completed result from
 **07. Results**. This pilot checks the real adapter, process pool, durable job,
 diagnostic, and reporting workflow. Its small-ensemble differences are descriptive
 and do not support a cloud-seeding efficacy claim.
+
+## 8. Lab-meeting growth-pathway run
+
+After the pilot, select `Lab Meeting Growth Pathway v1` on **06. Run
+Simulation**. Verify `6` sweep cases, `5` ensemble members, `60` total model
+runs, `6/6` case workers, and zero blocking errors. Run it only from a commit
+containing the paired-control seed-capacity fix; older pilot results that diverge
+before injection are not valid seeding-response figures.
+
+The presentation workflow and plot-reading order are documented in
+[`LAB_MEETING_GROWTH_PATHWAY_KO.md`](LAB_MEETING_GROWTH_PATHWAY_KO.md).

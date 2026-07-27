@@ -204,7 +204,12 @@ def _configure_settings(spec: SimulationRunSpec, progress_callback: ProgressCall
         n_sd_initial = 100
 
     seeding_enabled = bool(seed.get("enabled", True))
-    n_sd_seeding = int(seed.get("number_superdroplets", 100)) if seeding_enabled else 1
+    # Paired control and seeding runs must use the same particle-array capacity.
+    # Coalescence is stochastic, so changing the number of inactive seed slots
+    # changes its random path even before the configured injection window.
+    # A disabled control therefore keeps the requested seed capacity while its
+    # injection-rate callable remains identically zero.
+    n_sd_seeding = int(seed.get("number_superdroplets", 100))
 
     injection_rate = _make_injection_rate(
         enabled=seeding_enabled,

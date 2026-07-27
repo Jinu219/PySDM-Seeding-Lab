@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-24
+Last updated: 2026-07-27
 
 Active branch: `develop`
 
@@ -42,6 +42,17 @@ First-use server pilot added on 2026-07-27:
   and Results before the larger 1/4/8-worker qualification.
 - Its small-ensemble differences remain descriptive workflow output, not
   cloud-seeding efficacy evidence.
+
+Lab-meeting mechanism scenario added on 2026-07-27:
+- Fixed real-PySDM paired controls so disabled controls retain the same inactive
+  seed-slot capacity as seeding runs; stochastic collision paths now remain
+  identical before injection.
+- Added a 3-radius × collision OFF/ON Cartesian scenario with five common seeds,
+  six case workers, and 60 physical model runs.
+- Added a Korean runbook covering web execution, plot interpretation, a
+  four-figure presentation set, a seven-minute talk flow, and scientific limits.
+- Results produced before the paired-control fix must not be presented as causal
+  seeding responses when they diverge before the configured injection time.
 
 ## v1.0 scientific-scope disposition
 
