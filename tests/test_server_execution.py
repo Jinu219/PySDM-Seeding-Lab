@@ -14,7 +14,9 @@ import pandas as pd
 from simulation.runner import run_parameter_sweep
 from simulation.schema import default_config
 from simulation.server_jobs import (
+    BackgroundJobControlError,
     _atomic_write_json,
+    control_background_job,
     job_table_rows,
     read_background_job,
     submit_background_job,
@@ -73,6 +75,79 @@ class ServerExecutionTests(unittest.TestCase):
                 {"state": "running"},
             )
             self.assertEqual(sleep.call_count, 2)
+
+    def test_read_job_reports_externally_paused_linux_process(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            job_dir = Path(tmp_dir)
+            (job_dir / "status.json").write_text(
+                json.dumps(
+                    {
+                        "state": "running",
+                        "pid": 1234,
+                        "message": "Calculating",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "simulation.server_jobs._linux_process_state",
+                return_value="T",
+            ):
+                record = read_background_job(job_dir)
+
+        self.assertEqual(record["state"], "paused")
+        self.assertIn("paused", record["message"])
+
+    def test_control_job_pauses_isolated_process_group(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            job_dir = Path(tmp_dir)
+            (job_dir / "status.json").write_text(
+                json.dumps({"state": "running", "pid": 1234}),
+                encoding="utf-8",
+            )
+            with patch(
+                "simulation.server_jobs._job_process_group",
+                return_value=(1234, 1234),
+            ), patch(
+                "simulation.server_jobs._signal_process_group"
+            ) as signal_group:
+                record = control_background_job(job_dir, "pause")
+
+        signal_group.assert_called_once()
+        self.assertEqual(record["state"], "paused")
+        self.assertEqual(record["stage"], "paused")
+
+    def test_control_job_rejects_resume_for_running_job(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            job_dir = Path(tmp_dir)
+            (job_dir / "status.json").write_text(
+                json.dumps({"state": "running", "pid": 1234}),
+                encoding="utf-8",
+            )
+            with patch(
+                "simulation.server_jobs._job_process_group",
+                return_value=(1234, 1234),
+            ):
+                with self.assertRaises(BackgroundJobControlError):
+                    control_background_job(job_dir, "resume")
+
+    def test_cancel_continues_paused_group_after_termination_signal(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            job_dir = Path(tmp_dir)
+            (job_dir / "status.json").write_text(
+                json.dumps({"state": "paused", "pid": 1234}),
+                encoding="utf-8",
+            )
+            with patch(
+                "simulation.server_jobs._job_process_group",
+                return_value=(1234, 1234),
+            ), patch(
+                "simulation.server_jobs._signal_process_group"
+            ) as signal_group:
+                record = control_background_job(job_dir, "cancel")
+
+        self.assertEqual(signal_group.call_count, 2)
+        self.assertEqual(record["state"], "cancelled")
 
     def test_worker_count_validation(self):
         cfg = _fast_config()

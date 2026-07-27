@@ -5,7 +5,12 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from simulation.server_jobs import job_table_rows, list_background_jobs
+from simulation.server_jobs import (
+    BackgroundJobControlError,
+    control_background_job,
+    job_table_rows,
+    list_background_jobs,
+)
 from simulation.ui_helpers import inject_responsive_css
 
 
@@ -60,6 +65,64 @@ st.info(
     f"Stage: `{record.get('stage', 'unknown')}` · {record.get('message', '')}"
 )
 
+state = str(record.get("state", "unknown"))
+job_dir = Path(str(record.get("job_dir", "")))
+pause_col, resume_col, cancel_col = st.columns(3)
+with pause_col:
+    pause_clicked = st.button(
+        "Pause job",
+        width="stretch",
+        disabled=state not in {"queued", "running"},
+        help="Suspend the complete worker process group while preserving memory.",
+    )
+with resume_col:
+    resume_clicked = st.button(
+        "Resume job",
+        width="stretch",
+        disabled=state != "paused",
+        help="Continue a paused worker process group from its current state.",
+    )
+with cancel_col:
+    cancel_confirmed = st.checkbox(
+        "Allow permanent cancellation",
+        disabled=state not in {"queued", "running", "paused"},
+        help="Cancellation cannot be resumed. Partial result artifacts are preserved.",
+    )
+    cancel_clicked = st.button(
+        "Cancel job",
+        type="secondary",
+        width="stretch",
+        disabled=(
+            state not in {"queued", "running", "paused"} or not cancel_confirmed
+        ),
+    )
+
+requested_action = (
+    "pause"
+    if pause_clicked
+    else "resume"
+    if resume_clicked
+    else "cancel"
+    if cancel_clicked
+    else None
+)
+if requested_action:
+    try:
+        updated = control_background_job(job_dir, requested_action)
+    except (BackgroundJobControlError, OSError) as exc:
+        st.error(f"Could not {requested_action} the job: {exc}")
+    else:
+        st.success(f"Job state changed to `{updated.get('state', 'unknown')}`.")
+        st.rerun()
+
+if state == "paused":
+    st.warning(
+        "This job is paused. It keeps its in-memory calculation state but does "
+        "not consume CPU until resumed."
+    )
+elif state == "cancelled":
+    st.warning("This job was cancelled and cannot be resumed.")
+
 if record.get("result_dir"):
     st.success(f"Result directory: `{record['result_dir']}`")
 if record.get("error"):
@@ -69,10 +132,16 @@ with st.expander("Job record", expanded=False):
     st.json(record)
 
 log_path = Path(str(record.get("log_path", "")))
-with st.expander("Worker log (latest 200 lines)", expanded=record.get("state") == "failed"):
+with st.expander(
+    "Worker log (latest 200 lines)",
+    expanded=record.get("state") == "failed",
+):
     if log_path.is_file():
         try:
-            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            lines = log_path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            ).splitlines()
             st.code("\n".join(lines[-200:]) or "(log is empty)", language="text")
         except OSError as exc:
             st.warning(f"Could not read worker log: {exc}")

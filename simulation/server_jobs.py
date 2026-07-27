@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -19,10 +20,13 @@ from simulation.schema import normalize_config
 
 JOB_SCHEMA_VERSION = 1
 DEFAULT_JOBS_DIRECTORY = Path(".runtime") / "jobs"
-TERMINAL_JOB_STATES = {"succeeded", "failed"}
+TERMINAL_JOB_STATES = {"succeeded", "failed", "cancelled"}
+CONTROLLABLE_JOB_STATES = {"queued", "running", "paused"}
 _LOCAL_PROCESSES: Dict[int, subprocess.Popen] = {}
 ATOMIC_WRITE_MAX_ATTEMPTS = 8
 ATOMIC_WRITE_RETRY_SECONDS = 0.025
+LINUX_SIGSTOP = getattr(signal, "SIGSTOP", 19)
+LINUX_SIGCONT = getattr(signal, "SIGCONT", 18)
 
 
 def _now() -> str:
@@ -59,8 +63,71 @@ def job_status_path(job_dir: Path | str) -> Path:
     return Path(job_dir) / "status.json"
 
 
+class BackgroundJobControlError(RuntimeError):
+    """Raised when a detached job cannot be controlled safely."""
+
+
+def _linux_process_state(pid: int) -> str | None:
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        stat = (Path("/proc") / str(pid) / "stat").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    closing_parenthesis = stat.rfind(")")
+    if closing_parenthesis < 0:
+        return None
+    fields = stat[closing_parenthesis + 1 :].strip().split()
+    return fields[0] if fields else None
+
+
+def _job_process_group(job_dir: Path, record: Dict[str, Any]) -> tuple[int, int]:
+    if not sys.platform.startswith("linux"):
+        raise BackgroundJobControlError(
+            "Background job controls are currently supported on Linux servers only."
+        )
+
+    pid = record.get("pid")
+    if not isinstance(pid, int) or pid <= 0:
+        raise BackgroundJobControlError("This job does not have a valid worker PID.")
+
+    proc_dir = Path("/proc") / str(pid)
+    try:
+        command = (proc_dir / "cmdline").read_bytes().replace(b"\0", b" ").decode(
+            "utf-8", errors="replace"
+        )
+        process_group = os.getpgid(pid)
+        session_id = os.getsid(pid)
+    except (OSError, ProcessLookupError) as exc:
+        raise BackgroundJobControlError(
+            "The worker process is no longer running."
+        ) from exc
+
+    expected_dir = str(job_dir.resolve())
+    if "simulation.server_job_worker" not in command or expected_dir not in command:
+        raise BackgroundJobControlError(
+            "The recorded PID no longer belongs to this job; no signal was sent."
+        )
+    if process_group != pid or session_id != pid:
+        raise BackgroundJobControlError(
+            "The worker is not the isolated process-group leader; no signal was sent."
+        )
+    return pid, process_group
+
+
+def _signal_process_group(process_group: int, signal_number: int) -> None:
+    try:
+        kill_process_group = os.killpg
+    except AttributeError as exc:
+        raise BackgroundJobControlError(
+            "Process-group signalling is not available on this operating system."
+        ) from exc
+    kill_process_group(process_group, signal_number)
+
+
 def read_background_job(job_dir: Path | str) -> Dict[str, Any]:
-    path = job_status_path(job_dir)
+    directory = Path(job_dir)
+    path = job_status_path(directory)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -68,6 +135,13 @@ def read_background_job(job_dir: Path | str) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     pid = payload.get("pid")
+    if (
+        payload.get("state") in CONTROLLABLE_JOB_STATES
+        and isinstance(pid, int)
+        and _linux_process_state(pid) in {"T", "t"}
+    ):
+        payload["state"] = "paused"
+        payload["message"] = "Experiment process group is paused"
     if payload.get("state") in TERMINAL_JOB_STATES and isinstance(pid, int):
         process = _LOCAL_PROCESSES.get(pid)
         if process is not None:
@@ -78,6 +152,81 @@ def read_background_job(job_dir: Path | str) -> Dict[str, Any]:
             if process.poll() is not None:
                 _LOCAL_PROCESSES.pop(pid, None)
     return payload
+
+
+def control_background_job(
+    job_dir: Path | str,
+    action: str,
+) -> Dict[str, Any]:
+    """Pause, resume, or cancel an isolated Linux background job."""
+    directory = Path(job_dir).resolve()
+    requested_action = str(action).strip().lower()
+    if requested_action not in {"pause", "resume", "cancel"}:
+        raise ValueError(f"Unsupported background job action: {action!r}")
+
+    record = read_background_job(directory)
+    if not record:
+        raise BackgroundJobControlError("The selected job record could not be read.")
+    state = str(record.get("state", "unknown"))
+    if state in TERMINAL_JOB_STATES:
+        raise BackgroundJobControlError(
+            f"The job is already in terminal state {state!r}."
+        )
+
+    _, process_group = _job_process_group(directory, record)
+    if requested_action == "pause":
+        if state == "paused":
+            return record
+        _signal_process_group(process_group, LINUX_SIGSTOP)
+        return _update_background_job(
+            directory,
+            state="paused",
+            paused_at=_now(),
+            stage="paused",
+            message="Experiment paused by user",
+        )
+
+    if requested_action == "resume":
+        if state != "paused":
+            raise BackgroundJobControlError(
+                f"Only a paused job can be resumed; current state is {state!r}."
+            )
+        _signal_process_group(process_group, LINUX_SIGCONT)
+        return _update_background_job(
+            directory,
+            state="running",
+            resumed_at=_now(),
+            stage="resuming",
+            message="Experiment resumed by user",
+        )
+
+    _update_background_job(
+        directory,
+        state="cancelling",
+        stage="cancelling",
+        message="Cancellation signal is being sent",
+    )
+    try:
+        _signal_process_group(process_group, signal.SIGTERM)
+        if state == "paused":
+            # SIGTERM remains pending for a stopped process until it is continued.
+            _signal_process_group(process_group, LINUX_SIGCONT)
+    except (OSError, ProcessLookupError):
+        _update_background_job(
+            directory,
+            state=state,
+            stage=record.get("stage", state),
+            message=record.get("message", ""),
+        )
+        raise
+    return _update_background_job(
+        directory,
+        state="cancelled",
+        cancelled_at=_now(),
+        finished_at=_now(),
+        stage="cancelled",
+        message="Experiment cancelled by user; partial artifacts were preserved",
+    )
 
 
 def _update_background_job(job_dir: Path, **updates: Any) -> Dict[str, Any]:

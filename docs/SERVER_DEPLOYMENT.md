@@ -102,6 +102,19 @@ Each job stores an immutable config snapshot and status under `.runtime/jobs/`.
 The worker writes scientific outputs to the configured `output.base_dir`, usually
 `results/`. A browser disconnect or Streamlit page refresh does not terminate it.
 
+The selected active job can also be controlled from **08. Server Jobs**:
+
+- **Pause job** suspends the isolated process group. CPU use stops while the
+  in-memory calculation state remains allocated.
+- **Resume job** continues a paused job from that in-memory state.
+- **Cancel job** sends a termination signal after explicit confirmation. It
+  cannot be resumed, although partial artifacts already written to disk remain.
+
+These controls are available on Linux servers. If a job was paused directly from
+the shell with `kill -STOP -- -PID`, the page detects the process state and
+enables **Resume job**. A paused job does not survive a server reboot because its
+continuation state exists in memory.
+
 ## 5. Use multiple CPU cores
 
 Set **Maximum parallel sweep workers** on **05. Parameter Sweep** and save the
