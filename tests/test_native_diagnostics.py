@@ -320,6 +320,75 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         )
         self.assertIn("not field efficacy", payload["metadata"]["memo"])
 
+    def test_hygroscopic_response_regime_atlas_screen_plan(self):
+        scenario_path = (
+            Path(__file__).resolve().parents[1]
+            / "experiments"
+            / "scenarios"
+            / "hygroscopic_response_regime_atlas_screen_v1.yaml"
+        )
+        payload = read_scenario(scenario_path)
+        cfg = apply_scenario_identity(payload["config"], scenario_path)
+        cases = generate_sweep_cases(cfg)
+        plan = estimate_run_plan(cfg)
+        errors = [
+            issue
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        ]
+        case_errors = [
+            issue
+            for case in cases
+            for issue in validate_config_detailed(case.config)
+            if issue.severity == "error"
+        ]
+
+        self.assertFalse(errors)
+        self.assertFalse(case_errors)
+        self.assertEqual(len(cases), 162)
+        self.assertEqual(plan.ensemble_members, 3)
+        self.assertEqual(plan.control_factor, 2)
+        self.assertEqual(plan.total_model_runs, 972)
+        self.assertEqual(plan.configured_workers, 12)
+        self.assertEqual(plan.effective_workers, 12)
+        self.assertEqual(cfg["sweep"]["design"], "cartesian")
+        self.assertEqual(cfg["seeding"]["dry_radius"], 1.0e-6)
+        self.assertEqual(cfg["seeding"]["kappa"], 0.8)
+        self.assertEqual(
+            sorted(
+                {
+                    (
+                        case.config["seeding"]["injection_start"],
+                        case.config["seeding"]["injection_end"],
+                    )
+                    for case in cases
+                }
+            ),
+            [(60, 180), (300, 420), (900, 1020)],
+        )
+        self.assertEqual(
+            {
+                case.config["environment"]["updraft_velocity"]
+                for case in cases
+            },
+            {0.4, 0.8, 1.2},
+        )
+        self.assertEqual(
+            {
+                case.config["background_aerosol"]["number_concentration"]
+                for case in cases
+            },
+            {40.0, 160.0, 640.0},
+        )
+        self.assertEqual(
+            {
+                case.config["seeding"]["number_concentration"]
+                for case in cases
+            },
+            {2.5, 10.0, 40.0},
+        )
+        self.assertIn("boundary discovery", payload["metadata"]["memo"])
+
     def test_run_plan_uses_ofat_case_count(self):
         cfg = default_config()
         cfg["experiment"]["mode"] = "parameter_sweep"

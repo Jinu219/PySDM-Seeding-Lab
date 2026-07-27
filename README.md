@@ -35,6 +35,13 @@ collision-coalescence OFF/ON over five common seeds (60 physical model runs).
 Use the Korean runbook and presentation narrative in
 [`docs/LAB_MEETING_GROWTH_PATHWAY_KO.md`](docs/LAB_MEETING_GROWTH_PATHWAY_KO.md).
 
+For the next large server study, `Hygroscopic Response Regime Atlas Screen v1`
+maps competition-dominated, sign-reversing, and persistent-enhancement
+trajectories across 162 five-dimensional cases and three common seeds
+(972 physical model runs). It is a boundary-discovery screen, not an
+optimization or efficacy study. See
+[`docs/HYGROSCOPIC_RESPONSE_REGIME_ATLAS_KO.md`](docs/HYGROSCOPIC_RESPONSE_REGIME_ATLAS_KO.md).
+
 Results Dashboard CSV reads can use an optional validated Arrow IPC cache while
 keeping CSV as the scientific source of truth. Cache files are disposable,
 automatically invalidated when the CSV changes, and created by default only for

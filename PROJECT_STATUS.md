@@ -54,6 +54,19 @@ Lab-meeting mechanism scenario added on 2026-07-27:
 - Results produced before the paired-control fix must not be presented as causal
   seeding responses when they diverge before the configured injection time.
 
+Advanced regime-atlas screen added on 2026-07-27:
+- Reviewed five prior experiment decks covering numerical representation,
+  particle-property sensitivity, growth-pathway diagnostics, realistic
+  background/fixed-mass tests, and a 2,016-condition optimization surface.
+- Chose response sign reversal as the non-duplicative research gap exposed by
+  the new paired-control lab-meeting result.
+- Added a 162-case Cartesian screen over updraft, background CCN, seed dose,
+  injection stage, and collision state with three common seeds and 12 case
+  workers (972 physical model runs).
+- The screen discovers suppression/sign-reversal/enhancement boundary
+  candidates; selected cases still require a larger ensemble and numerical
+  qualification.
+
 ## v1.0 scientific-scope disposition
 
 Completed on 2026-07-21:
