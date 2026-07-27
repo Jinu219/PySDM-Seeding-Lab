@@ -27,7 +27,10 @@ bash scripts/server_web.sh status
 
 The script stores its PID and log under `.runtime/server/`. It defaults to
 `127.0.0.1:8501`, enables Streamlit headless mode, and enables detached-job mode
-by default in the Run page.
+by default in the Run page. On Linux systems with a user systemd manager, it
+installs and starts `~/.config/systemd/user/pysdm-seeding-lab.service` so the web
+process is not tied to the SSH deployment session. It falls back to `nohup` only
+when user systemd is unavailable.
 
 To use a specific interpreter or port:
 

@@ -50,6 +50,19 @@ class ServerExecutionTests(unittest.TestCase):
         self.assertIn("return 0", stop_body)
         self.assertIn("restart) stop_server; start_server ;;", script)
 
+    def test_server_launcher_prefers_user_systemd_over_nohup(self):
+        script = (PROJECT_ROOT / "scripts" / "server_web.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("systemctl --user start", script)
+        self.assertIn("Restart=on-failure", script)
+        self.assertIn("run-process) run_server_process ;;", script)
+        self.assertLess(
+            script.index("if user_systemd_available; then"),
+            script.index("falling back to nohup"),
+        )
+
     def test_atomic_status_write_retries_transient_permission_error(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             status_path = Path(tmp_dir) / "status.json"
