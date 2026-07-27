@@ -34,6 +34,15 @@ is to execute the documented 1/4/8-worker sequence on the lab server and return
 `worker_scaling.json` for recommendation review. See
 [`docs/WORKER_SCALING_BENCHMARK.md`](docs/WORKER_SCALING_BENCHMARK.md).
 
+First-use server pilot added on 2026-07-27:
+- Added a bounded real-PySDM web scenario with 4 OFAT cases, 2 common seeds,
+  paired control/seeding execution, and 4 case workers.
+- The plan contains 16 physical model runs and zero blocking validation errors.
+- The scenario exercises detached execution, Server Jobs, native diagnostics,
+  and Results before the larger 1/4/8-worker qualification.
+- Its small-ensemble differences remain descriptive workflow output, not
+  cloud-seeding efficacy evidence.
+
 ## v1.0 scientific-scope disposition
 
 Completed on 2026-07-21:

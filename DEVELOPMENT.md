@@ -1,5 +1,17 @@
 # Development Notes
 
+## 2026-07-27 - First real-PySDM lab-server web pilot
+
+- Added `lab_server_real_pysdm_pilot_v1` as a bounded first-use scenario.
+- Frozen plan: 4 OFAT cases, 2 common ensemble seeds, paired control/seeding,
+  16 physical model runs, and 4 case workers.
+- Enabled collision, wet-radius spectrum, water-budget, and spectrum-transition
+  diagnostics while retaining an explicit workflow-only interpretation boundary.
+- Added regression coverage for validation, case count, execution plan, worker
+  bound, real-adapter selection, and non-efficacy scope.
+- Documented the direct scenario-selection, detached-job, monitoring, and Results
+  workflow for the lab-server web interface.
+
 ## 2026-07-24 - v1.1 worker-scaling benchmark harness
 
 - Froze `marine_showcase_ofat_v1` as the matched serial/4/8-worker server workload.

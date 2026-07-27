@@ -171,6 +171,44 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
             [(600, 900), (900, 1200), (1200, 1500)],
         )
 
+    def test_lab_server_real_pysdm_pilot_is_bounded_and_runnable(self):
+        scenario_path = (
+            Path(__file__).resolve().parents[1]
+            / "experiments"
+            / "scenarios"
+            / "lab_server_real_pysdm_pilot_v1.yaml"
+        )
+        payload = read_scenario(scenario_path)
+        cfg = apply_scenario_identity(payload["config"], scenario_path)
+        cases = generate_sweep_cases(cfg)
+        plan = estimate_run_plan(cfg)
+        errors = [
+            issue
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        ]
+        case_errors = [
+            issue
+            for case in cases
+            for issue in validate_config_detailed(case.config)
+            if issue.severity == "error"
+        ]
+
+        self.assertFalse(errors)
+        self.assertFalse(case_errors)
+        self.assertEqual(len(cases), 4)
+        self.assertEqual(plan.ensemble_members, 2)
+        self.assertEqual(plan.control_factor, 2)
+        self.assertEqual(plan.total_model_runs, 16)
+        self.assertEqual(plan.configured_workers, 4)
+        self.assertEqual(plan.effective_workers, 4)
+        self.assertEqual(cfg["simulation"]["adapter"], "pysdm_parcel")
+        self.assertTrue(cfg["microphysics"]["collision"])
+        self.assertIn(
+            "without supporting a cloud-seeding efficacy claim",
+            payload["metadata"]["memo"],
+        )
+
     def test_run_plan_uses_ofat_case_count(self):
         cfg = default_config()
         cfg["experiment"]["mode"] = "parameter_sweep"

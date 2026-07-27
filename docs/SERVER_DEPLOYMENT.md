@@ -130,3 +130,16 @@ manually. Use the matched dry-run-first benchmark runner documented in
 [`WORKER_SCALING_BENCHMARK.md`](WORKER_SCALING_BENCHMARK.md). It changes only
 `execution.max_workers`, captures the machine and Git scope, samples the complete
 live process tree, and preserves failed-trial evidence.
+
+## 7. First real-PySDM web pilot
+
+Before the full scaling qualification, use the saved
+`Lab Server Real PySDM Pilot v1` scenario from **06. Run Simulation**. Select the
+scenario directly rather than applying it to `configs/default.yaml`, verify
+`4` sweep cases, `2` ensemble members, `16` total model runs, `4/4` case workers,
+and zero validation errors, then submit it as a detached background job.
+
+Monitor it from **08. Server Jobs** and inspect the completed result from
+**07. Results**. This pilot checks the real adapter, process pool, durable job,
+diagnostic, and reporting workflow. Its small-ensemble differences are descriptive
+and do not support a cloud-seeding efficacy claim.

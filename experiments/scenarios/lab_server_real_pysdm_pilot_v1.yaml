@@ -1,0 +1,132 @@
+metadata:
+  name: Lab Server Real PySDM Pilot v1
+  slug: lab_server_real_pysdm_pilot_v1
+  memo: >-
+    First lab-server workflow pilot using the real PySDM parcel adapter. It
+    exercises a four-case OFAT sweep, two common ensemble seeds, detached
+    execution, diagnostics, and Results without supporting a cloud-seeding
+    efficacy claim.
+  created_at: '2026-07-27T00:00:00'
+config:
+  schema_version: 1
+  experiment:
+    name: lab_server_real_pysdm_pilot_v1
+    mode: parameter_sweep
+    description: >-
+      Bounded real-PySDM lab-server pilot for end-to-end workflow and resource
+      verification.
+    random_seed: 41001
+  simulation:
+    adapter: pysdm_parcel
+    case_name: base
+    notes: >-
+      Workflow pilot only. Absolute rain state and seeding-minus-control
+      differences from this small ensemble are descriptive, not efficacy
+      evidence.
+  environment:
+    temperature: 300.0
+    pressure: 100000.0
+    water_vapour_mixing_ratio: 0.024
+    relative_humidity: 96.0
+    initial_altitude: 0.0
+    updraft_velocity: 0.8
+    duration: 1500
+    timestep: 10
+  background_aerosol:
+    distribution_type: single_lognormal
+    number_concentration: 80.0
+    number_superdroplets: 400
+    dry_radius: 9.0e-08
+    geometric_sigma: 1.5
+    kappa: 0.7
+    particle_density: 2160.0
+    chemical_composition: sea_salt_mixed
+  seeding:
+    enabled: true
+    material_type: hygroscopic
+    dry_radius: 1.0e-06
+    geometric_sigma: 1.2
+    kappa: 0.8
+    particle_density: 1770.0
+    number_concentration: 10.0
+    number_superdroplets: 400
+    injection_start: 900
+    injection_end: 1200
+    injection_altitude: 500.0
+    delivery_method: idealized_uniform
+  dynamics:
+    updraft_strength: 0.8
+    downdraft_strength: 0.0
+    turbulence_intensity: 0.1
+    entrainment_rate: 0.0
+    detrainment_rate: 0.0
+    wind_shear: 0.0
+    convergence: 0.0
+    cape: 0.0
+    cin: 0.0
+  microphysics:
+    condensation: true
+    collision: true
+    sedimentation: false
+  diagnostics:
+    growth_pathway_mode: true
+    activation_radius_threshold: 5.0e-07
+    rain_radius_threshold: 2.5e-05
+    wet_radius_spectrum:
+      enabled: true
+      min_radius: 5.0e-08
+      max_radius: 0.001
+      n_bins: 32
+      checkpoint_times: []
+      checkpoint_interval_seconds: 10.0
+      threshold_factors:
+      - 0.8
+      - 1.0
+      - 1.2
+    water_budget:
+      enabled: true
+      warning_relative_drift_percent: 0.01
+      failure_relative_drift_percent: 0.1
+    numerical_convergence:
+      enabled: false
+      relative_tolerance_percent: 5.0
+      relative_reference_floor: 1.0e-12
+      metrics: []
+    spectrum_transition:
+      enabled: true
+      rain_volume_fraction_threshold: 0.01
+      rain_volume_fraction_thresholds:
+      - 0.005
+      - 0.01
+      - 0.02
+  sweep:
+    design: one_factor_at_reference
+    run_mode: control_vs_seeding
+    max_runs: 4
+    ranking_metric: ensemble.metrics.rain_water_mixing_ratio_diff_final_mean
+    parameters:
+    - name: seeding.dry_radius
+      values:
+      - 5.0e-07
+      - 1.0e-06
+      - 2.0e-06
+      reference: 1.0e-06
+    - name: seeding.kappa
+      values:
+      - 0.4
+      - 0.8
+      reference: 0.8
+  ensemble:
+    enabled: true
+    n_members: 2
+    seed_start: 41001
+    seed_step: 1009
+    execution_backend: in_process
+    collect_garbage_between_members: false
+  execution:
+    max_workers: 4
+  output:
+    base_dir: results
+    save_config: true
+    save_summary: true
+    save_timeseries: true

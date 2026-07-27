@@ -25,6 +25,10 @@ python scripts/run_worker_scaling_benchmark.py \
 This command only writes the preflight plan. Physical execution requires the
 explicit `--execute` flag after the RAM check has been reviewed.
 
+For the first end-to-end web run, select the saved
+`Lab Server Real PySDM Pilot v1` scenario directly on **06. Run Simulation**.
+It is a bounded 16-model-run workflow pilot, not efficacy evidence.
+
 Results Dashboard CSV reads can use an optional validated Arrow IPC cache while
 keeping CSV as the scientific source of truth. Cache files are disposable,
 automatically invalidated when the CSV changes, and created by default only for
