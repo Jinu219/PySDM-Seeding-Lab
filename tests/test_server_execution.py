@@ -36,6 +36,18 @@ def _fast_config() -> dict:
 
 
 class ServerExecutionTests(unittest.TestCase):
+    def test_server_restart_returns_from_stop_before_starting(self):
+        script = (PROJECT_ROOT / "scripts" / "server_web.sh").read_text(
+            encoding="utf-8"
+        )
+        stop_body = script.split("stop_server() {", 1)[1].split(
+            "status_server() {", 1
+        )[0]
+
+        self.assertNotIn("exit 0", stop_body)
+        self.assertIn("return 0", stop_body)
+        self.assertIn("restart) stop_server; start_server ;;", script)
+
     def test_atomic_status_write_retries_transient_permission_error(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             status_path = Path(tmp_dir) / "status.json"

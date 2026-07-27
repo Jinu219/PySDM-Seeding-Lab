@@ -77,7 +77,7 @@ stop_server() {
   if ! is_running; then
     echo "PySDM Seeding Lab is not running."
     rm -f "${PID_FILE}"
-    exit 0
+    return 0
   fi
   local pid
   pid="$(read_pid)"
@@ -86,12 +86,12 @@ stop_server() {
     if ! kill -0 "${pid}" 2>/dev/null; then
       rm -f "${PID_FILE}"
       echo "PySDM Seeding Lab stopped."
-      exit 0
+      return 0
     fi
     sleep 0.25
   done
   echo "PID ${pid} did not stop within 5 seconds; inspect it before using a force signal." >&2
-  exit 1
+  return 1
 }
 
 status_server() {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import socket
 from pathlib import Path
 from typing import Any, Dict
 
@@ -11,6 +13,23 @@ from simulation.schema import FIELD_UNITS, schema_summary
 
 
 CONFIG_PATH = Path("configs/default.yaml")
+
+
+def runtime_server_identity() -> tuple[bool, str]:
+    """Return whether the app is in server mode and its display hostname."""
+    server_mode = os.environ.get("PYSDM_LAB_SERVER_MODE") == "1"
+    hostname = os.environ.get("PYSDM_SERVER_NAME") or socket.gethostname()
+    display_hostname = hostname.split(".", 1)[0] or "unknown"
+    return server_mode, display_hostname
+
+
+def render_server_identity() -> None:
+    """Show the current Streamlit execution host in the shared sidebar."""
+    server_mode, hostname = runtime_server_identity()
+    if server_mode:
+        st.sidebar.success(f"현재 서버: 연결됨 (`{hostname}`)")
+    else:
+        st.sidebar.info(f"현재 서버: 로컬 실행 (`{hostname}`)")
 
 
 def load_working_config() -> Dict[str, Any]:
@@ -99,6 +118,7 @@ def scenario_loader() -> Dict[str, str]:
 
 def inject_responsive_css() -> None:
     """Apply the shared compact research-dashboard visual system."""
+    render_server_identity()
     st.markdown(
         """
         <style>

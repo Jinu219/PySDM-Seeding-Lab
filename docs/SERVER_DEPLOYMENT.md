@@ -47,6 +47,29 @@ bash scripts/server_web.sh restart
 Detached simulation jobs are separate processes. Stopping Streamlit does not
 cancel jobs that were already submitted.
 
+### Offline GitHub deployment through cloud0
+
+When a compute server cannot resolve or reach GitHub, deploy a committed local
+branch from a Windows workstation with:
+
+```powershell
+.\scripts\deploy_server.cmd cloud7
+```
+
+The command creates a temporary Git bundle, uploads it through cloud0, copies it
+to the selected compute server, fast-forwards the matching branch, restarts
+Streamlit, and verifies the local health endpoint. The cloud0 password may be
+requested once for `scp` and once for `ssh`.
+
+Only committed changes are bundled. The server's mutable
+`configs/default.yaml` is preserved; other tracked server-side changes stop the
+deployment instead of being overwritten. To inspect the local preparation
+without connecting:
+
+```powershell
+.\scripts\deploy_server.cmd cloud7 -DryRun
+```
+
 ## 3. Connect safely from a workstation
 
 Keep the default loopback binding and create an SSH tunnel from the workstation:
