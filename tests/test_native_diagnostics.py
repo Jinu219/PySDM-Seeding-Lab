@@ -38,7 +38,7 @@ from analysis.numerical_convergence import (
 from analysis.qualification_evidence import build_qualification_evidence
 from analysis.result_manifest import inspect_result_compatibility
 from analysis.reporting import REPORT_BUILD_ID, build_pdf_report
-from analysis.dashboard import sweep_execution_status_table
+from analysis.dashboard import plot_parameter_sensitivity, sweep_execution_status_table
 from analysis.spectrum_transition import (
     build_spectrum_transition_table,
     build_transition_onset_robustness,
@@ -107,6 +107,65 @@ def _small_native_config() -> dict:
 
 
 class NativeDiagnosticMappingTests(unittest.TestCase):
+    def test_parameter_sensitivity_uses_unconnected_grouped_points(self):
+        metrics = pd.DataFrame(
+            {
+                "param.seeding.dry_radius": [
+                    5.0e-7,
+                    5.0e-7,
+                    1.0e-6,
+                    1.0e-6,
+                    2.0e-6,
+                    2.0e-6,
+                ],
+                "param.microphysics.collision": [
+                    False,
+                    True,
+                    False,
+                    True,
+                    False,
+                    True,
+                ],
+                "max": [0.0, 5.1e-5, 0.0, 5.4e-5, 0.2e-5, 4.8e-5],
+            }
+        )
+
+        fig = plot_parameter_sensitivity(
+            metrics,
+            x_parameter="param.seeding.dry_radius",
+            statistic="max",
+            variable="rain_water_mixing_ratio_diff",
+        )
+        ax = fig.axes[0]
+        legend_labels = [text.get_text() for text in ax.get_legend().get_texts()]
+
+        self.assertEqual(len(ax.lines), 0)
+        self.assertEqual(len(ax.collections), 2)
+        self.assertEqual(legend_labels, ["collision=OFF", "collision=ON"])
+        self.assertIn("points grouped by other varying parameters", ax.get_title())
+
+    def test_parameter_sensitivity_fixed_slice_remains_points_only(self):
+        metrics = pd.DataFrame(
+            {
+                "param.seeding.dry_radius": [5.0e-7, 1.0e-6, 2.0e-6],
+                "param.microphysics.collision": [True, True, True],
+                "max": [5.1e-5, 5.4e-5, 4.8e-5],
+            }
+        )
+
+        fig = plot_parameter_sensitivity(
+            metrics,
+            x_parameter="param.seeding.dry_radius",
+            statistic="max",
+            variable="rain_water_mixing_ratio_diff",
+        )
+        ax = fig.axes[0]
+
+        self.assertEqual(len(ax.lines), 0)
+        self.assertEqual(len(ax.collections), 1)
+        self.assertIsNone(ax.get_legend())
+        self.assertIn("other swept parameters held fixed", ax.get_title())
+
     def test_relative_result_path_accepts_windows_root_alias(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             base = Path(tmp_dir)

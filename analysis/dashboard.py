@@ -2023,12 +2023,7 @@ def plot_parameter_sensitivity(
     statistic: str,
     variable: str,
 ):
-    """
-    Plot statistic vs. one sweep parameter, using only cases already filtered so
-    every other swept parameter is held fixed. Callers are responsible for the
-    filtering (see varying_sweep_parameters) -- this function does not check it,
-    since it is also useful as a raw plotting primitive.
-    """
+    """Plot discrete sweep responses without implying interpolation between cases."""
     fig, ax = plt.subplots(figsize=(8.8, 4.8))
 
     if metrics_df.empty or statistic not in metrics_df.columns or x_parameter not in metrics_df.columns:
@@ -2042,17 +2037,72 @@ def plot_parameter_sensitivity(
         ax.set_title("No sensitivity summary data")
         return fig
 
-    try:
-        plot_df[x_parameter] = pd.to_numeric(plot_df[x_parameter])
-        plot_df = plot_df.sort_values(x_parameter)
-        ax.plot(plot_df[x_parameter], plot_df[statistic], marker="o", linewidth=1.8)
-    except Exception:
-        plot_df[x_parameter] = plot_df[x_parameter].astype(str)
-        ax.bar(plot_df[x_parameter], plot_df[statistic])
+    plot_df[statistic] = pd.to_numeric(plot_df[statistic], errors="coerce")
+    plot_df = plot_df.dropna(subset=[statistic])
+    if plot_df.empty:
+        ax.set_title("No sensitivity summary data")
+        return fig
+
+    numeric_x = pd.to_numeric(plot_df[x_parameter], errors="coerce")
+    x_is_numeric = bool(numeric_x.notna().all())
+    if x_is_numeric:
+        plot_df = plot_df.assign(_plot_x=numeric_x).sort_values("_plot_x")
+    else:
+        category_values = list(dict.fromkeys(plot_df[x_parameter].astype(str)))
+        category_positions = {value: idx for idx, value in enumerate(category_values)}
+        plot_df = plot_df.assign(
+            _plot_x=plot_df[x_parameter].astype(str).map(category_positions)
+        )
+        ax.set_xticks(list(category_positions.values()), list(category_positions.keys()))
+
+    other_param_cols = [
+        column
+        for column in plot_df.columns
+        if column.startswith("param.") and column != x_parameter
+    ]
+    group_cols = varying_sweep_parameters(plot_df, other_param_cols)
+
+    if group_cols:
+        group_key = group_cols[0] if len(group_cols) == 1 else group_cols
+        for group_values, group_df in plot_df.groupby(
+            group_key,
+            dropna=False,
+            sort=True,
+        ):
+            values = group_values if isinstance(group_values, tuple) else (group_values,)
+            label = ", ".join(
+                f"{short_sweep_param_name(column)}={format_sweep_param_value(column, value)}"
+                for column, value in zip(group_cols, values)
+            )
+            ax.scatter(
+                group_df["_plot_x"],
+                group_df[statistic],
+                s=58,
+                alpha=0.9,
+                edgecolors="white",
+                linewidths=0.7,
+                label=label,
+            )
+        ax.legend(title="Other varying parameters", frameon=False)
+        subtitle = "points grouped by other varying parameters"
+    else:
+        ax.scatter(
+            plot_df["_plot_x"],
+            plot_df[statistic],
+            s=58,
+            alpha=0.9,
+            edgecolors="white",
+            linewidths=0.7,
+        )
+        subtitle = "other swept parameters held fixed"
 
     ax.set_xlabel(short_sweep_param_name(x_parameter))
     ax.set_ylabel(f"{statistic} of {variable}")
-    ax.set_title(f"{variable}: {statistic} vs {short_sweep_param_name(x_parameter)}\n(other swept parameters held fixed)", fontsize=11)
+    ax.set_title(
+        f"{variable}: {statistic} vs {short_sweep_param_name(x_parameter)}"
+        f"\n({subtitle})",
+        fontsize=11,
+    )
     ax.grid(alpha=0.22)
     fig.tight_layout()
 
