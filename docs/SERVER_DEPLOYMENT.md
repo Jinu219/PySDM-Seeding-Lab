@@ -61,8 +61,10 @@ branch from a Windows workstation with:
 
 The command creates a temporary Git bundle, uploads it through cloud0, copies it
 to the selected compute server, fast-forwards the matching branch, restarts
-Streamlit, and verifies the local health endpoint. The cloud0 password may be
-requested once for `scp` and once for `ssh`.
+Streamlit, and verifies the local health endpoint. It then opens a fresh
+cloud0-to-compute-server session and verifies the service again, ensuring the
+process survived closure of the deployment SSH session. The cloud0 password may
+be requested once for `scp` and once for `ssh`.
 
 Only committed changes are bundled. The server's mutable
 `configs/default.yaml` is preserved; other tracked server-side changes stop the

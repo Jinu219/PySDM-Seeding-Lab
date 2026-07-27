@@ -86,6 +86,8 @@ try {
         "mv /tmp/apply_server_bundle.sh '$remoteApply'"
         "scp '$remoteBundle' '$remoteApply' '${Target}:/tmp/'"
         "ssh '$Target' bash '$remoteApply' '$remoteBundle' '$Branch'"
+        "sleep 2"
+        "ssh '$Target' 'cd ~/PySDM-Seeding-Lab && bash scripts/server_web.sh status && curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8501/_stcore/health && echo'"
         "rm -f '$remoteBundle' '$remoteApply'"
     ) -join '; '
 
