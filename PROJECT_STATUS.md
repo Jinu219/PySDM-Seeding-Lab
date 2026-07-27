@@ -67,6 +67,18 @@ Advanced regime-atlas screen added on 2026-07-27:
   candidates; selected cases still require a larger ensemble and numerical
   qualification.
 
+Regime-atlas refinement prepared on 2026-07-27:
+- Added a deterministic Latin Hypercube sweep design for mixed continuous and
+  categorical parameters without adding a sampling dependency.
+- Added a 512-case refinement over updraft, background CCN, seed dose, injection
+  start/duration, seed radius, seed κ, and collision state.
+- Increased duration to 2,400 s, reduced timestep to 5 s, doubled background and
+  seed super-droplets to 800 each, and expanded to ten common seeds.
+- The frozen plan contains 10,240 paired physical model runs on 12 case workers,
+  with a 12–24 hour engineering window followed by adaptive live ETA.
+- Added deterministic-design, range, collision-balance, path-length, validation,
+  and run-plan regression coverage plus a Korean execution/comparison runbook.
+
 ## v1.0 scientific-scope disposition
 
 Completed on 2026-07-21:

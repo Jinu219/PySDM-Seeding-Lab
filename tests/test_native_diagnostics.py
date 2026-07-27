@@ -389,6 +389,115 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         )
         self.assertIn("boundary discovery", payload["metadata"]["memo"])
 
+    def test_hygroscopic_response_regime_atlas_refinement_plan(self):
+        scenario_path = (
+            Path(__file__).resolve().parents[1]
+            / "experiments"
+            / "scenarios"
+            / "hygroscopic_response_regime_atlas_refinement_v2.yaml"
+        )
+        payload = read_scenario(scenario_path)
+        cfg = apply_scenario_identity(payload["config"], scenario_path)
+        cases = generate_sweep_cases(cfg)
+        repeated_cases = generate_sweep_cases(cfg)
+        plan = estimate_run_plan(cfg)
+        errors = [
+            issue
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        ]
+        case_errors = [
+            issue
+            for case in cases
+            for issue in validate_config_detailed(case.config)
+            if issue.severity == "error"
+        ]
+
+        self.assertFalse(errors)
+        self.assertFalse(case_errors)
+        self.assertEqual(cfg["sweep"]["design"], "latin_hypercube")
+        self.assertEqual(len(cases), 512)
+        self.assertEqual(plan.ensemble_members, 10)
+        self.assertEqual(plan.control_factor, 2)
+        self.assertEqual(plan.total_model_runs, 10_240)
+        self.assertEqual(plan.configured_workers, 12)
+        self.assertEqual(plan.effective_workers, 12)
+        self.assertEqual(
+            [case.parameter_values for case in cases],
+            [case.parameter_values for case in repeated_cases],
+        )
+        self.assertEqual(len({case.case_name for case in cases}), 512)
+        self.assertTrue(all(len(case.case_name) <= 20 for case in cases))
+
+        collisions = [
+            case.config["microphysics"]["collision"] for case in cases
+        ]
+        self.assertEqual(collisions.count(False), 256)
+        self.assertEqual(collisions.count(True), 256)
+        self.assertTrue(
+            all(
+                0.25 <= case.config["environment"]["updraft_velocity"] <= 1.4
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            all(
+                20.0
+                <= case.config["background_aerosol"]["number_concentration"]
+                <= 1280.0
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            all(
+                1.0 <= case.config["seeding"]["number_concentration"] <= 100.0
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            all(
+                case.config["seeding"]["injection_end"]
+                <= case.config["environment"]["duration"]
+                for case in cases
+            )
+        )
+        self.assertEqual(cfg["environment"]["timestep"], 5)
+        self.assertEqual(cfg["background_aerosol"]["number_superdroplets"], 800)
+        self.assertEqual(cfg["seeding"]["number_superdroplets"], 800)
+        self.assertEqual(
+            cfg["execution"]["planning_wall_time_hours"],
+            [12, 24],
+        )
+        self.assertIn("512-point Latin Hypercube", payload["metadata"]["memo"])
+
+    def test_latin_hypercube_validation_rejects_invalid_domain(self):
+        cfg = default_config()
+        cfg["experiment"]["mode"] = "parameter_sweep"
+        cfg["sweep"] = {
+            "design": "latin_hypercube",
+            "n_samples": 20,
+            "random_seed": 10,
+            "run_mode": "control_vs_seeding",
+            "max_runs": 10,
+            "parameters": [
+                {
+                    "name": "seeding.number_concentration",
+                    "min": 0.0,
+                    "max": 100.0,
+                    "scale": "log",
+                }
+            ],
+        }
+
+        errors = [
+            issue.field
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        ]
+
+        self.assertIn("sweep.n_samples", errors)
+        self.assertIn("sweep.parameters.0.min", errors)
+
     def test_run_plan_uses_ofat_case_count(self):
         cfg = default_config()
         cfg["experiment"]["mode"] = "parameter_sweep"

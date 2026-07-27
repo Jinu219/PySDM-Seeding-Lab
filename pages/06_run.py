@@ -93,6 +93,18 @@ if plan.effective_workers > 1:
         "Actual wall time is longer because of worker startup, I/O, and memory contention."
     )
 
+planning_window = cfg.get("execution", {}).get("planning_wall_time_hours")
+if (
+    isinstance(planning_window, list)
+    and len(planning_window) == 2
+    and all(isinstance(value, (int, float)) for value in planning_window)
+):
+    st.info(
+        f"Scenario planning window: {planning_window[0]:g}–"
+        f"{planning_window[1]:g} hours on the configured server workers. "
+        f"{cfg.get('execution', {}).get('planning_note', '')}"
+    )
+
 st.caption(plan.description)
 
 if plan.runtime_warning:

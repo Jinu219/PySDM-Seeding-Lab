@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import itertools
 import json
+import math
+import random
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List
 
@@ -57,20 +59,28 @@ def _format_case_name(case_index: int, parameter_values: Dict[str, Any]) -> str:
 
 
 def active_sweep_parameters(config: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Return sweep parameters with non-empty values."""
+    """Return valid categorical or continuous sweep parameter definitions."""
     cfg = normalize_config(config)
     sweep = cfg.get("sweep", {})
     params = sweep.get("parameters", [])
+    design = str(sweep.get("design", "cartesian"))
 
     active = []
     for param in params:
         name = param.get("name")
         values = param.get("values", [])
         if name and isinstance(values, list) and len(values) > 0:
-            item = {"name": name, "values": values}
+            item = dict(param)
             if "reference" in param:
                 item["reference"] = param["reference"]
             active.append(item)
+        elif (
+            design == "latin_hypercube"
+            and name
+            and "min" in param
+            and "max" in param
+        ):
+            active.append(dict(param))
 
     return active
 
@@ -83,6 +93,8 @@ def count_sweep_cases(config: Dict[str, Any]) -> int:
         return 0
 
     design = str(cfg.get("sweep", {}).get("design", "cartesian"))
+    if design == "latin_hypercube":
+        return max(int(cfg.get("sweep", {}).get("n_samples", 0)), 0)
     if design == "one_factor_at_reference":
         return int(
             1
@@ -133,6 +145,54 @@ def _one_factor_at_reference_cases(
     return cases
 
 
+def _sample_latin_hypercube_value(
+    parameter: Dict[str, Any],
+    unit_value: float,
+) -> Any:
+    values = parameter.get("values")
+    if isinstance(values, list) and values:
+        index = min(int(unit_value * len(values)), len(values) - 1)
+        return values[index]
+
+    minimum = float(parameter["min"])
+    maximum = float(parameter["max"])
+    scale = str(parameter.get("scale", "linear"))
+    if scale == "log":
+        sampled = math.exp(
+            math.log(minimum) + unit_value * (math.log(maximum) - math.log(minimum))
+        )
+    else:
+        sampled = minimum + unit_value * (maximum - minimum)
+
+    value_type = str(parameter.get("value_type", "float"))
+    if value_type == "int":
+        return min(max(int(round(sampled)), int(math.ceil(minimum))), int(maximum))
+    round_digits = parameter.get("round_digits")
+    if isinstance(round_digits, int):
+        sampled = round(sampled, round_digits)
+    return float(sampled)
+
+
+def _latin_hypercube_cases(
+    params: List[Dict[str, Any]],
+    *,
+    n_samples: int,
+    random_seed: int,
+) -> List[Dict[str, Any]]:
+    """Generate deterministic stratified samples for mixed continuous/categorical inputs."""
+    rng = random.Random(random_seed)
+    parameter_sets: List[Dict[str, Any]] = [{} for _ in range(n_samples)]
+    for parameter in params:
+        strata = list(range(n_samples))
+        rng.shuffle(strata)
+        for sample_index, stratum in enumerate(strata):
+            unit_value = (stratum + rng.random()) / n_samples
+            parameter_sets[sample_index][parameter["name"]] = (
+                _sample_latin_hypercube_value(parameter, unit_value)
+            )
+    return parameter_sets
+
+
 def generate_sweep_cases(config: Dict[str, Any]) -> List[SweepCase]:
     """
     Generate all parameter combinations.
@@ -164,10 +224,21 @@ def generate_sweep_cases(config: Dict[str, Any]) -> List[SweepCase]:
         ]
     elif design == "one_factor_at_reference":
         parameter_sets = _one_factor_at_reference_cases(params)
+    elif design == "latin_hypercube":
+        parameter_sets = _latin_hypercube_cases(
+            params,
+            n_samples=total,
+            random_seed=int(
+                sweep.get(
+                    "random_seed",
+                    cfg.get("experiment", {}).get("random_seed", 0),
+                )
+            ),
+        )
     else:
         raise ValueError(
-            f"Unsupported sweep design {design!r}; use 'cartesian' or "
-            "'one_factor_at_reference'."
+            f"Unsupported sweep design {design!r}; use 'cartesian', "
+            "'one_factor_at_reference', or 'latin_hypercube'."
         )
 
     cases: List[SweepCase] = []
@@ -190,7 +261,11 @@ def generate_sweep_cases(config: Dict[str, Any]) -> List[SweepCase]:
             injection_duration = int(parameter_values["seeding.injection_duration"])
             seeding_cfg["injection_end"] = injection_start + injection_duration
 
-        case_name = _format_case_name(idx, parameter_values)
+        case_name = (
+            f"case_{idx:04d}__lhs"
+            if design == "latin_hypercube"
+            else _format_case_name(idx, parameter_values)
+        )
 
         case_cfg.setdefault("simulation", {})["case_name"] = case_name
         case_cfg.setdefault("experiment", {})["name"] = str(cfg.get("experiment", {}).get("name", "sweep"))

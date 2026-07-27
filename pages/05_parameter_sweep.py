@@ -67,6 +67,58 @@ experiment = cfg.setdefault("experiment", {})
 ensemble = cfg.setdefault("ensemble", {})
 execution = cfg.setdefault("execution", {})
 
+if sweep.get("design") == "latin_hypercube":
+    n_cases = count_sweep_cases(cfg)
+    ensemble_factor = (
+        int(ensemble.get("n_members", 1))
+        if ensemble.get("enabled", False)
+        else 1
+    )
+    mode_factor = 2 if sweep.get("run_mode") == "control_vs_seeding" else 1
+    st.subheader("Latin Hypercube Design")
+    st.info(
+        "This scenario uses a reproducible multidimensional sampled design. "
+        "Its ranges are intentionally read-only on this page; edit the scenario "
+        "YAML only when creating a new version."
+    )
+    design_cols = st.columns(4)
+    design_cols[0].metric("Sampled parameters", len(sweep.get("parameters", [])))
+    design_cols[1].metric("Sweep cases", n_cases)
+    design_cols[2].metric("Ensemble members", ensemble_factor)
+    design_cols[3].metric(
+        "Estimated model runs",
+        n_cases * ensemble_factor * mode_factor,
+    )
+    parameter_rows = []
+    for parameter in sweep.get("parameters", []):
+        if isinstance(parameter.get("values"), list):
+            domain = str(parameter["values"])
+            scale = "categorical"
+            value_type = "categorical"
+        else:
+            domain = f"{parameter.get('min')} … {parameter.get('max')}"
+            scale = str(parameter.get("scale", "linear"))
+            value_type = str(parameter.get("value_type", "float"))
+        parameter_rows.append(
+            {
+                "parameter": parameter.get("name"),
+                "domain": domain,
+                "scale": scale,
+                "value_type": value_type,
+            }
+        )
+    st.dataframe(
+        pd.DataFrame(parameter_rows),
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption(
+        f"Design seed: {sweep.get('random_seed')} · "
+        f"Maximum cases: {sweep.get('max_runs')} · "
+        f"Workers: {execution.get('max_workers', 1)}"
+    )
+    st.stop()
+
 with st.container(border=True):
     st.subheader("Execution Design")
     mode_col, runs_col, metric_col = st.columns([1, 1, 1.4])

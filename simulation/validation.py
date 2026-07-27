@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List
 
@@ -97,13 +98,18 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
         )
 
     sweep_design = str(sweep.get("design", "cartesian"))
-    if sweep_design not in {"cartesian", "one_factor_at_reference"}:
+    if sweep_design not in {
+        "cartesian",
+        "one_factor_at_reference",
+        "latin_hypercube",
+    }:
         issues.append(
             _issue(
                 "error",
                 "sweep.design",
-                "sweep.design must be cartesian or one_factor_at_reference.",
-                "Use one_factor_at_reference only when every parameter declares a reference.",
+                "sweep.design must be cartesian, one_factor_at_reference, "
+                "or latin_hypercube.",
+                "Use latin_hypercube for a bounded multidimensional sample.",
             )
         )
     elif sweep_design == "one_factor_at_reference":
@@ -123,6 +129,112 @@ def validate_config_detailed(config: Dict[str, Any]) -> List[ValidationIssue]:
                         "Each one-factor parameter needs reference=min, reference=max, "
                         "or an explicit value present in values.",
                         "Mark the finest numerical level as the reference.",
+                    )
+                )
+    elif sweep_design == "latin_hypercube":
+        n_samples = sweep.get("n_samples", 0)
+        max_runs = sweep.get("max_runs", 0)
+        if (
+            isinstance(n_samples, bool)
+            or not isinstance(n_samples, int)
+            or n_samples <= 0
+        ):
+            issues.append(
+                _issue(
+                    "error",
+                    "sweep.n_samples",
+                    "latin_hypercube requires a positive integer n_samples.",
+                    "Choose the intentional sampled-case budget, for example 512.",
+                )
+            )
+        elif isinstance(max_runs, int) and n_samples > max_runs:
+            issues.append(
+                _issue(
+                    "error",
+                    "sweep.n_samples",
+                    "latin_hypercube n_samples exceeds sweep.max_runs.",
+                    "Increase max_runs intentionally or reduce n_samples.",
+                )
+            )
+        if not isinstance(sweep.get("random_seed"), int):
+            issues.append(
+                _issue(
+                    "error",
+                    "sweep.random_seed",
+                    "latin_hypercube requires an integer random_seed.",
+                    "Use a fixed seed so the sampled design is reproducible.",
+                )
+            )
+
+        parameter_names = set()
+        for index, parameter in enumerate(sweep.get("parameters", [])):
+            field = f"sweep.parameters.{index}"
+            name = parameter.get("name")
+            if not isinstance(name, str) or not name:
+                issues.append(
+                    _issue(
+                        "error",
+                        f"{field}.name",
+                        "Each sampled parameter requires a dotted field name.",
+                    )
+                )
+                continue
+            if name in parameter_names:
+                issues.append(
+                    _issue(
+                        "error",
+                        f"{field}.name",
+                        f"Duplicate sampled parameter {name!r}.",
+                    )
+                )
+            parameter_names.add(name)
+
+            values = parameter.get("values")
+            if isinstance(values, list) and values:
+                continue
+
+            minimum = parameter.get("min")
+            maximum = parameter.get("max")
+            if (
+                isinstance(minimum, bool)
+                or isinstance(maximum, bool)
+                or not isinstance(minimum, (int, float))
+                or not isinstance(maximum, (int, float))
+                or not math.isfinite(float(minimum))
+                or not math.isfinite(float(maximum))
+                or float(minimum) >= float(maximum)
+            ):
+                issues.append(
+                    _issue(
+                        "error",
+                        field,
+                        "Continuous sampled parameters require finite min < max.",
+                    )
+                )
+                continue
+            scale = str(parameter.get("scale", "linear"))
+            if scale not in {"linear", "log"}:
+                issues.append(
+                    _issue(
+                        "error",
+                        f"{field}.scale",
+                        "Sample scale must be linear or log.",
+                    )
+                )
+            elif scale == "log" and float(minimum) <= 0:
+                issues.append(
+                    _issue(
+                        "error",
+                        f"{field}.min",
+                        "Log-scaled sampled parameters require min > 0.",
+                    )
+                )
+            if str(parameter.get("value_type", "float")) not in {"float", "int"}:
+                issues.append(
+                    _issue(
+                        "error",
+                        f"{field}.value_type",
+                        "value_type must be float or int.",
                     )
                 )
 

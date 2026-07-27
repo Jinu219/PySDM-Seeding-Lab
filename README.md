@@ -42,6 +42,13 @@ trajectories across 162 five-dimensional cases and three common seeds
 optimization or efficacy study. See
 [`docs/HYGROSCOPIC_RESPONSE_REGIME_ATLAS_KO.md`](docs/HYGROSCOPIC_RESPONSE_REGIME_ATLAS_KO.md).
 
+After the v1 screen succeeds, `Hygroscopic Response Regime Atlas Refinement v2`
+uses a deterministic 512-point Latin Hypercube over eight variables, ten common
+seeds, paired controls, finer temporal/super-droplet resolution, and 12 workers
+(10,240 physical model runs). Its planned server window is 12–24 hours and is
+replaced by the live Server Jobs ETA after execution begins. See
+[`docs/HYGROSCOPIC_RESPONSE_REGIME_ATLAS_REFINEMENT_KO.md`](docs/HYGROSCOPIC_RESPONSE_REGIME_ATLAS_REFINEMENT_KO.md).
+
 Results Dashboard CSV reads can use an optional validated Arrow IPC cache while
 keeping CSV as the scientific source of truth. Cache files are disposable,
 automatically invalidated when the CSV changes, and created by default only for

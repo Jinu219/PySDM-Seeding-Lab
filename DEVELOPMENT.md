@@ -1,5 +1,19 @@
 # Development Notes
 
+## 2026-07-27 - Hygroscopic response regime atlas refinement v2
+
+- Added deterministic Latin Hypercube sampling for mixed continuous and
+  categorical sweep parameters.
+- Added a frozen 512-case, 10-member, paired control/seeding real-PySDM scenario
+  with 10,240 total model runs and 12 case workers.
+- Increased the physical integration and numerical representation relative to
+  the v1 screen: 2,400 s duration, 5 s timestep, and 800+800 super-droplets.
+- Added a read-only sampled-design summary to Parameter Sweep and a
+  scenario-specific 12–24 hour planning window to Run Simulation.
+- Added full design validation, deterministic generation checks, balanced
+  collision allocation, compact sampled-case paths, and a Korean comparison
+  runbook.
+
 ## 2026-07-27 - First real-PySDM lab-server web pilot
 
 - Added `lab_server_real_pysdm_pilot_v1` as a bounded first-use scenario.
