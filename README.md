@@ -49,6 +49,15 @@ seeds, paired controls, finer temporal/super-droplet resolution, and 12 workers
 replaced by the live Server Jobs ETA after execution begins. See
 [`docs/HYGROSCOPIC_RESPONSE_REGIME_ATLAS_REFINEMENT_KO.md`](docs/HYGROSCOPIC_RESPONSE_REGIME_ATLAS_REFINEMENT_KO.md).
 
+The partial v2 result must not be followed immediately by another large
+collision sweep. First run `Hygroscopic Collision Safety Pilot v3`: a bounded
+16-case, collision-ON sentinel matrix with three common seeds and 96 physical
+model runs. It treats the Rogers-Yau giant-drop boundary and the absence of
+parcel fallout as model-domain gates. The collision-ON atlas, selected
+exact-paired collision-OFF ablations, and numerical qualification are sequenced
+in
+[`docs/HYGROSCOPIC_COLLISION_RESPONSE_V3_KO.md`](docs/HYGROSCOPIC_COLLISION_RESPONSE_V3_KO.md).
+
 Results Dashboard CSV reads can use an optional validated Arrow IPC cache while
 keeping CSV as the scientific source of truth. Cache files are disposable,
 automatically invalidated when the CSV changes, and created by default only for

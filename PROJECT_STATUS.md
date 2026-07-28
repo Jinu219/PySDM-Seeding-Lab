@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 Active branch: `develop`
 
@@ -12,6 +12,26 @@ and successful Windows/Ubuntu/real-PySDM release CI. All five required gates rem
 complete. External calibration is explicitly unsupported rather than treated as
 successful direct validation. See
 [`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
+
+## Collision-response v3 safety gate
+
+Prepared locally after reviewing the partial 512-case refinement result:
+- The next physical-response study is collision ON by default; collision OFF is
+  reserved for selected exact-paired mechanism ablations.
+- Added a 16-case safety pilot spanning 0.3–1.2 m/s updraft, clean/polluted
+  background aerosol, and 0.7/1.7 µm seed radius with three common seeds.
+- The pilot contains 96 paired physical model runs and must complete before a
+  larger v3 atlas is authorized.
+- Rogers-Yau interpolation failures and 2–6 mm giant-drop states are treated as
+  model-domain evidence, not missing-at-random cases.
+- The current parcel adapter does not implement sedimentation/fallout/breakup;
+  setting the stored sedimentation flag alone does not make the experiment
+  precipitation-realistic.
+
+Decision: run `Hygroscopic Collision Safety Pilot v3` first. Generate the
+192-case collision-ON atlas only after the pilot and fallout/domain review pass.
+See
+[`docs/HYGROSCOPIC_COLLISION_RESPONSE_V3_KO.md`](docs/HYGROSCOPIC_COLLISION_RESPONSE_V3_KO.md).
 
 ## v1.1 worker-scaling benchmark harness
 

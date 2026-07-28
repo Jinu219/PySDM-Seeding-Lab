@@ -1,5 +1,20 @@
 # Development Notes
 
+## 2026-07-28 - Collision-response v3 safety gate
+
+- Replaced the next monolithic OFF/ON atlas with a collision-ON-first staged
+  plan based on the partial v2 server result.
+- Added a 16-case Cartesian safety pilot across updraft, clean/polluted
+  background aerosol, and small/large seed radius with three common seeds,
+  paired control/seeding runs, and 96 physical model runs.
+- Kept collision ON in every pilot case and made the absence of implemented
+  sedimentation, fallout, and breakup an explicit interpretation boundary.
+- Defined pass/fail gates for Rogers-Yau interpolation failures, giant-drop
+  domain review, paired pre-injection identity, and water-budget health.
+- Planned a gated 192-case collision-ON atlas, 24 exact-paired collision-OFF
+  ablations, and representative numerical qualification instead of spending
+  half the main design on unmatched collision-OFF samples.
+
 ## 2026-07-27 - Hygroscopic response regime atlas refinement v2
 
 - Added deterministic Latin Hypercube sampling for mixed continuous and

@@ -470,6 +470,78 @@ class NativeDiagnosticMappingTests(unittest.TestCase):
         )
         self.assertIn("512-point Latin Hypercube", payload["metadata"]["memo"])
 
+    def test_hygroscopic_collision_safety_pilot_v3_plan(self):
+        scenario_path = (
+            Path(__file__).resolve().parents[1]
+            / "experiments"
+            / "scenarios"
+            / "hygroscopic_collision_safety_pilot_v3.yaml"
+        )
+        payload = read_scenario(scenario_path)
+        cfg = apply_scenario_identity(payload["config"], scenario_path)
+        cases = generate_sweep_cases(cfg)
+        plan = estimate_run_plan(cfg)
+        errors = [
+            issue
+            for issue in validate_config_detailed(cfg)
+            if issue.severity == "error"
+        ]
+        case_errors = [
+            issue
+            for case in cases
+            for issue in validate_config_detailed(case.config)
+            if issue.severity == "error"
+        ]
+
+        self.assertFalse(errors)
+        self.assertFalse(case_errors)
+        self.assertEqual(cfg["sweep"]["design"], "cartesian")
+        self.assertEqual(len(cases), 16)
+        self.assertEqual(plan.ensemble_members, 3)
+        self.assertEqual(plan.control_factor, 2)
+        self.assertEqual(plan.total_model_runs, 96)
+        self.assertEqual(plan.configured_workers, 8)
+        self.assertEqual(plan.effective_workers, 8)
+        self.assertTrue(
+            all(case.config["microphysics"]["collision"] for case in cases)
+        )
+        self.assertFalse(cfg["microphysics"]["sedimentation"])
+        self.assertEqual(
+            {
+                case.config["environment"]["updraft_velocity"]
+                for case in cases
+            },
+            {0.3, 0.6, 0.9, 1.2},
+        )
+        self.assertEqual(
+            {
+                case.config["background_aerosol"]["number_concentration"]
+                for case in cases
+            },
+            {40.0, 640.0},
+        )
+        self.assertEqual(
+            {case.config["seeding"]["dry_radius"] for case in cases},
+            {7.0e-7, 1.7e-6},
+        )
+        self.assertEqual(
+            {
+                (
+                    case.config["seeding"]["injection_start"],
+                    case.config["seeding"]["injection_end"],
+                )
+                for case in cases
+            },
+            {(300, 420)},
+        )
+        self.assertEqual(cfg["environment"]["duration"], 1500)
+        self.assertEqual(cfg["environment"]["timestep"], 5)
+        self.assertEqual(
+            cfg["diagnostics"]["wet_radius_spectrum"]["max_radius"],
+            0.006,
+        )
+        self.assertIn("safety gate", payload["metadata"]["memo"])
+
     def test_latin_hypercube_validation_rejects_invalid_domain(self):
         cfg = default_config()
         cfg["experiment"]["mode"] = "parameter_sweep"
