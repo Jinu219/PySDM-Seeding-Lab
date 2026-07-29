@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import streamlit as st
 
 import analysis.dashboard as dash
 import analysis.transition_observation_validation as transition_observation
+from analysis.plot_downloads import build_plot_zip_bytes, safe_plot_stem
 from analysis.reporting import build_pdf_report, figure_to_png_bytes as report_figure_to_png_bytes
 from simulation.ui_helpers import build_badge, inject_responsive_css
 
@@ -20,23 +22,37 @@ def render_plot_grid(plot_items, *, n_cols: int = 2) -> None:
 
     n_cols = max(1, int(n_cols))
     rows = [plot_items[i : i + n_cols] for i in range(0, len(plot_items), n_cols)]
+    plot_payloads = []
 
     for row in rows:
         cols = st.columns(n_cols)
         for idx, item in enumerate(row):
             title, fig = item
+            png_bytes = dash.figure_to_png_bytes(fig)
+            plot_payloads.append((title, png_bytes))
             with cols[idx]:
                 st.caption(title)
                 st.pyplot(fig, use_container_width=True)
-                safe_title = "".join(ch if ch.isalnum() or ch in ["_", "-"] else "_" for ch in str(title))[:80]
+                safe_title = safe_plot_stem(title)
                 st.download_button(
                     "Download PNG",
-                    data=dash.figure_to_png_bytes(fig),
+                    data=png_bytes,
                     file_name=f"{safe_title}.png",
                     mime="image/png",
                     use_container_width=True,
                     key=f"download_{safe_title}_{idx}_{id(fig)}",
                 )
+
+    plot_zip = build_plot_zip_bytes(plot_payloads)
+    plot_zip_id = hashlib.sha256(plot_zip).hexdigest()[:12]
+    st.download_button(
+        "Download all plots (ZIP)",
+        data=plot_zip,
+        file_name="plots.zip",
+        mime="application/zip",
+        use_container_width=True,
+        key=f"download_all_plots_{plot_zip_id}",
+    )
 
 
 def render_publication_downloads(

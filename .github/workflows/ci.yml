@@ -52,6 +52,7 @@ jobs:
         run: >-
           python -m unittest -v
           tests.test_columnar_cache
+          tests.test_plot_downloads
           tests.test_native_diagnostics.NativeDiagnosticMappingTests
           tests.test_server_execution
           tests.test_transition_observation_validation
