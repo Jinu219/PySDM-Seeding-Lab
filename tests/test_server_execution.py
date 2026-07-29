@@ -13,6 +13,11 @@ from unittest.mock import patch
 import pandas as pd
 
 from simulation.runner import run_parameter_sweep
+from simulation.run_plan import (
+    WEB_MAX_CASE_WORKERS,
+    scale_planning_window,
+    with_web_worker_override,
+)
 from simulation.schema import default_config
 from simulation.server_jobs import (
     BackgroundJobControlError,
@@ -40,6 +45,38 @@ def _fast_config() -> dict:
 
 
 class ServerExecutionTests(unittest.TestCase):
+    def test_web_worker_override_is_bounded_and_does_not_mutate_scenario(self):
+        cfg = _fast_config()
+        cfg["execution"]["max_workers"] = 4
+
+        overridden = with_web_worker_override(cfg, WEB_MAX_CASE_WORKERS)
+
+        self.assertEqual(cfg["execution"]["max_workers"], 4)
+        self.assertEqual(
+            overridden["execution"]["max_workers"],
+            WEB_MAX_CASE_WORKERS,
+        )
+        with self.assertRaises(ValueError):
+            with_web_worker_override(cfg, WEB_MAX_CASE_WORKERS + 1)
+
+    def test_planning_window_scales_with_selected_workers(self):
+        window = scale_planning_window(
+            [12, 24],
+            baseline_workers=12,
+            effective_workers=20,
+        )
+
+        self.assertIsNotNone(window)
+        self.assertAlmostEqual(window[0], 7.2)
+        self.assertAlmostEqual(window[1], 14.4)
+
+    def test_run_page_exposes_current_submission_worker_selection(self):
+        page = (PROJECT_ROOT / "pages" / "06_run.py").read_text(encoding="utf-8")
+
+        self.assertIn("Parallel case workers for this run", page)
+        self.assertIn("with_web_worker_override", page)
+        self.assertIn("WEB_MAX_CASE_WORKERS", page)
+
     def test_server_restart_returns_from_stop_before_starting(self):
         script = (PROJECT_ROOT / "scripts" / "server_web.sh").read_text(
             encoding="utf-8"

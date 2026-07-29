@@ -100,9 +100,18 @@ reverse proxy and appropriate firewall rules are in place.
 
 1. Open **06. Run Simulation**.
 2. Select the saved scenario.
-3. Leave **Run as a detached background job** enabled.
-4. Select **Submit Background Job**.
-5. Monitor PID, progress, result directory, and worker log in **08. Server Jobs**.
+3. Select **Parallel case workers for this run** from 1 to 20.
+4. Leave **Run as a detached background job** enabled.
+5. Select **Submit Background Job**.
+6. Monitor PID, progress, remaining time, result directory, and worker log in
+   **08. Server Jobs**.
+
+The worker choice applies only to that submission and does not rewrite the saved
+scenario. The web interface caps it at 20; the effective count is additionally
+limited by the number of independent sweep cases. On the 24-logical-CPU cloud
+nodes, selecting 20 leaves four logical CPUs for the operating system, Streamlit,
+and other lightweight work. More workers can increase memory pressure and I/O
+contention, so use the live ETA rather than assuming linear speedup.
 
 Each job stores an immutable config snapshot and status under `.runtime/jobs/`.
 The worker writes scientific outputs to the configured `output.base_dir`, usually

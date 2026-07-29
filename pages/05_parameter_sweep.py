@@ -14,6 +14,7 @@ from simulation.experiment_manager import (
     scenario_options,
     update_scenario_config,
 )
+from simulation.run_plan import WEB_MAX_CASE_WORKERS
 from simulation.sweep import count_sweep_cases
 from simulation.sweep_catalog import (
     CATEGORY_DESCRIPTIONS,
@@ -236,8 +237,11 @@ with st.container(border=True):
         execution["max_workers"] = st.number_input(
             "Maximum parallel sweep workers",
             min_value=1,
-            max_value=256,
-            value=int(execution.get("max_workers", 1)),
+            max_value=WEB_MAX_CASE_WORKERS,
+            value=min(
+                int(execution.get("max_workers", 1)),
+                WEB_MAX_CASE_WORKERS,
+            ),
             step=1,
             help=(
                 "Only independent sweep cases run in parallel. Ensemble members inside "
@@ -246,7 +250,8 @@ with st.container(border=True):
         )
     with guidance_col:
         st.info(
-            "Use 1 on a laptop. On a lab server, start with 4 workers and raise it only "
+            "Use 1 on a laptop. This web interface allows at most 20 workers. "
+            "On a lab server, start with 4 workers and raise it only "
             "after checking RAM. Recent real-PySDM measurements reached about 1 GiB per "
             "active worker, so 20 workers can require more than 20 GiB plus overhead."
         )

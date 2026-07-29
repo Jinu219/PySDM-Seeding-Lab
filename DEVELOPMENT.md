@@ -1,5 +1,16 @@
 # Development Notes
 
+## 2026-07-29 - Per-submission web worker selection
+
+- Added a 1–20 case-worker selector to Run Simulation without mutating saved
+  scenarios.
+- Capped the web path at 20 workers while preserving broader CLI validation for
+  controlled benchmarks.
+- Recomputed effective workers and scenario planning windows before submission;
+  detached-job snapshots now retain the selected worker count.
+- Added worker-bound, scenario-immutability, planning-scale, and UI regression
+  coverage plus server operating guidance.
+
 ## 2026-07-28 - Collision-response v3 safety gate
 
 - Replaced the next monolithic OFF/ON atlas with a collision-ON-first staged

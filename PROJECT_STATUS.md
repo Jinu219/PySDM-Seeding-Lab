@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 
 Active branch: `develop`
 
@@ -12,6 +12,17 @@ and successful Windows/Ubuntu/real-PySDM release CI. All five required gates rem
 complete. External calibration is explicitly unsupported rather than treated as
 successful direct validation. See
 [`docs/V1_RELEASE_CHECKLIST.md`](docs/V1_RELEASE_CHECKLIST.md).
+
+## Web server worker selection
+
+Completed on 2026-07-29:
+- Run Simulation now accepts a per-submission worker count from 1 to 20.
+- The override is captured in the detached-job config but does not modify the
+  selected saved scenario.
+- Effective concurrency remains bounded by the independent sweep-case count.
+- Scenario planning windows scale from their documented worker baseline, then
+  the live Server Jobs ETA replaces that engineering estimate.
+- The 20-worker web ceiling reserves four logical CPUs on the 24-CPU cloud nodes.
 
 ## Collision-response v3 safety gate
 

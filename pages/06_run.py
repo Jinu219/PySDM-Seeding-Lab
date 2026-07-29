@@ -8,7 +8,13 @@ import streamlit as st
 from simulation.config import load_config
 from simulation.experiment_manager import apply_scenario_identity, list_scenarios, load_scenario_config, read_scenario
 from simulation.runner import ExperimentExecutionError, run_experiment
-from simulation.run_plan import estimate_run_plan, run_plan_rows
+from simulation.run_plan import (
+    WEB_MAX_CASE_WORKERS,
+    estimate_run_plan,
+    run_plan_rows,
+    scale_planning_window,
+    with_web_worker_override,
+)
 from simulation.run_timing import format_seconds
 from simulation.schema import diagnostic_radius_thresholds
 from simulation.server_jobs import list_background_jobs, submit_background_job
@@ -21,7 +27,7 @@ from simulation.ui_helpers import build_badge, inject_responsive_css
 
 
 CONFIG_PATH = "configs/default.yaml"
-UI_BUILD_ID = "execution-health-run-plan-20260714"
+UI_BUILD_ID = "web-worker-selection-v1-20260729"
 
 inject_responsive_css()
 st.title("06. Run Simulation")
@@ -51,6 +57,12 @@ else:
 experiment = cfg.get("experiment", {})
 simulation = cfg.get("simulation", {})
 output = cfg.get("output", {})
+execution = cfg.get("execution", {})
+scenario_worker_default = max(int(execution.get("max_workers", 1)), 1)
+planning_baseline_workers = max(
+    int(execution.get("planning_workers", scenario_worker_default)),
+    1,
+)
 
 if scenario_memo:
     st.markdown("Scenario memo")
@@ -60,6 +72,44 @@ st.subheader("Run Options")
 run_name_preview = cfg.get("experiment", {}).get("name", "experiment")
 st.success(f"Result name preview: `{run_name_preview}`")
 st.caption("The result directory will include this scenario/experiment name.")
+
+parallel_sweep = experiment.get("mode") == "parameter_sweep"
+detected_logical_cpus = max(int(os.cpu_count() or 1), 1)
+web_worker_limit = min(WEB_MAX_CASE_WORKERS, detected_logical_cpus)
+worker_default = (
+    min(scenario_worker_default, web_worker_limit)
+    if parallel_sweep
+    else 1
+)
+worker_col, capacity_col = st.columns([1, 2])
+with worker_col:
+    selected_workers = st.number_input(
+        "Parallel case workers for this run",
+        min_value=1,
+        max_value=web_worker_limit,
+        value=worker_default,
+        step=1,
+        disabled=not parallel_sweep,
+        key=f"run_workers__{run_name_preview}",
+        help=(
+            "Applies only to this submission. Independent sweep cases run in "
+            "parallel; ensemble members inside each case remain sequential."
+        ),
+    )
+with capacity_col:
+    st.info(
+        f"Detected logical CPUs: {detected_logical_cpus} · "
+        f"web limit: {web_worker_limit} · "
+        f"reserved at selection: "
+        f"{max(detected_logical_cpus - int(selected_workers), 0)}"
+    )
+    st.caption(
+        "The saved scenario is not modified. Effective workers are also capped "
+        "by the number of sweep cases."
+    )
+
+cfg = with_web_worker_override(cfg, int(selected_workers))
+execution = cfg.get("execution", {})
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -93,16 +143,17 @@ if plan.effective_workers > 1:
         "Actual wall time is longer because of worker startup, I/O, and memory contention."
     )
 
-planning_window = cfg.get("execution", {}).get("planning_wall_time_hours")
-if (
-    isinstance(planning_window, list)
-    and len(planning_window) == 2
-    and all(isinstance(value, (int, float)) for value in planning_window)
-):
+planning_window = scale_planning_window(
+    execution.get("planning_wall_time_hours"),
+    baseline_workers=planning_baseline_workers,
+    effective_workers=plan.effective_workers,
+)
+if planning_window is not None:
     st.info(
         f"Scenario planning window: {planning_window[0]:g}–"
-        f"{planning_window[1]:g} hours on the configured server workers. "
-        f"{cfg.get('execution', {}).get('planning_note', '')}"
+        f"{planning_window[1]:g} hours at {plan.effective_workers} effective "
+        f"workers (scaled from {planning_baseline_workers}). "
+        f"{execution.get('planning_note', '')}"
     )
 
 st.caption(plan.description)

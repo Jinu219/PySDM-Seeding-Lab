@@ -166,6 +166,7 @@ config:
     collect_garbage_between_members: false
   execution:
     max_workers: 12
+    planning_workers: 12
     planning_wall_time_hours:
     - 12
     - 24

@@ -10,6 +10,11 @@ access, and bounded multi-core sweep execution, see
 bash scripts/server_web.sh start
 ```
 
+On **06. Run Simulation**, each parameter-sweep submission can override the
+saved scenario with 1–20 parallel case workers. The override affects only that
+job, preserves the scenario file, and leaves at least four logical CPUs free on
+the 24-CPU lab nodes when the maximum of 20 is selected.
+
 The v1.1 server qualification uses a dry-run-first matched 1/4/8-worker
 benchmark. It records wall time, throughput, process-tree peak RSS, failures, and
 machine scope without changing the scientific workload. See

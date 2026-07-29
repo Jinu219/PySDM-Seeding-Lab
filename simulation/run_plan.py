@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,6 +12,53 @@ from simulation.sweep import count_sweep_cases
 # estimate is treated as too uncertain to trust at face value, and the UI
 # should warn the user rather than show a falsely precise number.
 LARGE_RUN_WARNING_THRESHOLD = 50
+WEB_MAX_CASE_WORKERS = 20
+
+
+def with_web_worker_override(
+    config: Dict[str, Any],
+    requested_workers: int,
+    *,
+    maximum_workers: int = WEB_MAX_CASE_WORKERS,
+) -> Dict[str, Any]:
+    """Return a config copy with a bounded, current-submission worker override."""
+    if (
+        isinstance(requested_workers, bool)
+        or not isinstance(requested_workers, int)
+        or requested_workers < 1
+        or requested_workers > maximum_workers
+    ):
+        raise ValueError(
+            f"Web worker count must be between 1 and {maximum_workers}."
+        )
+    updated = deepcopy(config)
+    updated.setdefault("execution", {})["max_workers"] = requested_workers
+    return updated
+
+
+def scale_planning_window(
+    planning_window: Any,
+    *,
+    baseline_workers: int,
+    effective_workers: int,
+) -> tuple[float, float] | None:
+    """Scale a scenario planning window by ideal case-worker throughput."""
+    if (
+        not isinstance(planning_window, list)
+        or len(planning_window) != 2
+        or not all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in planning_window
+        )
+        or baseline_workers < 1
+        or effective_workers < 1
+    ):
+        return None
+    low, high = (float(planning_window[0]), float(planning_window[1]))
+    if low < 0 or high < low:
+        return None
+    scale = baseline_workers / effective_workers
+    return low * scale, high * scale
 
 
 @dataclass(frozen=True)
